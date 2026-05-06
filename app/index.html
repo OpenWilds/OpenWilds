@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -15,6 +15,25 @@
             <h1>Grid Prototype</h1>
           </div>
           <p id="player-position" class="position-pill">Player: 10, 10</p>
+        </div>
+        <div class="localnet-panel">
+          <div class="status-line">
+            <span class="status-label">Network</span>
+            <span id="network-status">Preparing localnet...</span>
+          </div>
+          <div class="status-line wallet-line">
+            <span class="status-label">Burner</span>
+            <span id="wallet-address">Creating wallet...</span>
+            <strong id="wallet-balance">Balance unavailable</strong>
+          </div>
+          <div class="status-line">
+            <span class="status-label">Programs</span>
+            <span id="program-status">Checking deployed programs...</span>
+          </div>
+          <div class="wallet-actions">
+            <button id="airdrop-button" type="button">Airdrop</button>
+            <button id="reset-button" type="button">Reset Burner</button>
+          </div>
         </div>
         <div id="game"></div>
       </section>
