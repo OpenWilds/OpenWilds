@@ -1,10 +1,12 @@
 use bolt_lang::*;
+use energy::Energy;
 use position::Position;
 use serde::Deserialize;
 
 declare_id!("pVHBNGmKR8BtfokRF1gsS8t766ukFdqn6cV1hY9tMP5");
 
 const GRID_SIZE: i64 = 20;
+const WALK_ENERGY_PER_TILE: u64 = 1;
 
 #[system]
 pub mod movement {
@@ -18,6 +20,19 @@ pub mod movement {
         );
 
         let position = &mut ctx.accounts.position;
+        let distance = position.x.abs_diff(target.x) + position.y.abs_diff(target.y);
+        let cost = distance * WALK_ENERGY_PER_TILE;
+        let energy = &mut ctx.accounts.energy;
+
+        if energy.max == 0 {
+            energy.current = energy::DEFAULT_MAX_ENERGY;
+            energy.max = energy::DEFAULT_MAX_ENERGY;
+        }
+
+        require!(cost > 0, MovementError::ZeroDistanceMove);
+        require!(energy.current >= cost, MovementError::NotEnoughEnergy);
+
+        energy.current -= cost;
         position.x = target.x;
         position.y = target.y;
 
@@ -27,6 +42,7 @@ pub mod movement {
     #[system_input]
     pub struct Components {
         pub position: Position,
+        pub energy: Energy,
     }
 }
 
@@ -42,4 +58,8 @@ pub enum MovementError {
     InvalidMoveArgs,
     #[msg("Target grid position is outside the 20x20 board.")]
     TargetOutOfBounds,
+    #[msg("Movement action must move at least one tile.")]
+    ZeroDistanceMove,
+    #[msg("Not enough energy for this movement action.")]
+    NotEnoughEnergy,
 }

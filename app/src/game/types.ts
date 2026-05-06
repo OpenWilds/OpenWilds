@@ -3,7 +3,16 @@ export type GridPoint = {
   y: number;
 };
 
-export type GameClient = {
-  movePlayer: (point: GridPoint) => Promise<GridPoint | null>;
+export type EnergyState = {
+  current: number;
+  max: number;
 };
 
+export type PlayerActionState = {
+  position: GridPoint;
+  energy: EnergyState;
+};
+
+export type GameClient = {
+  movePlayer: (point: GridPoint) => Promise<PlayerActionState | null>;
+};

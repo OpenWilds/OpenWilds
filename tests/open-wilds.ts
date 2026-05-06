@@ -1,5 +1,6 @@
 import { PublicKey } from "@solana/web3.js";
 import { Position } from "../target/types/position";
+import { Energy } from "../target/types/energy";
 import { Movement } from "../target/types/movement";
 import {
   InitializeNewWorld,
@@ -19,9 +20,11 @@ describe("open-wilds", () => {
   // Constants used to test the program.
   let worldPda: PublicKey;
   let entityPda: PublicKey;
-  let componentPda: PublicKey;
+  let positionComponentPda: PublicKey;
+  let energyComponentPda: PublicKey;
 
   const positionComponent = anchor.workspace.Position as Program<Position>;
+  const energyComponent = anchor.workspace.Energy as Program<Energy>;
   const systemMovement = anchor.workspace.Movement as Program<Movement>;
 
   it("InitializeNewWorld", async () => {
@@ -49,28 +52,46 @@ describe("open-wilds", () => {
     );
   });
 
-  it("Add a component", async () => {
-    const initializeComponent = await InitializeComponent({
+  it("Add position and energy components", async () => {
+    const initializePosition = await InitializeComponent({
       payer: provider.wallet.publicKey,
       entity: entityPda,
       componentId: positionComponent.programId,
     });
-    const txSign = await provider.sendAndConfirm(
-      initializeComponent.transaction
+    const positionTxSign = await provider.sendAndConfirm(
+      initializePosition.transaction
     );
-    componentPda = initializeComponent.componentPda;
+    positionComponentPda = initializePosition.componentPda;
     console.log(
-      `Initialized the grid component. Initialization signature: ${txSign}`
+      `Initialized the position component. Initialization signature: ${positionTxSign}`
+    );
+
+    const initializeEnergy = await InitializeComponent({
+      payer: provider.wallet.publicKey,
+      entity: entityPda,
+      componentId: energyComponent.programId,
+    });
+    const energyTxSign = await provider.sendAndConfirm(
+      initializeEnergy.transaction
+    );
+    energyComponentPda = initializeEnergy.componentPda;
+    console.log(
+      `Initialized the energy component. Initialization signature: ${energyTxSign}`
     );
   });
 
-  it("Apply a system", async () => {
+  it("Applies movement as an energy-costed action", async () => {
     // Check that the component has been initialized and x is 0
     const positionBefore = await positionComponent.account.position.fetch(
-      componentPda
+      positionComponentPda
+    );
+    const energyBefore = await energyComponent.account.energy.fetch(
+      energyComponentPda
     );
     expect(positionBefore.x.toNumber()).to.equal(0);
     expect(positionBefore.y.toNumber()).to.equal(0);
+    expect(energyBefore.current.toNumber()).to.equal(0);
+    expect(energyBefore.max.toNumber()).to.equal(0);
 
     // Move the entity to a target cell on the 20x20 grid.
     const target = { x: 12, y: 7 };
@@ -81,7 +102,10 @@ describe("open-wilds", () => {
       entities: [
         {
           entity: entityPda,
-          components: [{ componentId: positionComponent.programId }],
+          components: [
+            { componentId: positionComponent.programId },
+            { componentId: energyComponent.programId },
+          ],
         },
       ],
       args: target,
@@ -91,9 +115,14 @@ describe("open-wilds", () => {
 
     // Check that the system moved to the requested cell.
     const positionAfter = await positionComponent.account.position.fetch(
-      componentPda
+      positionComponentPda
+    );
+    const energyAfter = await energyComponent.account.energy.fetch(
+      energyComponentPda
     );
     expect(positionAfter.x.toNumber()).to.equal(target.x);
     expect(positionAfter.y.toNumber()).to.equal(target.y);
+    expect(energyAfter.current.toNumber()).to.equal(81);
+    expect(energyAfter.max.toNumber()).to.equal(100);
   });
 });

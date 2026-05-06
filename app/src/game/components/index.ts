@@ -2,6 +2,7 @@ import Phaser from "phaser";
 
 export const Components = {
   hoverCursor: "hoverCursor",
+  energy: "energy",
   player: "player",
   position: "position",
   rectangle: "rectangle",
@@ -18,4 +19,3 @@ export type RenderState = {
   dirty: boolean;
   animate: boolean;
 };
-

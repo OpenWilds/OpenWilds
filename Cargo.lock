@@ -788,6 +788,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "energy"
+version = "0.2.4"
+dependencies = [
+ "bolt-lang",
+]
+
+[[package]]
 name = "ephemeral-rollups-sdk"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1108,6 +1115,7 @@ name = "movement"
 version = "0.2.4"
 dependencies = [
  "bolt-lang",
+ "energy",
  "position",
  "serde",
  "serde_json",

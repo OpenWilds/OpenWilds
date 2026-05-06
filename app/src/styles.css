@@ -54,7 +54,7 @@ h1 {
 
 .position-pill {
   margin: 0;
-  min-width: 132px;
+  min-width: 260px;
   border: 1px solid #9fd8bd;
   border-radius: 8px;
   padding: 9px 12px;
@@ -62,7 +62,6 @@ h1 {
   font-size: 14px;
   font-weight: 700;
   text-align: center;
-  white-space: nowrap;
 }
 
 .localnet-panel {

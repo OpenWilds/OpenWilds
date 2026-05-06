@@ -39,7 +39,7 @@ export class HudController {
     );
 
     this.setProgramStatus(
-      `${deployedPrograms.length}/3 programs deployed: ${deployedPrograms
+      `${deployedPrograms.length}/4 programs deployed: ${deployedPrograms
         .map(([name, id]) => `${name} ${shortAddress(id)}`)
         .join(", ")}`
     );
@@ -91,7 +91,6 @@ export class HudController {
     this.elements.commitButton.disabled = isBusy;
     this.elements.commitButton.textContent = isBusy
       ? "Committing..."
-      : "Commit Position";
+      : "Commit State";
   }
 }
-

@@ -10,15 +10,20 @@ export type StoredPlayerState = {
   wallet: string;
   worldPda: string;
   entityPda: string;
-  componentPda: string;
+  componentPda?: string;
+  positionComponentPda?: string;
+  energyComponentPda?: string;
   positionDelegated?: boolean;
+  energyDelegated?: boolean;
 };
 
 export type PlayerState = {
   worldPda: PublicKey;
   entityPda: PublicKey;
-  componentPda: PublicKey;
+  positionComponentPda: PublicKey;
+  energyComponentPda: PublicKey;
   positionDelegated: boolean;
+  energyDelegated: boolean;
 };
 
 export type BoltResult = {
@@ -82,4 +87,3 @@ export type BoltSdk = {
     connection: Connection;
   }) => Promise<BoltResult>;
 };
-

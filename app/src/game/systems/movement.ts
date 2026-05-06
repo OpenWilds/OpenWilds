@@ -1,7 +1,7 @@
 import { Components, type RenderState } from "../components/index";
 import type { World } from "../ecs";
 import type { GridInput, MoveState } from "../resources";
-import type { GameClient, GridPoint } from "../types";
+import type { EnergyState, GameClient, GridPoint } from "../types";
 import { hideHover } from "./hide-hover";
 
 export const movementSystem = (world: World) => {
@@ -26,8 +26,8 @@ export const movementSystem = (world: World) => {
   void world
     .requireResource<GameClient>("client")
     .movePlayer(target)
-    .then((confirmedPoint) => {
-      if (!confirmedPoint) {
+    .then((confirmedState) => {
+      if (!confirmedState) {
         return;
       }
 
@@ -35,13 +35,19 @@ export const movementSystem = (world: World) => {
         player,
         Components.position
       );
+      const energy = world.requireComponent<EnergyState>(
+        player,
+        Components.energy
+      );
       const renderState = world.requireComponent<RenderState>(
         player,
         Components.renderState
       );
 
-      position.x = confirmedPoint.x;
-      position.y = confirmedPoint.y;
+      position.x = confirmedState.position.x;
+      position.y = confirmedState.position.y;
+      energy.current = confirmedState.energy.current;
+      energy.max = confirmedState.energy.max;
       renderState.dirty = true;
       renderState.animate = true;
     })
