@@ -8,8 +8,6 @@ const GRID_SIZE: i64 = 20;
 
 #[system]
 pub mod movement {
-    use super::*;
-
     pub fn execute(ctx: Context<Components>, args: Vec<u8>) -> Result<Components> {
         let target: MoveTarget =
             serde_json::from_slice(&args).map_err(|_| error!(MovementError::InvalidMoveArgs))?;
@@ -40,7 +38,7 @@ struct MoveTarget {
 
 #[error_code]
 pub enum MovementError {
-    #[msg("Movement system expected JSON args shaped like { \"x\": number, \"y\": number }.")]
+    #[msg("Movement system expected JSON args shaped like {{ \"x\": number, \"y\": number }}.")]
     InvalidMoveArgs,
     #[msg("Target grid position is outside the 20x20 board.")]
     TargetOutOfBounds,

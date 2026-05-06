@@ -33,8 +33,7 @@ program = "tests/fixtures/world.so"
 upgradeable = false
 
 [test.validator]
-bind_address = "0.0.0.0"
-url = "https://rpc.magicblock.app/devnet/"
+bind_address = "127.0.0.1"
 ledger = ".bolt/test-ledger"
 rpc_port = 8899
 
