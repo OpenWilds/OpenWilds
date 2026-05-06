@@ -2,6 +2,9 @@ import { Components } from "../components/index";
 import type { World } from "../ecs";
 import type { ActiveActionState, EnergyState, GridPoint } from "../types";
 
+const formatPosition = (value: number) =>
+  Number.isInteger(value) ? value.toString() : value.toFixed(1);
+
 export const positionLabelSystem = (world: World) => {
   const label = world.getResource<HTMLElement | null>("positionLabel");
   const player = world.findEntity(Components.player);
@@ -26,5 +29,7 @@ export const positionLabelSystem = (world: World) => {
         )}s`
       : "";
 
-  label.textContent = `Player: ${position.x}, ${position.y} | Energy: ${energy.current}/${energy.max}${actionText}`;
+  label.textContent = `Player: ${formatPosition(position.x)}, ${formatPosition(
+    position.y
+  )} | Energy: ${energy.current}/${energy.max}${actionText}`;
 };

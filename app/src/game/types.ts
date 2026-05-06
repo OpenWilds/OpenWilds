@@ -23,6 +23,16 @@ export type PlayerActionState = {
   activeAction: ActiveActionState;
 };
 
+export type ActionTransitionState = {
+  active: boolean;
+  fromPosition: GridPoint;
+  toPosition: GridPoint;
+  fromEnergy: EnergyState;
+  toEnergy: EnergyState;
+  startedAt: number;
+  endsAt: number;
+};
+
 export type GameClient = {
   movePlayer: (point: GridPoint) => Promise<PlayerActionState | null>;
   subscribePlayerActionState?: (

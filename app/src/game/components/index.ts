@@ -2,6 +2,7 @@ import Phaser from "phaser";
 
 export const Components = {
   activeAction: "activeAction",
+  actionTransition: "actionTransition",
   hoverCursor: "hoverCursor",
   energy: "energy",
   player: "player",

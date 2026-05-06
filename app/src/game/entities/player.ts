@@ -6,7 +6,12 @@ import {
 } from "../components/index";
 import type { World } from "../ecs";
 import { CELL_SIZE } from "../grid-constants";
-import type { ActiveActionState, EnergyState, GridPoint } from "../types";
+import type {
+  ActionTransitionState,
+  ActiveActionState,
+  EnergyState,
+  GridPoint,
+} from "../types";
 
 export const createPlayerEntity = (
   world: World,
@@ -31,6 +36,19 @@ export const createPlayerEntity = (
     startedAt: 0,
     endsAt: 0,
   });
+  world.addComponent<ActionTransitionState>(
+    entity,
+    Components.actionTransition,
+    {
+      active: false,
+      fromPosition: { ...position },
+      toPosition: { ...position },
+      fromEnergy: { current: 100, max: 100 },
+      toEnergy: { current: 100, max: 100 },
+      startedAt: 0,
+      endsAt: 0,
+    }
+  );
   world.addComponent<RectComponent>(entity, Components.rectangle, {
     object: rectangle,
     offsetX: 4,

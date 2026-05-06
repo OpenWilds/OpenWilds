@@ -1,12 +1,8 @@
-import { Components, type RenderState } from "../components/index";
+import { Components } from "../components/index";
 import type { World } from "../ecs";
 import type { GridInput, MoveState } from "../resources";
-import type {
-  ActiveActionState,
-  EnergyState,
-  GameClient,
-  GridPoint,
-} from "../types";
+import type { ActiveActionState, GameClient } from "../types";
+import { beginActionTransition } from "./action-transition";
 import { hideHover } from "./hide-hover";
 
 export const movementSystem = (world: World) => {
@@ -45,33 +41,7 @@ export const movementSystem = (world: World) => {
         return;
       }
 
-      const position = world.requireComponent<GridPoint>(
-        player,
-        Components.position
-      );
-      const energy = world.requireComponent<EnergyState>(
-        player,
-        Components.energy
-      );
-      const activeAction = world.requireComponent<ActiveActionState>(
-        player,
-        Components.activeAction
-      );
-      const renderState = world.requireComponent<RenderState>(
-        player,
-        Components.renderState
-      );
-
-      position.x = confirmedState.position.x;
-      position.y = confirmedState.position.y;
-      energy.current = confirmedState.energy.current;
-      energy.max = confirmedState.energy.max;
-      activeAction.action = confirmedState.activeAction.action;
-      activeAction.kind = confirmedState.activeAction.kind;
-      activeAction.startedAt = confirmedState.activeAction.startedAt;
-      activeAction.endsAt = confirmedState.activeAction.endsAt;
-      renderState.dirty = true;
-      renderState.animate = true;
+      beginActionTransition(world, player, confirmedState);
     })
     .finally(() => {
       move.pending = false;

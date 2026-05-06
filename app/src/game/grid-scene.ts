@@ -1,19 +1,13 @@
 import Phaser from "phaser";
 import { createBoard } from "./board";
-import { Components, type RenderState } from "./components/index";
 import { createHoverEntity, createPlayerEntity } from "./entities/index";
 import { World } from "./ecs";
 import { GAME_HEIGHT, GAME_WIDTH } from "./grid-constants";
 import { pointerToGrid } from "./grid-math";
 import { installGridResources, type GridInput } from "./resources";
+import { beginActionTransition } from "./systems/action-transition";
 import { gridSystems } from "./systems/index";
-import type {
-  EnergyState,
-  ActiveActionState,
-  GameClient,
-  GridPoint,
-  PlayerActionState,
-} from "./types";
+import type { GameClient, PlayerActionState } from "./types";
 
 export { GAME_HEIGHT, GAME_WIDTH };
 
@@ -78,31 +72,6 @@ export const createGridScene = (client: GameClient) =>
     }
 
     private applyPlayerActionState(player: number, state: PlayerActionState) {
-      const position = this.world.requireComponent<GridPoint>(
-        player,
-        Components.position
-      );
-      const energy = this.world.requireComponent<EnergyState>(
-        player,
-        Components.energy
-      );
-      const activeAction = this.world.requireComponent<ActiveActionState>(
-        player,
-        Components.activeAction
-      );
-      const renderState = this.world.requireComponent<RenderState>(
-        player,
-        Components.renderState
-      );
-
-      position.x = state.position.x;
-      position.y = state.position.y;
-      energy.current = state.energy.current;
-      energy.max = state.energy.max;
-      activeAction.action = state.activeAction.action;
-      activeAction.kind = state.activeAction.kind;
-      activeAction.startedAt = state.activeAction.startedAt;
-      activeAction.endsAt = state.activeAction.endsAt;
-      renderState.dirty = true;
+      beginActionTransition(this.world, player, state);
     }
   };
