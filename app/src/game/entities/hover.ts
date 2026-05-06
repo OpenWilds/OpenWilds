@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { Components, type RectComponent } from "../components";
+import { Components, type RectComponent } from "../components/index";
 import type { World } from "../ecs";
 import { CELL_SIZE } from "../grid-constants";
 
@@ -20,4 +20,3 @@ export const createHoverEntity = (world: World, scene: Phaser.Scene) => {
 
   return entity;
 };
-

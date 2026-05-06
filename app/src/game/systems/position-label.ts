@@ -1,4 +1,4 @@
-import { Components } from "../components";
+import { Components } from "../components/index";
 import type { World } from "../ecs";
 import type { GridPoint } from "../types";
 
@@ -13,4 +13,3 @@ export const positionLabelSystem = (world: World) => {
   const position = world.requireComponent<GridPoint>(player, Components.position);
   label.textContent = `Player: ${position.x}, ${position.y}`;
 };
-

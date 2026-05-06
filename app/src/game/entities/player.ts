@@ -1,5 +1,9 @@
 import Phaser from "phaser";
-import { Components, type RectComponent, type RenderState } from "../components";
+import {
+  Components,
+  type RectComponent,
+  type RenderState,
+} from "../components/index";
 import type { World } from "../ecs";
 import { CELL_SIZE } from "../grid-constants";
 import type { GridPoint } from "../types";
@@ -29,4 +33,3 @@ export const createPlayerEntity = (
 
   return entity;
 };
-

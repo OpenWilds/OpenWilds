@@ -1,4 +1,4 @@
-import { Components, type RenderState } from "../components";
+import { Components, type RenderState } from "../components/index";
 import type { World } from "../ecs";
 import type { GridInput, MoveState } from "../resources";
 import type { GameClient, GridPoint } from "../types";
@@ -49,4 +49,3 @@ export const movementSystem = (world: World) => {
       move.pending = false;
     });
 };
-

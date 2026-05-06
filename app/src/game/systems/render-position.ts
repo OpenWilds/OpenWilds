@@ -1,5 +1,9 @@
 import Phaser from "phaser";
-import { Components, type RectComponent, type RenderState } from "../components";
+import {
+  Components,
+  type RectComponent,
+  type RenderState,
+} from "../components/index";
 import type { World } from "../ecs";
 import { gridToWorld } from "../grid-math";
 import type { GridPoint } from "../types";
@@ -49,4 +53,3 @@ export const renderPositionSystem = (world: World) => {
     renderState.animate = false;
   }
 };
-

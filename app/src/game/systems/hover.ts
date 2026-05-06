@@ -1,4 +1,4 @@
-import { Components, type RectComponent } from "../components";
+import { Components, type RectComponent } from "../components/index";
 import type { World } from "../ecs";
 import { gridToWorld } from "../grid-math";
 import type { GridInput } from "../resources";
@@ -23,4 +23,3 @@ export const hoverSystem = (world: World) => {
       .setVisible(true);
   }
 };
-

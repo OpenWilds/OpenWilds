@@ -1,6 +1,6 @@
 import { Buffer } from "buffer";
 
-const browserGlobal = globalThis as typeof globalThis & {
+const browserGlobal = globalThis as {
   Buffer?: typeof Buffer;
   process?: {
     browser?: boolean;
@@ -13,4 +13,3 @@ browserGlobal.process ??= {
   browser: true,
   env: { NODE_ENV: "development" },
 };
-

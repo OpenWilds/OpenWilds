@@ -1,11 +1,11 @@
 import Phaser from "phaser";
 import { createBoard } from "./board";
-import { createHoverEntity, createPlayerEntity } from "./entities";
+import { createHoverEntity, createPlayerEntity } from "./entities/index";
 import { World } from "./ecs";
 import { GAME_HEIGHT, GAME_WIDTH } from "./grid-constants";
 import { pointerToGrid } from "./grid-math";
 import { installGridResources, type GridInput } from "./resources";
-import { gridSystems } from "./systems";
+import { gridSystems } from "./systems/index";
 import type { GameClient } from "./types";
 
 export { GAME_HEIGHT, GAME_WIDTH };
@@ -57,4 +57,3 @@ export const createGridScene = (client: GameClient) =>
       return this.world.requireResource<GridInput>("input");
     }
   };
-

@@ -1,4 +1,4 @@
-import { Components, type RectComponent } from "../components";
+import { Components, type RectComponent } from "../components/index";
 import type { World } from "../ecs";
 
 export const hideHover = (world: World) => {
@@ -8,4 +8,3 @@ export const hideHover = (world: World) => {
       .object.setVisible(false);
   }
 };
-
