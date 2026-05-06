@@ -3,6 +3,8 @@
         "dev": "vite app",
         "build": "vite build app",
         "preview": "vite preview app",
+        "localnet:validator": "NO_DNA=1 mb-test-validator --reset",
+        "localnet:deploy": "sh scripts/localnet-deploy.sh",
         "lint:fix": "node_modules/.bin/prettier */*.js \"*/**/*{.js,.ts}\" -w",
         "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
     },
