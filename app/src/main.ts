@@ -35,6 +35,12 @@ const GAME_HEIGHT = 760;
 const GRID_ORIGIN_X = (GAME_WIDTH - GRID_PIXELS) / 2;
 const GRID_ORIGIN_Y = 84;
 const LOCALNET_RPC_URL = "http://127.0.0.1:8899";
+const EPHEMERAL_ROLLUP_RPC_URL =
+  (import.meta as unknown as { env?: Record<string, string> }).env
+    ?.VITE_ER_RPC_URL ?? "http://127.0.0.1:7799";
+const EPHEMERAL_ROLLUP_VALIDATOR =
+  (import.meta as unknown as { env?: Record<string, string> }).env
+    ?.VITE_ER_VALIDATOR ?? "mAGicPQYBMvcYveUZA5F5UNNwyHvfYh5xkLS2Fr1mev";
 const BURNER_STORAGE_KEY = "open-wilds.localnet.burner";
 const PLAYER_STORAGE_KEY = "open-wilds.localnet.player";
 const AIRDROP_SOL = 5;
@@ -44,6 +50,9 @@ const PROGRAMS = {
   position: new PublicKey("7ebGfNj5knjG33XBSUdfYAYtXsner8rQzLYSFuURSicZ"),
   movement: new PublicKey("pVHBNGmKR8BtfokRF1gsS8t766ukFdqn6cV1hY9tMP5"),
 };
+const DELEGATION_PROGRAM_ID = new PublicKey(
+  "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+);
 
 type GridPoint = {
   x: number;
@@ -56,6 +65,7 @@ type HudElements = {
   walletBalance: HTMLElement | null;
   programStatus: HTMLElement | null;
   airdropButton: HTMLButtonElement | null;
+  commitButton: HTMLButtonElement | null;
   resetButton: HTMLButtonElement | null;
 };
 
@@ -64,12 +74,14 @@ type StoredPlayerState = {
   worldPda: string;
   entityPda: string;
   componentPda: string;
+  positionDelegated?: boolean;
 };
 
 type PlayerState = {
   worldPda: PublicKey;
   entityPda: PublicKey;
   componentPda: PublicKey;
+  positionDelegated: boolean;
 };
 
 type BoltResult = {
@@ -96,6 +108,28 @@ type BoltSdk = {
     }>;
     args?: GridPoint;
   }) => Promise<BoltResult>;
+  DelegateComponent: (args: {
+    payer: PublicKey;
+    entity: PublicKey;
+    componentId: PublicKey;
+    seed?: string;
+  }) => Promise<BoltResult>;
+  createDelegateInstruction: (
+    accounts: {
+      payer: PublicKey;
+      entity: PublicKey;
+      account: PublicKey;
+      ownerProgram: PublicKey;
+    },
+    commitFrequencyMs?: number,
+    validator?: PublicKey,
+    programId?: PublicKey
+  ) => TransactionInstruction;
+  createUndelegateInstruction: (args: {
+    payer: PublicKey;
+    delegatedAccount: PublicKey;
+    componentPda: PublicKey;
+  }) => TransactionInstruction;
   FindRegistryPda: (args: { programId?: PublicKey }) => PublicKey;
   InitializeComponent: (args: {
     payer: PublicKey;
@@ -134,6 +168,12 @@ const shortAddress = (value: PublicKey | string) => {
 
   return `${address.slice(0, 4)}...${address.slice(-4)}`;
 };
+
+const findDelegationRecordPda = (delegatedAccount: PublicKey) =>
+  PublicKey.findProgramAddressSync(
+    [Buffer.from("delegation"), delegatedAccount.toBytes()],
+    DELEGATION_PROGRAM_ID
+  )[0];
 
 const readBurnerWallet = () => {
   const storedSecret = window.localStorage.getItem(BURNER_STORAGE_KEY);
@@ -221,7 +261,14 @@ class BrowserAnchorWallet {
 }
 
 class LocalnetClient {
-  private readonly connection = new Connection(LOCALNET_RPC_URL, "confirmed");
+  private readonly baseConnection = new Connection(
+    LOCALNET_RPC_URL,
+    "confirmed"
+  );
+  private readonly erConnection = new Connection(
+    EPHEMERAL_ROLLUP_RPC_URL,
+    "confirmed"
+  );
   private wallet = readBurnerWallet();
   private readonly hud: HudElements;
   private playerState: PlayerState | null = null;
@@ -244,6 +291,10 @@ class LocalnetClient {
       void this.airdrop();
     });
 
+    this.hud.commitButton?.addEventListener("click", () => {
+      void this.commitPosition();
+    });
+
     this.hud.resetButton?.addEventListener("click", () => {
       window.localStorage.removeItem(BURNER_STORAGE_KEY);
       window.localStorage.removeItem(PLAYER_STORAGE_KEY);
@@ -257,12 +308,13 @@ class LocalnetClient {
 
   async movePlayer(point: GridPoint) {
     try {
-      await this.installAnchorProvider();
-      const { ApplySystem } = await loadBoltSdk();
+      await this.installAnchorProvider(this.baseConnection);
       const player = await this.ensureOnchainPlayer();
+      await this.installAnchorProvider(this.erConnection);
+      const { ApplySystem } = await loadBoltSdk();
 
       this.setProgramStatus(
-        `Sending movement system tx for ${point.x}, ${point.y}...`
+        `Sending ER movement tx for ${point.x}, ${point.y}...`
       );
 
       await this.sendBoltResult(
@@ -277,37 +329,45 @@ class LocalnetClient {
             },
           ],
           args: point,
-        })
+        }),
+        this.erConnection,
+        { skipPreflight: true }
       );
 
+      const confirmedPosition = await this.fetchPositionOnEr(player);
+
       this.setProgramStatus(
-        `Movement confirmed for entity ${shortAddress(player.entityPda)}`
+        `ER movement confirmed at ${confirmedPosition.x}, ${confirmedPosition.y}`
       );
-      return true;
+      return confirmedPosition;
     } catch (error) {
-      void logOnchainError("movePlayer failed", error, this.connection);
+      void logOnchainError("movePlayer failed", error, this.erConnection);
       this.setProgramStatus(
         error instanceof Error
           ? `On-chain movement failed: ${error.message}`
           : "On-chain movement failed."
       );
-      return false;
+      return null;
     }
   }
 
   private async refreshNetwork() {
     try {
       const [version, programInfos] = await Promise.all([
-        this.connection.getVersion(),
-        this.connection.getMultipleAccountsInfo(Object.values(PROGRAMS)),
+        this.baseConnection.getVersion(),
+        this.baseConnection.getMultipleAccountsInfo(Object.values(PROGRAMS)),
       ]);
 
       this.setNetworkStatus(
-        `Localnet ${version["solana-core"]} at ${LOCALNET_RPC_URL}`
+        `Base ${version["solana-core"]} at ${LOCALNET_RPC_URL}; ER at ${EPHEMERAL_ROLLUP_RPC_URL}`
       );
       this.renderPrograms(programInfos);
     } catch (error) {
-      void logOnchainError("network refresh failed", error, this.connection);
+      void logOnchainError(
+        "network refresh failed",
+        error,
+        this.baseConnection
+      );
       this.setNetworkStatus(`Localnet unavailable at ${LOCALNET_RPC_URL}`);
       this.setProgramStatus("Start the validator and deploy programs first.");
     }
@@ -315,10 +375,16 @@ class LocalnetClient {
 
   private async refreshBalance() {
     try {
-      const lamports = await this.connection.getBalance(this.wallet.publicKey);
+      const lamports = await this.baseConnection.getBalance(
+        this.wallet.publicKey
+      );
       this.setBalance(lamports);
     } catch (error) {
-      void logOnchainError("balance refresh failed", error, this.connection);
+      void logOnchainError(
+        "balance refresh failed",
+        error,
+        this.baseConnection
+      );
       this.setBalance(null);
     }
   }
@@ -328,13 +394,13 @@ class LocalnetClient {
     this.setNetworkStatus(`Requesting ${AIRDROP_SOL} SOL airdrop...`);
 
     try {
-      const signature = await this.connection.requestAirdrop(
+      const signature = await this.baseConnection.requestAirdrop(
         this.wallet.publicKey,
         AIRDROP_SOL * LAMPORTS_PER_SOL
       );
-      const latestBlockhash = await this.connection.getLatestBlockhash();
+      const latestBlockhash = await this.baseConnection.getLatestBlockhash();
 
-      await this.connection.confirmTransaction(
+      await this.baseConnection.confirmTransaction(
         {
           signature,
           ...latestBlockhash,
@@ -345,10 +411,59 @@ class LocalnetClient {
       await this.refreshBalance();
       this.setNetworkStatus(`Airdrop confirmed: ${shortAddress(signature)}`);
     } catch (error) {
-      void logOnchainError("airdrop failed", error, this.connection);
+      void logOnchainError("airdrop failed", error, this.baseConnection);
       this.setNetworkStatus("Airdrop failed. Is localnet running?");
     } finally {
       this.setAirdropBusy(false);
+    }
+  }
+
+  private async commitPosition() {
+    const player = this.playerState ?? this.readStoredPlayer();
+
+    if (!player) {
+      this.setProgramStatus("Create and delegate a player before committing.");
+      return;
+    }
+
+    this.setCommitBusy(true);
+    this.setProgramStatus(
+      `Committing Position ${shortAddress(player.componentPda)} back to base...`
+    );
+
+    try {
+      await this.installAnchorProvider(this.erConnection);
+      const { createUndelegateInstruction } = await loadBoltSdk();
+
+      await this.sendBoltResult(
+        {
+          instruction: createUndelegateInstruction({
+            payer: this.wallet.publicKey,
+            delegatedAccount: player.componentPda,
+            componentPda: PROGRAMS.position,
+          }),
+        },
+        this.erConnection,
+        { skipPreflight: true }
+      );
+
+      player.positionDelegated = false;
+      this.playerState = player;
+      this.writeStoredPlayer(player);
+      this.setProgramStatus(
+        `Position committed and undelegated: ${shortAddress(
+          player.componentPda
+        )}`
+      );
+    } catch (error) {
+      void logOnchainError("commitPosition failed", error, this.erConnection);
+      this.setProgramStatus(
+        error instanceof Error
+          ? `Commit failed: ${error.message}`
+          : "Commit failed."
+      );
+    } finally {
+      this.setCommitBusy(false);
     }
   }
 
@@ -356,20 +471,20 @@ class LocalnetClient {
     const storedPlayer = this.readStoredPlayer();
 
     if (storedPlayer) {
-      const componentInfo = await this.connection.getAccountInfo(
+      const componentInfo = await this.baseConnection.getAccountInfo(
         storedPlayer.componentPda
       );
 
       if (componentInfo) {
         this.playerState = storedPlayer;
-        return storedPlayer;
+        return this.ensurePositionDelegated(storedPlayer);
       }
 
       window.localStorage.removeItem(PLAYER_STORAGE_KEY);
     }
 
     this.setProgramStatus("Creating on-chain player entity...");
-    await this.installAnchorProvider();
+    await this.installAnchorProvider(this.baseConnection);
 
     const {
       AddEntity,
@@ -380,21 +495,21 @@ class LocalnetClient {
     } = await loadBoltSdk();
 
     const registryPda = FindRegistryPda({});
-    const registryInfo = await this.connection.getAccountInfo(registryPda);
+    const registryInfo = await this.baseConnection.getAccountInfo(registryPda);
 
     if (!registryInfo) {
       this.setProgramStatus("Creating missing Bolt registry...");
       await this.sendBoltResult(
         await InitializeRegistry({
           payer: this.wallet.publicKey,
-          connection: this.connection,
+          connection: this.baseConnection,
         })
       );
     }
 
     const worldResult = await InitializeNewWorld({
       payer: this.wallet.publicKey,
-      connection: this.connection,
+      connection: this.baseConnection,
     });
     await this.sendBoltResult(worldResult);
 
@@ -405,7 +520,7 @@ class LocalnetClient {
     const entityResult = await AddEntity({
       payer: this.wallet.publicKey,
       world: worldResult.worldPda,
-      connection: this.connection,
+      connection: this.baseConnection,
     });
     await this.sendBoltResult(entityResult);
 
@@ -428,13 +543,122 @@ class LocalnetClient {
       worldPda: worldResult.worldPda,
       entityPda: entityResult.entityPda,
       componentPda: componentResult.componentPda,
+      positionDelegated: false,
     };
     this.writeStoredPlayer(this.playerState);
 
-    return this.playerState;
+    return this.ensurePositionDelegated(this.playerState);
   }
 
-  private async sendBoltResult(result: BoltResult) {
+  private async ensurePositionDelegated(player: PlayerState) {
+    if (await this.isPositionDelegated(player)) {
+      await this.waitForPositionOnEr(player);
+      player.positionDelegated = true;
+      this.writeStoredPlayer(player);
+      return player;
+    }
+
+    this.setProgramStatus(
+      `Delegating Position ${shortAddress(player.componentPda)} to ER...`
+    );
+    await this.installAnchorProvider(this.baseConnection);
+
+    const { createDelegateInstruction } = await loadBoltSdk();
+    const delegateResult = {
+      componentPda: player.componentPda,
+      instruction: createDelegateInstruction(
+        {
+          payer: this.wallet.publicKey,
+          entity: player.entityPda,
+          account: player.componentPda,
+          ownerProgram: PROGRAMS.position,
+        },
+        0,
+        new PublicKey(EPHEMERAL_ROLLUP_VALIDATOR),
+        PROGRAMS.position
+      ),
+    };
+
+    await this.sendBoltResult(delegateResult, this.baseConnection);
+    await this.waitForPositionOnEr(player);
+
+    player.positionDelegated = true;
+    this.writeStoredPlayer(player);
+    this.setProgramStatus(
+      `Position delegated to ER: ${shortAddress(player.componentPda)}`
+    );
+
+    return player;
+  }
+
+  private async isPositionVisibleOnEr(player: PlayerState) {
+    try {
+      return Boolean(
+        await this.erConnection.getAccountInfo(player.componentPda)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  private async isPositionDelegated(player: PlayerState) {
+    const delegationRecord = findDelegationRecordPda(player.componentPda);
+
+    try {
+      return Boolean(await this.baseConnection.getAccountInfo(delegationRecord));
+    } catch {
+      return false;
+    }
+  }
+
+  private async waitForPositionOnEr(player: PlayerState) {
+    const startedAt = Date.now();
+    const timeoutMs = 15_000;
+
+    while (Date.now() - startedAt < timeoutMs) {
+      if (await this.isPositionVisibleOnEr(player)) {
+        return;
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, 500));
+    }
+
+    throw new Error(
+      `Position delegation did not appear on ER at ${EPHEMERAL_ROLLUP_RPC_URL}.`
+    );
+  }
+
+  private async fetchPositionOnEr(player: PlayerState): Promise<GridPoint> {
+    const account = await this.erConnection.getAccountInfo(player.componentPda);
+
+    if (!account || account.data.byteLength < 24) {
+      throw new Error("Delegated Position account is missing on ER.");
+    }
+
+    const view = new DataView(
+      account.data.buffer,
+      account.data.byteOffset,
+      account.data.byteLength
+    );
+
+    const readI64 = (offset: number) => {
+      const low = view.getUint32(offset, true);
+      const high = view.getInt32(offset + 4, true);
+
+      return high * 0x100000000 + low;
+    };
+
+    return {
+      x: readI64(8),
+      y: readI64(16),
+    };
+  }
+
+  private async sendBoltResult(
+    result: BoltResult,
+    connection = this.baseConnection,
+    options: { skipPreflight?: boolean } = {}
+  ) {
     const transaction =
       result.transaction ??
       (result.instruction
@@ -448,28 +672,29 @@ class LocalnetClient {
     transaction.feePayer ??= this.wallet.publicKey;
 
     if (!transaction.recentBlockhash) {
-      const latestBlockhash = await this.connection.getLatestBlockhash();
+      const latestBlockhash = await connection.getLatestBlockhash();
       transaction.recentBlockhash = latestBlockhash.blockhash;
     }
 
     transaction.partialSign(this.wallet);
 
     const signature = await sendAndConfirmRawTransaction(
-      this.connection,
+      connection,
       transaction.serialize(),
       {
         commitment: "confirmed",
         preflightCommitment: "confirmed",
+        skipPreflight: options.skipPreflight,
       }
     );
 
     return signature;
   }
 
-  private async installAnchorProvider() {
+  private async installAnchorProvider(connection: Connection) {
     const { AnchorProvider, setProvider } = await loadAnchorSdk();
     const provider = new AnchorProvider(
-      this.connection,
+      connection,
       new BrowserAnchorWallet(this.wallet),
       {
         commitment: "confirmed",
@@ -536,6 +761,17 @@ class LocalnetClient {
     this.hud.airdropButton.textContent = isBusy ? "Airdropping..." : "Airdrop";
   }
 
+  private setCommitBusy(isBusy: boolean) {
+    if (!this.hud.commitButton) {
+      return;
+    }
+
+    this.hud.commitButton.disabled = isBusy;
+    this.hud.commitButton.textContent = isBusy
+      ? "Committing..."
+      : "Commit Position";
+  }
+
   private readStoredPlayer(): PlayerState | null {
     const stored = window.localStorage.getItem(PLAYER_STORAGE_KEY);
 
@@ -554,6 +790,7 @@ class LocalnetClient {
         worldPda: new PublicKey(state.worldPda),
         entityPda: new PublicKey(state.entityPda),
         componentPda: new PublicKey(state.componentPda),
+        positionDelegated: Boolean(state.positionDelegated),
       };
     } catch {
       window.localStorage.removeItem(PLAYER_STORAGE_KEY);
@@ -567,6 +804,7 @@ class LocalnetClient {
       worldPda: state.worldPda.toBase58(),
       entityPda: state.entityPda.toBase58(),
       componentPda: state.componentPda.toBase58(),
+      positionDelegated: state.positionDelegated,
     };
 
     window.localStorage.setItem(PLAYER_STORAGE_KEY, JSON.stringify(stored));
@@ -635,11 +873,11 @@ class GridScene extends Phaser.Scene {
     this.pendingMove = point;
     this.hover.setVisible(false);
 
-    const movedOnchain = await localnetClient.movePlayer(point);
+    const confirmedPoint = await localnetClient.movePlayer(point);
 
-    if (movedOnchain) {
-      this.playerPosition = point;
-      this.placePlayer(point, true);
+    if (confirmedPoint) {
+      this.playerPosition = confirmedPoint;
+      this.placePlayer(confirmedPoint, true);
       this.updatePositionLabel();
     }
 
@@ -759,6 +997,7 @@ let localnetClient = new LocalnetClient({
   walletBalance: document.getElementById("wallet-balance"),
   programStatus: document.getElementById("program-status"),
   airdropButton: document.getElementById("airdrop-button") as HTMLButtonElement,
+  commitButton: document.getElementById("commit-button") as HTMLButtonElement,
   resetButton: document.getElementById("reset-button") as HTMLButtonElement,
 });
 
