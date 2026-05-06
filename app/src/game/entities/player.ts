@@ -6,7 +6,7 @@ import {
 } from "../components/index";
 import type { World } from "../ecs";
 import { CELL_SIZE } from "../grid-constants";
-import type { EnergyState, GridPoint } from "../types";
+import type { ActiveActionState, EnergyState, GridPoint } from "../types";
 
 export const createPlayerEntity = (
   world: World,
@@ -24,6 +24,12 @@ export const createPlayerEntity = (
   world.addComponent<EnergyState>(entity, Components.energy, {
     current: 100,
     max: 100,
+  });
+  world.addComponent<ActiveActionState>(entity, Components.activeAction, {
+    action: 0,
+    kind: "idle",
+    startedAt: 0,
+    endsAt: 0,
   });
   world.addComponent<RectComponent>(entity, Components.rectangle, {
     object: rectangle,

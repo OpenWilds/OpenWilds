@@ -109,6 +109,42 @@ h1 {
   white-space: nowrap;
 }
 
+.action-progress {
+  display: grid;
+  gap: 6px;
+  padding: 8px 0 2px;
+}
+
+.action-progress[hidden] {
+  display: none;
+}
+
+.action-progress__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #f7f1e5;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.action-progress__track {
+  height: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(159, 216, 189, 0.5);
+  border-radius: 8px;
+  background: rgba(23, 33, 30, 0.45);
+}
+
+.action-progress__track span {
+  display: block;
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: #9fd8bd;
+  transition: width 120ms linear;
+}
+
 .wallet-actions {
   display: flex;
   gap: 8px;

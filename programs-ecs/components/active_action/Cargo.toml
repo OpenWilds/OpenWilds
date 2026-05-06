@@ -1,12 +1,12 @@
 [package]
-name = "sleep"
+name = "active_action"
 version = "0.2.4"
 description = "Created with Bolt"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "lib"]
-name = "sleep"
+name = "active_action"
 
 [features]
 no-entrypoint = []
@@ -21,5 +21,3 @@ custom-panic = []
 
 [dependencies]
 bolt-lang.workspace = true
-active_action = { version = "0.2.4", path = "../../components/active_action", features = ["cpi"] }
-energy = { version = "0.2.4", path = "../../components/energy", features = ["cpi"] }

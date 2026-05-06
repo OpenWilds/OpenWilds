@@ -10,7 +10,15 @@ export type MoveState = {
   pending: boolean;
 };
 
+export type ActionProgressElements = {
+  root: HTMLElement | null;
+  label: HTMLElement | null;
+  time: HTMLElement | null;
+  fill: HTMLElement | null;
+};
+
 export type GridResources = {
+  actionProgress: ActionProgressElements;
   client: GameClient;
   input: GridInput;
   move: MoveState;
@@ -34,9 +42,14 @@ export const installGridResources = (
   world.setResource<GridResources["move"]>("move", {
     pending: false,
   });
+  world.setResource<GridResources["actionProgress"]>("actionProgress", {
+    root: document.getElementById("action-progress"),
+    label: document.getElementById("action-progress-label"),
+    time: document.getElementById("action-progress-time"),
+    fill: document.getElementById("action-progress-fill"),
+  });
   world.setResource<GridResources["positionLabel"]>(
     "positionLabel",
     document.getElementById("player-position")
   );
 };
-

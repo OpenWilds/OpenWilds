@@ -6,7 +6,12 @@ import {
   SendTransactionError,
   Transaction,
 } from "@solana/web3.js";
-import type { EnergyState, GridPoint, PlayerActionState } from "../game/types";
+import type {
+  ActiveActionState,
+  EnergyState,
+  GridPoint,
+  PlayerActionState,
+} from "../game/types";
 import {
   AIRDROP_SOL,
   EPHEMERAL_ROLLUP_RPC_URL,
@@ -84,6 +89,10 @@ const GRID_SIZE = 20;
 const WALK_ENERGY_PER_TILE = 1;
 type ProgramName = keyof typeof PROGRAMS;
 
+const ACTION_IDLE = 0;
+const ACTION_MOVE = 1;
+const ACTION_SLEEP = 2;
+
 export class LocalnetClient {
   private readonly baseConnection = new Connection(
     LOCALNET_RPC_URL,
@@ -99,6 +108,7 @@ export class LocalnetClient {
     (state: PlayerActionState) => void
   >();
   private playerState: PlayerState | null = null;
+  private actionUnlockTimer: number | null = null;
 
   constructor(hudElements: HudElements) {
     this.hud = new HudController(hudElements);
@@ -116,10 +126,25 @@ export class LocalnetClient {
   async movePlayer(point: GridPoint) {
     try {
       await this.installAnchorProvider(this.baseConnection);
-      await this.requireDeployedPrograms(["position", "energy", "movement"]);
+      await this.requireDeployedPrograms([
+        "position",
+        "energy",
+        "activeAction",
+        "movement",
+      ]);
       const player = await this.ensureOnchainPlayer();
       await this.installAnchorProvider(this.erConnection);
       const actionState = await this.fetchPlayerActionStateOnEr(player);
+
+      if (this.isActionActive(actionState.activeAction)) {
+        this.hud.setProgramStatus(
+          `${this.describeAction(actionState.activeAction)} in progress.`
+        );
+        this.renderActionBusy(actionState.activeAction);
+        this.emitPlayerActionState(actionState);
+        return actionState;
+      }
+
       const moveCost = this.getMoveCost(actionState.position, point);
 
       if (moveCost === null) {
@@ -162,6 +187,7 @@ export class LocalnetClient {
               components: [
                 { componentId: PROGRAMS.position },
                 { componentId: PROGRAMS.energy },
+                { componentId: PROGRAMS.activeAction },
               ],
             },
           ],
@@ -176,6 +202,8 @@ export class LocalnetClient {
       this.hud.setProgramStatus(
         `ER movement confirmed at ${confirmedState.position.x}, ${confirmedState.position.y}; energy ${confirmedState.energy.current}/${confirmedState.energy.max}`
       );
+      this.renderActionBusy(confirmedState.activeAction);
+      this.emitPlayerActionState(confirmedState);
       return confirmedState;
     } catch (error) {
       const message = await describeOnchainError(
@@ -197,9 +225,20 @@ export class LocalnetClient {
 
     try {
       await this.installAnchorProvider(this.baseConnection);
-      await this.requireDeployedPrograms(["energy", "sleep"]);
+      await this.requireDeployedPrograms(["energy", "activeAction", "sleep"]);
       const player = await this.ensureOnchainPlayer();
       await this.installAnchorProvider(this.erConnection);
+      const actionState = await this.fetchPlayerActionStateOnEr(player);
+
+      if (this.isActionActive(actionState.activeAction)) {
+        this.hud.setProgramStatus(
+          `${this.describeAction(actionState.activeAction)} in progress.`
+        );
+        this.renderActionBusy(actionState.activeAction);
+        this.emitPlayerActionState(actionState);
+        return actionState;
+      }
+
       const { ApplySystem } = await loadBoltSdk();
 
       this.hud.setProgramStatus("Sending ER sleep tx...");
@@ -212,7 +251,10 @@ export class LocalnetClient {
           entities: [
             {
               entity: player.entityPda,
-              components: [{ componentId: PROGRAMS.energy }],
+              components: [
+                { componentId: PROGRAMS.energy },
+                { componentId: PROGRAMS.activeAction },
+              ],
             },
           ],
         }),
@@ -225,6 +267,7 @@ export class LocalnetClient {
       this.hud.setProgramStatus(
         `Sleep confirmed; energy ${confirmedState.energy.current}/${confirmedState.energy.max}`
       );
+      this.renderActionBusy(confirmedState.activeAction);
       this.emitPlayerActionState(confirmedState);
       return confirmedState;
     } catch (error) {
@@ -273,6 +316,12 @@ export class LocalnetClient {
       clearStoredPlayer();
       this.wallet = readBurnerWallet();
       this.playerState = null;
+      this.renderActionBusy({
+        action: ACTION_IDLE,
+        kind: "idle",
+        startedAt: 0,
+        endsAt: 0,
+      });
       this.hud.renderWallet(this.wallet.publicKey);
       this.hud.setProgramStatus("Burner reset. Checking balance...");
       void this.refreshBalance();
@@ -383,7 +432,9 @@ export class LocalnetClient {
     }
 
     this.hud.setCommitBusy(true);
-    this.hud.setProgramStatus("Committing Position and Energy back to base...");
+    this.hud.setProgramStatus(
+      "Committing Position, Energy, and Active Action back to base..."
+    );
 
     try {
       await this.installAnchorProvider(this.erConnection);
@@ -399,6 +450,11 @@ export class LocalnetClient {
           account: player.energyComponentPda,
           programId: PROGRAMS.energy,
           label: "Energy",
+        },
+        {
+          account: player.activeActionComponentPda,
+          programId: PROGRAMS.activeAction,
+          label: "Active Action",
         },
       ]) {
         this.hud.setProgramStatus(`Committing ${component.label}...`);
@@ -418,9 +474,12 @@ export class LocalnetClient {
 
       player.positionDelegated = false;
       player.energyDelegated = false;
+      player.activeActionDelegated = false;
       this.playerState = player;
       writeStoredPlayer(this.wallet.publicKey, player);
-      this.hud.setProgramStatus("Position and Energy committed.");
+      this.hud.setProgramStatus(
+        "Position, Energy, and Active Action committed."
+      );
     } catch (error) {
       void logOnchainError(
         "commitPlayerState failed",
@@ -458,10 +517,11 @@ export class LocalnetClient {
   private async fetchPlayerActionStateOnEr(
     player: PlayerState
   ): Promise<PlayerActionState> {
-    const [positionAccount, energyAccount] =
+    const [positionAccount, energyAccount, activeActionAccount] =
       await this.erConnection.getMultipleAccountsInfo([
         player.positionComponentPda,
         player.energyComponentPda,
+        player.activeActionComponentPda,
       ]);
 
     if (!positionAccount || positionAccount.data.byteLength < 24) {
@@ -472,9 +532,14 @@ export class LocalnetClient {
       throw new Error("Delegated Energy account is missing on ER.");
     }
 
+    if (!activeActionAccount || activeActionAccount.data.byteLength < 25) {
+      throw new Error("Delegated Active Action account is missing on ER.");
+    }
+
     return {
       position: this.decodePosition(positionAccount.data),
       energy: this.decodeEnergy(energyAccount.data),
+      activeAction: this.decodeActiveAction(activeActionAccount.data),
     };
   }
 
@@ -493,6 +558,20 @@ export class LocalnetClient {
     return {
       current: this.readU64(view, 8),
       max: this.readU64(view, 16),
+    };
+  }
+
+  private decodeActiveAction(data: Uint8Array): ActiveActionState {
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    const action = view.getUint8(8);
+    const startedAt = this.readI64(view, 9);
+    const endsAt = this.readI64(view, 17);
+
+    return {
+      action,
+      kind: this.getActionKind(action, endsAt),
+      startedAt,
+      endsAt,
     };
   }
 
@@ -529,6 +608,59 @@ export class LocalnetClient {
       current: DEFAULT_MAX_ENERGY,
       max: DEFAULT_MAX_ENERGY,
     };
+  }
+
+  private getActionKind(
+    action: number,
+    endsAt: number
+  ): ActiveActionState["kind"] {
+    if (action === ACTION_IDLE || endsAt <= Date.now() / 1000) {
+      return "idle";
+    }
+
+    if (action === ACTION_MOVE) {
+      return "move";
+    }
+
+    if (action === ACTION_SLEEP) {
+      return "sleep";
+    }
+
+    return "unknown";
+  }
+
+  private isActionActive(action: ActiveActionState) {
+    return action.endsAt > Date.now() / 1000;
+  }
+
+  private describeAction(action: ActiveActionState) {
+    if (action.kind === "move") {
+      return "Movement";
+    }
+
+    if (action.kind === "sleep") {
+      return "Sleep";
+    }
+
+    return "Action";
+  }
+
+  private renderActionBusy(action: ActiveActionState) {
+    if (this.actionUnlockTimer !== null) {
+      window.clearTimeout(this.actionUnlockTimer);
+      this.actionUnlockTimer = null;
+    }
+
+    if (!this.isActionActive(action)) {
+      this.hud.setActionBusy(false);
+      return;
+    }
+
+    this.hud.setActionBusy(true);
+    this.actionUnlockTimer = window.setTimeout(() => {
+      this.actionUnlockTimer = null;
+      this.hud.setActionBusy(false);
+    }, Math.max(0, action.endsAt * 1000 - Date.now()));
   }
 
   private emitPlayerActionState(state: PlayerActionState) {

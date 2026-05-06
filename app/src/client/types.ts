@@ -13,8 +13,10 @@ export type StoredPlayerState = {
   componentPda?: string;
   positionComponentPda?: string;
   energyComponentPda?: string;
+  activeActionComponentPda?: string;
   positionDelegated?: boolean;
   energyDelegated?: boolean;
+  activeActionDelegated?: boolean;
 };
 
 export type PlayerState = {
@@ -22,8 +24,10 @@ export type PlayerState = {
   entityPda: PublicKey;
   positionComponentPda: PublicKey;
   energyComponentPda: PublicKey;
+  activeActionComponentPda: PublicKey;
   positionDelegated: boolean;
   energyDelegated: boolean;
+  activeActionDelegated: boolean;
 };
 
 export type BoltResult = {

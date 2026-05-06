@@ -26,6 +26,7 @@ export const getHudElements = (): HudElements => ({
 
 export class HudController {
   private sleepAvailable = true;
+  private actionBusy = false;
 
   constructor(readonly elements: HudElements) {}
 
@@ -109,12 +110,20 @@ export class HudController {
       return;
     }
 
-    this.elements.sleepButton.disabled = isBusy || !this.sleepAvailable;
+    this.elements.sleepButton.disabled =
+      isBusy || this.actionBusy || !this.sleepAvailable;
     this.elements.sleepButton.textContent = isBusy
       ? "Sleeping..."
+      : this.actionBusy
+      ? "Busy"
       : this.sleepAvailable
       ? "Sleep"
       : "Deploy Sleep";
+  }
+
+  setActionBusy(isBusy: boolean) {
+    this.actionBusy = isBusy;
+    this.setSleepBusy(false);
   }
 
   private setSleepAvailable(isAvailable: boolean) {

@@ -16,8 +16,14 @@ import {
 import type { BoltResult, PlayerState } from "./types";
 
 type PlayerComponentDefinition = {
-  key: "positionComponentPda" | "energyComponentPda";
-  delegatedKey: "positionDelegated" | "energyDelegated";
+  key:
+    | "positionComponentPda"
+    | "energyComponentPda"
+    | "activeActionComponentPda";
+  delegatedKey:
+    | "positionDelegated"
+    | "energyDelegated"
+    | "activeActionDelegated";
   label: string;
   programId: PublicKey;
 };
@@ -48,6 +54,12 @@ const playerComponents: PlayerComponentDefinition[] = [
     label: "Energy",
     programId: PROGRAMS.energy,
   },
+  {
+    key: "activeActionComponentPda",
+    delegatedKey: "activeActionDelegated",
+    label: "Active Action",
+    programId: PROGRAMS.activeAction,
+  },
 ];
 
 const findDelegationRecordPda = (delegatedAccount: PublicKey) =>
@@ -61,7 +73,7 @@ export class PlayerWorldProvisioner {
 
   /**
    * Ensures the browser wallet has a playable Bolt world graph:
-   * registry -> world -> player entity -> position/energy components.
+   * registry -> world -> player entity -> position/energy/action components.
    *
    * This is the expansion point for richer world bootstrapping. Add new
    * component definitions to `playerComponents`, or split new entity archetypes
@@ -142,7 +154,7 @@ export class PlayerWorldProvisioner {
 
     const components = {} as Pick<
       PlayerState,
-      "positionComponentPda" | "energyComponentPda"
+      "positionComponentPda" | "energyComponentPda" | "activeActionComponentPda"
     >;
 
     for (const component of playerComponents) {
@@ -168,6 +180,7 @@ export class PlayerWorldProvisioner {
       ...components,
       positionDelegated: false,
       energyDelegated: false,
+      activeActionDelegated: false,
     };
   }
 

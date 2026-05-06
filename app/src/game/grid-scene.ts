@@ -9,6 +9,7 @@ import { installGridResources, type GridInput } from "./resources";
 import { gridSystems } from "./systems/index";
 import type {
   EnergyState,
+  ActiveActionState,
   GameClient,
   GridPoint,
   PlayerActionState,
@@ -85,6 +86,10 @@ export const createGridScene = (client: GameClient) =>
         player,
         Components.energy
       );
+      const activeAction = this.world.requireComponent<ActiveActionState>(
+        player,
+        Components.activeAction
+      );
       const renderState = this.world.requireComponent<RenderState>(
         player,
         Components.renderState
@@ -94,6 +99,10 @@ export const createGridScene = (client: GameClient) =>
       position.y = state.position.y;
       energy.current = state.energy.current;
       energy.max = state.energy.max;
+      activeAction.action = state.activeAction.action;
+      activeAction.kind = state.activeAction.kind;
+      activeAction.startedAt = state.activeAction.startedAt;
+      activeAction.endsAt = state.activeAction.endsAt;
       renderState.dirty = true;
     }
   };

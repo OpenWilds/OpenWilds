@@ -3,6 +3,13 @@
 version = 4
 
 [[package]]
+name = "active_action"
+version = "0.2.4"
+dependencies = [
+ "bolt-lang",
+]
+
+[[package]]
 name = "ahash"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1114,6 +1121,7 @@ dependencies = [
 name = "movement"
 version = "0.2.4"
 dependencies = [
+ "active_action",
  "bolt-lang",
  "energy",
  "position",
@@ -1538,6 +1546,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 name = "sleep"
 version = "0.2.4"
 dependencies = [
+ "active_action",
  "bolt-lang",
  "energy",
 ]

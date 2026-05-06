@@ -1,3 +1,4 @@
+use active_action::ActiveAction;
 use bolt_lang::*;
 use energy::Energy;
 use position::Position;
@@ -7,6 +8,7 @@ declare_id!("pVHBNGmKR8BtfokRF1gsS8t766ukFdqn6cV1hY9tMP5");
 
 const GRID_SIZE: i64 = 20;
 const WALK_ENERGY_PER_TILE: u64 = 1;
+const WALK_SECONDS_PER_TILE: i64 = 2;
 
 #[system]
 pub mod movement {
@@ -17,6 +19,15 @@ pub mod movement {
         require!(
             target.x >= 0 && target.x < GRID_SIZE && target.y >= 0 && target.y < GRID_SIZE,
             MovementError::TargetOutOfBounds
+        );
+
+        let now = Clock::get()?.unix_timestamp;
+        let active_action = &mut ctx.accounts.active_action;
+
+        active_action.clear_if_done(now);
+        require!(
+            !active_action.is_active(now),
+            MovementError::ActionInProgress
         );
 
         let position = &mut ctx.accounts.position;
@@ -35,6 +46,11 @@ pub mod movement {
         energy.current -= cost;
         position.x = target.x;
         position.y = target.y;
+        active_action.start(
+            active_action::ACTION_MOVE,
+            now,
+            (distance as i64) * WALK_SECONDS_PER_TILE,
+        );
 
         Ok(ctx.accounts)
     }
@@ -43,6 +59,7 @@ pub mod movement {
     pub struct Components {
         pub position: Position,
         pub energy: Energy,
+        pub active_action: ActiveAction,
     }
 }
 
@@ -62,4 +79,6 @@ pub enum MovementError {
     ZeroDistanceMove,
     #[msg("Not enough energy for this movement action.")]
     NotEnoughEnergy,
+    #[msg("Another action is still in progress.")]
+    ActionInProgress,
 }

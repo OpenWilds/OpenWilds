@@ -8,9 +8,19 @@ export type EnergyState = {
   max: number;
 };
 
+export type ActiveActionKind = "idle" | "move" | "sleep" | "unknown";
+
+export type ActiveActionState = {
+  action: number;
+  kind: ActiveActionKind;
+  startedAt: number;
+  endsAt: number;
+};
+
 export type PlayerActionState = {
   position: GridPoint;
   energy: EnergyState;
+  activeAction: ActiveActionState;
 };
 
 export type GameClient = {
