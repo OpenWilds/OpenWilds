@@ -45,7 +45,7 @@ describe("open-wilds", () => {
     const txSign = await provider.sendAndConfirm(addEntity.transaction);
     entityPda = addEntity.entityPda;
     console.log(
-      `Initialized a new Entity (ID=${addEntity.entityId}). Initialization signature: ${txSign}`
+      `Initialized a new Entity (PDA=${entityPda}). Initialization signature: ${txSign}`
     );
   });
 
