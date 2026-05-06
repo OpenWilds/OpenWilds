@@ -8,6 +8,7 @@ export type HudElements = {
   walletBalance: HTMLElement | null;
   programStatus: HTMLElement | null;
   airdropButton: HTMLButtonElement | null;
+  sleepButton: HTMLButtonElement | null;
   commitButton: HTMLButtonElement | null;
   resetButton: HTMLButtonElement | null;
 };
@@ -18,11 +19,14 @@ export const getHudElements = (): HudElements => ({
   walletBalance: document.getElementById("wallet-balance"),
   programStatus: document.getElementById("program-status"),
   airdropButton: document.getElementById("airdrop-button") as HTMLButtonElement,
+  sleepButton: document.getElementById("sleep-button") as HTMLButtonElement,
   commitButton: document.getElementById("commit-button") as HTMLButtonElement,
   resetButton: document.getElementById("reset-button") as HTMLButtonElement,
 });
 
 export class HudController {
+  private sleepAvailable = true;
+
   constructor(readonly elements: HudElements) {}
 
   renderWallet(walletAddress: PublicKey) {
@@ -37,9 +41,15 @@ export class HudController {
     const deployedPrograms = Object.entries(PROGRAMS).filter(
       ([, _programId], index) => programInfos[index]?.executable
     );
+    const sleepProgramIndex = Object.keys(PROGRAMS).indexOf("sleep");
+    this.setSleepAvailable(
+      Boolean(programInfos[sleepProgramIndex]?.executable)
+    );
 
     this.setProgramStatus(
-      `${deployedPrograms.length}/4 programs deployed: ${deployedPrograms
+      `${deployedPrograms.length}/${
+        Object.keys(PROGRAMS).length
+      } programs deployed: ${deployedPrograms
         .map(([name, id]) => `${name} ${shortAddress(id)}`)
         .join(", ")}`
     );
@@ -92,5 +102,23 @@ export class HudController {
     this.elements.commitButton.textContent = isBusy
       ? "Committing..."
       : "Commit State";
+  }
+
+  setSleepBusy(isBusy: boolean) {
+    if (!this.elements.sleepButton) {
+      return;
+    }
+
+    this.elements.sleepButton.disabled = isBusy || !this.sleepAvailable;
+    this.elements.sleepButton.textContent = isBusy
+      ? "Sleeping..."
+      : this.sleepAvailable
+      ? "Sleep"
+      : "Deploy Sleep";
+  }
+
+  private setSleepAvailable(isAvailable: boolean) {
+    this.sleepAvailable = isAvailable;
+    this.setSleepBusy(false);
   }
 }

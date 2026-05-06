@@ -15,4 +15,7 @@ export type PlayerActionState = {
 
 export type GameClient = {
   movePlayer: (point: GridPoint) => Promise<PlayerActionState | null>;
+  subscribePlayerActionState?: (
+    listener: (state: PlayerActionState) => void
+  ) => () => void;
 };

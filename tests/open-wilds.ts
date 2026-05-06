@@ -2,6 +2,7 @@ import { PublicKey } from "@solana/web3.js";
 import { Position } from "../target/types/position";
 import { Energy } from "../target/types/energy";
 import { Movement } from "../target/types/movement";
+import { Sleep } from "../target/types/sleep";
 import {
   InitializeNewWorld,
   AddEntity,
@@ -26,6 +27,7 @@ describe("open-wilds", () => {
   const positionComponent = anchor.workspace.Position as Program<Position>;
   const energyComponent = anchor.workspace.Energy as Program<Energy>;
   const systemMovement = anchor.workspace.Movement as Program<Movement>;
+  const systemSleep = anchor.workspace.Sleep as Program<Sleep>;
 
   it("InitializeNewWorld", async () => {
     const initNewWorld = await InitializeNewWorld({
@@ -123,6 +125,28 @@ describe("open-wilds", () => {
     expect(positionAfter.x.toNumber()).to.equal(target.x);
     expect(positionAfter.y.toNumber()).to.equal(target.y);
     expect(energyAfter.current.toNumber()).to.equal(81);
+    expect(energyAfter.max.toNumber()).to.equal(100);
+  });
+
+  it("Restores energy after sleeping", async () => {
+    const sleepSystem = await ApplySystem({
+      authority: provider.wallet.publicKey,
+      systemId: systemSleep.programId,
+      world: worldPda,
+      entities: [
+        {
+          entity: entityPda,
+          components: [{ componentId: energyComponent.programId }],
+        },
+      ],
+    });
+    const txSign = await provider.sendAndConfirm(sleepSystem.transaction);
+    console.log(`Applied sleep system. Signature: ${txSign}`);
+
+    const energyAfter = await energyComponent.account.energy.fetch(
+      energyComponentPda
+    );
+    expect(energyAfter.current.toNumber()).to.equal(100);
     expect(energyAfter.max.toNumber()).to.equal(100);
   });
 });
