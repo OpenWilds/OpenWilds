@@ -2,13 +2,13 @@ import { PublicKey } from "@solana/web3.js";
 import { Position } from "../target/types/position";
 import { Movement } from "../target/types/movement";
 import {
-    InitializeNewWorld,
-    AddEntity,
-    InitializeComponent,
-    ApplySystem,
-    Program
-} from "@magicblock-labs/bolt-sdk"
-import {expect} from "chai";
+  InitializeNewWorld,
+  AddEntity,
+  InitializeComponent,
+  ApplySystem,
+  Program,
+} from "@magicblock-labs/bolt-sdk";
+import { expect } from "chai";
 import * as anchor from "@coral-xyz/anchor";
 
 describe("open-wilds", () => {
@@ -31,7 +31,9 @@ describe("open-wilds", () => {
     });
     const txSign = await provider.sendAndConfirm(initNewWorld.transaction);
     worldPda = initNewWorld.worldPda;
-    console.log(`Initialized a new world (ID=${worldPda}). Initialization signature: ${txSign}`);
+    console.log(
+      `Initialized a new world (ID=${worldPda}). Initialization signature: ${txSign}`
+    );
   });
 
   it("Add an entity", async () => {
@@ -42,7 +44,9 @@ describe("open-wilds", () => {
     });
     const txSign = await provider.sendAndConfirm(addEntity.transaction);
     entityPda = addEntity.entityPda;
-    console.log(`Initialized a new Entity (ID=${addEntity.entityId}). Initialization signature: ${txSign}`);
+    console.log(
+      `Initialized a new Entity (ID=${addEntity.entityId}). Initialization signature: ${txSign}`
+    );
   });
 
   it("Add a component", async () => {
@@ -51,9 +55,13 @@ describe("open-wilds", () => {
       entity: entityPda,
       componentId: positionComponent.programId,
     });
-    const txSign = await provider.sendAndConfirm(initializeComponent.transaction);
+    const txSign = await provider.sendAndConfirm(
+      initializeComponent.transaction
+    );
     componentPda = initializeComponent.componentPda;
-    console.log(`Initialized the grid component. Initialization signature: ${txSign}`);
+    console.log(
+      `Initialized the grid component. Initialization signature: ${txSign}`
+    );
   });
 
   it("Apply a system", async () => {
@@ -62,25 +70,30 @@ describe("open-wilds", () => {
       componentPda
     );
     expect(positionBefore.x.toNumber()).to.equal(0);
+    expect(positionBefore.y.toNumber()).to.equal(0);
 
-    // Run the movement system
+    // Move the entity to a target cell on the 20x20 grid.
+    const target = { x: 12, y: 7 };
     const applySystem = await ApplySystem({
       authority: provider.wallet.publicKey,
       systemId: systemMovement.programId,
       world: worldPda,
-      entities: [{
-        entity: entityPda,
-        components: [{ componentId: positionComponent.programId }],
-      }]
+      entities: [
+        {
+          entity: entityPda,
+          components: [{ componentId: positionComponent.programId }],
+        },
+      ],
+      args: target,
     });
     const txSign = await provider.sendAndConfirm(applySystem.transaction);
     console.log(`Applied a system. Signature: ${txSign}`);
 
-    // Check that the system has been applied and x is > 0
+    // Check that the system moved to the requested cell.
     const positionAfter = await positionComponent.account.position.fetch(
       componentPda
     );
-    expect(positionAfter.x.toNumber()).to.gt(0);
+    expect(positionAfter.x.toNumber()).to.equal(target.x);
+    expect(positionAfter.y.toNumber()).to.equal(target.y);
   });
-
 });
