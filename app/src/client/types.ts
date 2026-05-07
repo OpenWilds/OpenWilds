@@ -74,6 +74,7 @@ export type BoltSdk = {
   AddEntity: (args: {
     payer: PublicKey;
     world: PublicKey;
+    seed?: Uint8Array;
     connection: Connection;
   }) => Promise<BoltResult>;
   ApplySystem: (args: {
@@ -113,6 +114,7 @@ export type BoltSdk = {
     payer: PublicKey;
     entity: PublicKey;
     componentId: PublicKey;
+    seed?: string;
   }) => Promise<BoltResult>;
   InitializeNewWorld: (args: {
     payer: PublicKey;

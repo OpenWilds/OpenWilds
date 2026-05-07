@@ -87,6 +87,7 @@ const expectedProgramEntries = Object.entries(PROGRAMS);
 const DEFAULT_MAX_ENERGY = 100;
 const GRID_SIZE = 20;
 const WALK_ENERGY_PER_TILE = 1;
+const PLAYER_STATE_SYNC_INTERVAL_MS = 500;
 type ProgramName = keyof typeof PROGRAMS;
 
 const ACTION_IDLE = 0;
@@ -109,6 +110,9 @@ export class LocalnetClient {
   >();
   private playerState: PlayerState | null = null;
   private actionUnlockTimer: number | null = null;
+  private playerStateSyncTimer: number | null = null;
+  private playerStateSyncing = false;
+  private lastPlayerActionStateKey: string | null = null;
 
   constructor(hudElements: HudElements) {
     this.hud = new HudController(hudElements);
@@ -121,6 +125,8 @@ export class LocalnetClient {
     this.bindControls();
 
     await Promise.all([this.refreshNetwork(), this.refreshBalance()]);
+    this.startPlayerStateSync();
+    await this.syncPlayerState({ announceLoaded: true });
   }
 
   async movePlayer(point: GridPoint) {
@@ -336,6 +342,7 @@ export class LocalnetClient {
       clearStoredPlayer();
       this.wallet = readBurnerWallet();
       this.playerState = null;
+      this.lastPlayerActionStateKey = null;
       this.renderActionBusy({
         action: ACTION_IDLE,
         kind: "idle",
@@ -344,6 +351,7 @@ export class LocalnetClient {
       });
       this.hud.renderWallet(this.wallet.publicKey);
       this.hud.setProgramStatus("Burner reset. Checking balance...");
+      this.startPlayerStateSync();
       void this.refreshBalance();
     });
   }
@@ -385,6 +393,60 @@ export class LocalnetClient {
         this.baseConnection
       );
       this.hud.setBalance(null);
+    }
+  }
+
+  private startPlayerStateSync() {
+    if (this.playerStateSyncTimer !== null) {
+      window.clearInterval(this.playerStateSyncTimer);
+    }
+
+    this.playerStateSyncTimer = window.setInterval(() => {
+      void this.syncPlayerState();
+    }, PLAYER_STATE_SYNC_INTERVAL_MS);
+  }
+
+  private async syncPlayerState(options: { announceLoaded?: boolean } = {}) {
+    if (this.playerStateSyncing) {
+      return;
+    }
+
+    this.playerStateSyncing = true;
+
+    try {
+      const player =
+        this.playerState ??
+        (await this.createPlayerWorldProvisioner().loadExistingPlayer());
+
+      if (!player) {
+        return;
+      }
+
+      this.playerState = player;
+      await this.installAnchorProvider(this.erConnection);
+      const actionState = await this.fetchPlayerActionStateOnEr(player);
+      const stateKey = this.getPlayerActionStateKey(actionState);
+
+      if (stateKey === this.lastPlayerActionStateKey) {
+        return;
+      }
+
+      this.renderActionBusy(actionState.activeAction);
+      this.emitPlayerActionState(actionState);
+
+      if (options.announceLoaded) {
+        this.hud.setProgramStatus(
+          `Loaded player at ${actionState.position.x}, ${actionState.position.y}; energy ${actionState.energy.current}/${actionState.energy.max}`
+        );
+      }
+    } catch (error) {
+      void logOnchainError(
+        "player state sync failed",
+        error,
+        this.erConnection
+      );
+    } finally {
+      this.playerStateSyncing = false;
     }
   }
 
@@ -518,6 +580,7 @@ export class LocalnetClient {
 
   private async ensureOnchainPlayer() {
     this.playerState = await this.createPlayerWorldProvisioner().ensurePlayer();
+    this.startPlayerStateSync();
     return this.playerState;
   }
 
@@ -684,9 +747,24 @@ export class LocalnetClient {
   }
 
   private emitPlayerActionState(state: PlayerActionState) {
+    this.lastPlayerActionStateKey = this.getPlayerActionStateKey(state);
+
     for (const listener of this.playerActionStateListeners) {
       listener(state);
     }
+  }
+
+  private getPlayerActionStateKey(state: PlayerActionState) {
+    return [
+      state.position.x,
+      state.position.y,
+      state.energy.current,
+      state.energy.max,
+      state.activeAction.action,
+      state.activeAction.kind,
+      state.activeAction.startedAt,
+      state.activeAction.endsAt,
+    ].join(":");
   }
 
   private async sendBoltResult(

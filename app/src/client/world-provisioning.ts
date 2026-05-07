@@ -102,6 +102,7 @@ const playerComponents: PlayerComponentDefinition[] = [
 ];
 
 const tileTerrainKey = ({ x, y }: GridPoint) => `${x},${y}`;
+const playerEntitySeed = (payer: PublicKey) => payer.toBytes();
 
 const findDelegationRecordPda = (delegatedAccount: PublicKey) =>
   PublicKey.findProgramAddressSync(
@@ -123,6 +124,24 @@ export class PlayerWorldProvisioner {
   async ensurePlayer() {
     const storedPlayer = readStoredPlayer(this.options.payer);
     const sharedWorldPda = await this.loadSharedWorldPda();
+    const seededPlayer = sharedWorldPda
+      ? await this.readSeededPlayer(sharedWorldPda)
+      : null;
+
+    if (seededPlayer) {
+      writeStoredPlayer(this.options.payer, seededPlayer);
+      return this.ensureComponentsDelegated(seededPlayer);
+    }
+
+    if (sharedWorldPda) {
+      if (storedPlayer) {
+        clearStoredPlayer();
+      }
+
+      const player = await this.createPlayerWorldGraph(sharedWorldPda);
+      writeStoredPlayer(this.options.payer, player);
+      return this.ensureComponentsDelegated(player);
+    }
 
     if (
       storedPlayer &&
@@ -146,6 +165,31 @@ export class PlayerWorldProvisioner {
       await this.ensureTerrainTypes(player);
     }
     return this.ensureComponentsDelegated(player);
+  }
+
+  async loadExistingPlayer() {
+    const sharedWorldPda = await this.loadSharedWorldPda();
+    const storedPlayer = readStoredPlayer(this.options.payer);
+
+    if (sharedWorldPda) {
+      const seededPlayer = await this.readSeededPlayer(sharedWorldPda);
+
+      if (seededPlayer) {
+        writeStoredPlayer(this.options.payer, seededPlayer);
+      }
+
+      return seededPlayer;
+    }
+
+    if (
+      storedPlayer &&
+      (!sharedWorldPda || storedPlayer.worldPda.equals(sharedWorldPda)) &&
+      (await this.hasStoredComponents(storedPlayer))
+    ) {
+      return storedPlayer;
+    }
+
+    return null;
   }
 
   async ensureTileTerrain(player: PlayerState, point: GridPoint) {
@@ -252,12 +296,20 @@ export class PlayerWorldProvisioner {
     const entityResult = await AddEntity({
       payer: this.options.payer,
       world: worldPda,
+      seed: playerEntitySeed(this.options.payer),
       connection: this.options.baseConnection,
     });
-    await this.options.sendBoltResult(entityResult);
 
     if (!entityResult.entityPda) {
       throw new Error("Entity PDA missing after initialization.");
+    }
+
+    const entityInfo = await this.options.baseConnection.getAccountInfo(
+      entityResult.entityPda
+    );
+
+    if (!entityInfo) {
+      await this.options.sendBoltResult(entityResult);
     }
 
     const components = {} as Pick<
@@ -271,12 +323,19 @@ export class PlayerWorldProvisioner {
         entity: entityResult.entityPda,
         componentId: component.programId,
       });
-      await this.options.sendBoltResult(result);
 
       if (!result.componentPda) {
         throw new Error(
           `${component.label} component PDA missing after initialization.`
         );
+      }
+
+      const componentInfo = await this.options.baseConnection.getAccountInfo(
+        result.componentPda
+      );
+
+      if (!componentInfo) {
+        await this.options.sendBoltResult(result);
       }
 
       components[component.key] = result.componentPda;
@@ -289,6 +348,71 @@ export class PlayerWorldProvisioner {
       positionDelegated: false,
       energyDelegated: false,
       activeActionDelegated: false,
+      terrainTypes: [],
+      tileTerrains: [],
+    };
+  }
+
+  private async readSeededPlayer(worldPda: PublicKey) {
+    const { AddEntity, InitializeComponent } = await loadBoltSdk();
+    const entityResult = await AddEntity({
+      payer: this.options.payer,
+      world: worldPda,
+      seed: playerEntitySeed(this.options.payer),
+      connection: this.options.baseConnection,
+    });
+
+    if (!entityResult.entityPda) {
+      return null;
+    }
+
+    const entityInfo = await this.options.baseConnection.getAccountInfo(
+      entityResult.entityPda
+    );
+
+    if (!entityInfo) {
+      return null;
+    }
+
+    const components = {} as Pick<
+      PlayerState,
+      "positionComponentPda" | "energyComponentPda" | "activeActionComponentPda"
+    >;
+    const delegationStates = {} as Pick<
+      PlayerState,
+      "positionDelegated" | "energyDelegated" | "activeActionDelegated"
+    >;
+
+    for (const component of playerComponents) {
+      const result = await InitializeComponent({
+        payer: this.options.payer,
+        entity: entityResult.entityPda,
+        componentId: component.programId,
+      });
+
+      if (!result.componentPda) {
+        return null;
+      }
+
+      const [baseAccount, erAccount] = await Promise.all([
+        this.options.baseConnection.getAccountInfo(result.componentPda),
+        this.options.erConnection.getAccountInfo(result.componentPda),
+      ]);
+
+      if (!baseAccount && !erAccount) {
+        return null;
+      }
+
+      components[component.key] = result.componentPda;
+      delegationStates[component.delegatedKey] =
+        await this.isComponentDelegated(result.componentPda);
+    }
+
+    return {
+      worldPda,
+      entityPda: entityResult.entityPda,
+      ...components,
+      ...delegationStates,
       terrainTypes: [],
       tileTerrains: [],
     };
