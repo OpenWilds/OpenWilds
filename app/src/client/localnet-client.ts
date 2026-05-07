@@ -130,7 +130,13 @@ export class LocalnetClient {
         "position",
         "energy",
         "activeAction",
+        "worldTerrainRegistry",
+        "terrainType",
+        "tileTerrain",
         "movement",
+        "registerTerrainType",
+        "defineTerrainType",
+        "defineTileTerrain",
       ]);
       const player = await this.ensureOnchainPlayer();
       await this.installAnchorProvider(this.erConnection);
@@ -225,7 +231,17 @@ export class LocalnetClient {
 
     try {
       await this.installAnchorProvider(this.baseConnection);
-      await this.requireDeployedPrograms(["energy", "activeAction", "sleep"]);
+      await this.requireDeployedPrograms([
+        "energy",
+        "activeAction",
+        "worldTerrainRegistry",
+        "terrainType",
+        "tileTerrain",
+        "sleep",
+        "registerTerrainType",
+        "defineTerrainType",
+        "defineTileTerrain",
+      ]);
       const player = await this.ensureOnchainPlayer();
       await this.installAnchorProvider(this.erConnection);
       const actionState = await this.fetchPlayerActionStateOnEr(player);

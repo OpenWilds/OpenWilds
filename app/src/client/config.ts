@@ -16,8 +16,22 @@ export const PROGRAMS = {
   position: new PublicKey("7ebGfNj5knjG33XBSUdfYAYtXsner8rQzLYSFuURSicZ"),
   energy: new PublicKey("EXfYuzbCqe3VoUrG37gvkhxMmCMBKfvj5DRodsjmG6Pg"),
   activeAction: new PublicKey("g9Y3zHKWC9kJ9CYLQuDkZP7qVwhh6yu2swhxrXn7sVn"),
+  worldTerrainRegistry: new PublicKey(
+    "CbYVrUkZDrFRCBFA6HNNrQtzNgXP111zKqKpMy6KyhYQ"
+  ),
+  terrainType: new PublicKey("G6qkktc5oWkPHFmhk8x3UwzZ5WuQLE5En7PGteko6mhK"),
+  tileTerrain: new PublicKey("5hCo8uVeWtjqmeFQAovyLFuW1vZ4wS3kKP7ms7SUyyqk"),
   movement: new PublicKey("pVHBNGmKR8BtfokRF1gsS8t766ukFdqn6cV1hY9tMP5"),
   sleep: new PublicKey("AHpcKdhujpiTq8oGbxbCknEfmQQwya6cmvywFL89iZUs"),
+  registerTerrainType: new PublicKey(
+    "B9qCeXFe5431no3DTZQdZjexyG1cCep1yHjZrxm5c2AM"
+  ),
+  defineTerrainType: new PublicKey(
+    "9HUAZDNqjGrk2jVaQBx95hUFhdkb1vbKq6PDtsoybsLu"
+  ),
+  defineTileTerrain: new PublicKey(
+    "DBfTvysc3GQVoazLgbwLr2yqjs8msjaco9q8fgTaLUTy"
+  ),
 };
 
 export const DELEGATION_PROGRAM_ID = new PublicKey(

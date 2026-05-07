@@ -765,6 +765,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "define_terrain_type"
+version = "0.2.4"
+dependencies = [
+ "bolt-lang",
+ "serde",
+ "serde_json",
+ "terrain_type",
+]
+
+[[package]]
+name = "define_tile_terrain"
+version = "0.2.4"
+dependencies = [
+ "bolt-lang",
+ "serde",
+ "serde_json",
+ "tile_terrain",
+]
+
+[[package]]
 name = "digest"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1376,6 +1396,17 @@ name = "regex-syntax"
 version = "0.8.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
+
+[[package]]
+name = "register_terrain_type"
+version = "0.2.4"
+dependencies = [
+ "bolt-lang",
+ "serde",
+ "serde_json",
+ "terrain_type",
+ "world_terrain_registry",
+]
 
 [[package]]
 name = "rustc_version"
@@ -2414,6 +2445,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "terrain_type"
+version = "0.2.4"
+dependencies = [
+ "bolt-lang",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2451,6 +2489,13 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "tile_terrain"
+version = "0.2.4"
+dependencies = [
+ "bolt-lang",
 ]
 
 [[package]]
@@ -2680,6 +2725,13 @@ dependencies = [
  "bolt-system",
  "solana-security-txt",
  "tuple-conv",
+]
+
+[[package]]
+name = "world_terrain_registry"
+version = "0.2.4"
+dependencies = [
+ "bolt-lang",
 ]
 
 [[package]]

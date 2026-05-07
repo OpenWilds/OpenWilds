@@ -6,6 +6,20 @@ import {
 } from "@solana/web3.js";
 import type { GridPoint } from "../game/types";
 
+export type StoredTerrainTypeState = {
+  terrainTypeId: number;
+  entityPda: string;
+  componentPda: string;
+  delegated?: boolean;
+};
+
+export type StoredTileTerrainState = {
+  key: string;
+  entityPda: string;
+  componentPda: string;
+  delegated?: boolean;
+};
+
 export type StoredPlayerState = {
   wallet: string;
   worldPda: string;
@@ -17,6 +31,22 @@ export type StoredPlayerState = {
   positionDelegated?: boolean;
   energyDelegated?: boolean;
   activeActionDelegated?: boolean;
+  terrainTypes?: StoredTerrainTypeState[];
+  tileTerrains?: StoredTileTerrainState[];
+};
+
+export type TerrainTypeState = {
+  terrainTypeId: number;
+  entityPda: PublicKey;
+  componentPda: PublicKey;
+  delegated: boolean;
+};
+
+export type TileTerrainState = {
+  key: string;
+  entityPda: PublicKey;
+  componentPda: PublicKey;
+  delegated: boolean;
 };
 
 export type PlayerState = {
@@ -28,6 +58,8 @@ export type PlayerState = {
   positionDelegated: boolean;
   energyDelegated: boolean;
   activeActionDelegated: boolean;
+  terrainTypes: TerrainTypeState[];
+  tileTerrains: TileTerrainState[];
 };
 
 export type BoltResult = {
@@ -52,7 +84,7 @@ export type BoltSdk = {
       entity: PublicKey;
       components: Array<{ componentId: PublicKey }>;
     }>;
-    args?: GridPoint;
+    args?: GridPoint | Record<string, number>;
   }) => Promise<BoltResult>;
   DelegateComponent: (args: {
     payer: PublicKey;

@@ -5,6 +5,7 @@
     "preview": "vite preview app",
     "localnet:validator": "NO_DNA=1 mb-test-validator --reset --bpf-program WorLD15A7CrDwLcLy4fRqtaTb9fbd8o8iqiEMUDse2n tests/fixtures/world.so --account - tests/fixtures/registry.json",
     "localnet:deploy": "sh scripts/localnet-deploy.sh",
+    "localnet:provision-world": "NO_DNA=1 ts-node scripts/provision-game-world.ts",
     "lint:fix": "node_modules/.bin/prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
   },

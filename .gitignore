@@ -7,3 +7,4 @@ node_modules
 test-ledger
 .yarn
 app/dist
+app/public/game-world.localnet.json

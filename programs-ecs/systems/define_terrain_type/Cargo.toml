@@ -1,0 +1,26 @@
+[package]
+name = "define_terrain_type"
+version = "0.2.4"
+description = "Open Wilds terrain type definition system"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "define_terrain_type"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+idl-build = ["bolt-lang/idl-build"]
+anchor-debug = ["bolt-lang/anchor-debug"]
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+bolt-lang.workspace = true
+terrain_type = { version = "0.2.4", path = "../../components/terrain_type", features = ["cpi"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

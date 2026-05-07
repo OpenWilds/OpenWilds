@@ -6,6 +6,7 @@ import {
   GRID_PIXELS,
   GRID_SIZE,
 } from "./grid-constants";
+import { getTerrainType, getTileTerrainDefinition } from "./terrain";
 
 export const createBoard = (scene: Phaser.Scene) => {
   const board = scene.add.graphics();
@@ -24,8 +25,11 @@ export const createBoard = (scene: Phaser.Scene) => {
 
   for (let y = 0; y < GRID_SIZE; y += 1) {
     for (let x = 0; x < GRID_SIZE; x += 1) {
-      const color = (x + y) % 2 === 0 ? 0xecf6ee : 0xe2f0e5;
-      board.fillStyle(color, 1);
+      const terrain = getTerrainType(
+        getTileTerrainDefinition({ x, y }).terrainTypeId
+      );
+      const alpha = (x + y) % 2 === 0 ? 1 : 0.88;
+      board.fillStyle(terrain.color, alpha);
       board.fillRect(
         GRID_ORIGIN_X + x * CELL_SIZE,
         GRID_ORIGIN_Y + y * CELL_SIZE,
@@ -53,4 +57,3 @@ export const createBoard = (scene: Phaser.Scene) => {
     );
   }
 };
-
