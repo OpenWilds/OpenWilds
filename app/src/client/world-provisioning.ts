@@ -26,11 +26,13 @@ type PlayerComponentDefinition = {
   key:
     | "positionComponentPda"
     | "energyComponentPda"
-    | "activeActionComponentPda";
+    | "activeActionComponentPda"
+    | "inventoryComponentPda";
   delegatedKey:
     | "positionDelegated"
     | "energyDelegated"
-    | "activeActionDelegated";
+    | "activeActionDelegated"
+    | "inventoryDelegated";
   label: string;
   programId: PublicKey;
 };
@@ -101,10 +103,22 @@ const playerComponents: PlayerComponentDefinition[] = [
     label: "Active Action",
     programId: PROGRAMS.activeAction,
   },
+  {
+    key: "inventoryComponentPda",
+    delegatedKey: "inventoryDelegated",
+    label: "Inventory",
+    programId: PROGRAMS.inventory,
+  },
 ];
 
 const tileTerrainKey = ({ x, y }: GridPoint) => `${x},${y}`;
 const playerEntitySeed = (playerMint: PublicKey) => playerMint.toBytes();
+const STARTER_INVENTORY_ARGS = {
+  turnip_seeds: 6,
+  wheat_seeds: 4,
+  apple_saplings: 1,
+  acorns: 2,
+};
 
 const findDelegationRecordPda = (delegatedAccount: PublicKey) =>
   PublicKey.findProgramAddressSync(
@@ -264,6 +278,7 @@ export class PlayerWorldProvisioner {
 
     const {
       AddEntity,
+      ApplySystem,
       FindRegistryPda,
       InitializeComponent,
       InitializeNewWorld,
@@ -322,7 +337,10 @@ export class PlayerWorldProvisioner {
 
     const components = {} as Pick<
       PlayerState,
-      "positionComponentPda" | "energyComponentPda" | "activeActionComponentPda"
+      | "positionComponentPda"
+      | "energyComponentPda"
+      | "activeActionComponentPda"
+      | "inventoryComponentPda"
     >;
 
     for (const component of playerComponents) {
@@ -344,6 +362,22 @@ export class PlayerWorldProvisioner {
 
       if (!componentInfo) {
         await this.options.sendBoltResult(result);
+        if (component.programId.equals(PROGRAMS.inventory)) {
+          await this.options.sendBoltResult(
+            await ApplySystem({
+              authority: this.options.payer,
+              systemId: PROGRAMS.grantStarterInventory,
+              world: worldPda,
+              entities: [
+                {
+                  entity: entityResult.entityPda,
+                  components: [{ componentId: PROGRAMS.inventory }],
+                },
+              ],
+              args: STARTER_INVENTORY_ARGS,
+            })
+          );
+        }
       }
 
       components[component.key] = result.componentPda;
@@ -358,6 +392,7 @@ export class PlayerWorldProvisioner {
       positionDelegated: false,
       energyDelegated: false,
       activeActionDelegated: false,
+      inventoryDelegated: false,
       terrainTypes: [],
       tileTerrains: [],
     };
@@ -386,11 +421,17 @@ export class PlayerWorldProvisioner {
 
     const components = {} as Pick<
       PlayerState,
-      "positionComponentPda" | "energyComponentPda" | "activeActionComponentPda"
+      | "positionComponentPda"
+      | "energyComponentPda"
+      | "activeActionComponentPda"
+      | "inventoryComponentPda"
     >;
     const delegationStates = {} as Pick<
       PlayerState,
-      "positionDelegated" | "energyDelegated" | "activeActionDelegated"
+      | "positionDelegated"
+      | "energyDelegated"
+      | "activeActionDelegated"
+      | "inventoryDelegated"
     >;
 
     for (const component of playerComponents) {

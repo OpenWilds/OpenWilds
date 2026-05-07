@@ -11,6 +11,7 @@ import { gridSystems } from "./systems/index";
 import { Components, type RectComponent } from "./components/index";
 import type {
   GameClient,
+  InventoryState,
   PlayerActionState,
   PlayerAppearance,
   VisiblePlayerState,
@@ -24,6 +25,8 @@ export const createGridScene = (client: GameClient) =>
     private unsubscribePlayerActionState: (() => void) | null = null;
     private unsubscribePlayerAppearance: (() => void) | null = null;
     private unsubscribeVisiblePlayers: (() => void) | null = null;
+    private unsubscribeInventory: (() => void) | null = null;
+    private farmCatalog: ReturnType<typeof createFarmCatalog> | null = null;
     private activePlayerEntity: number | null = null;
     private readonly remotePlayerEntities = new Map<string, number>();
     private readonly remotePlayerStateKeys = new Map<string, string>();
@@ -38,7 +41,7 @@ export const createGridScene = (client: GameClient) =>
 
       installGridResources(this.world, this, client);
       createBoard(this);
-      createFarmCatalog(this);
+      this.farmCatalog = createFarmCatalog(this);
       createHoverEntity(this.world, this);
       const player = createPlayerEntity(this.world, this, { x: 10, y: 10 });
       this.activePlayerEntity = player;
@@ -57,6 +60,8 @@ export const createGridScene = (client: GameClient) =>
         this.unsubscribePlayerAppearance = null;
         this.unsubscribeVisiblePlayers?.();
         this.unsubscribeVisiblePlayers = null;
+        this.unsubscribeInventory?.();
+        this.unsubscribeInventory = null;
       });
     }
 
@@ -94,6 +99,10 @@ export const createGridScene = (client: GameClient) =>
       this.unsubscribeVisiblePlayers =
         client.subscribeVisiblePlayers?.((players) =>
           this.applyVisiblePlayers(players)
+        ) ?? null;
+      this.unsubscribeInventory =
+        client.subscribeInventory?.((inventory) =>
+          this.applyInventory(inventory)
         ) ?? null;
     }
 
@@ -149,6 +158,10 @@ export const createGridScene = (client: GameClient) =>
         this.remotePlayerEntities.delete(mint);
         this.remotePlayerStateKeys.delete(mint);
       }
+    }
+
+    private applyInventory(inventory: InventoryState) {
+      this.farmCatalog?.updateInventory(inventory);
     }
 
     private createRemotePlayerEntity(player: VisiblePlayerState) {

@@ -10,6 +10,7 @@ import type {
   ActiveActionState,
   EnergyState,
   GridPoint,
+  InventoryState,
   PlayerAppearance,
   PlayerActionState,
   VisiblePlayerState,
@@ -106,6 +107,13 @@ type ProgramName = keyof typeof PROGRAMS;
 const ACTION_IDLE = 0;
 const ACTION_MOVE = 1;
 const ACTION_SLEEP = 2;
+const FARM_ACTIONS = new Set([3, 4, 5, 6, 7]);
+const STARTER_INVENTORY_ARGS = {
+  turnip_seeds: 6,
+  wheat_seeds: 4,
+  apple_saplings: 1,
+  acorns: 2,
+};
 
 export class LocalnetClient {
   private readonly baseConnection = new Connection(
@@ -127,12 +135,17 @@ export class LocalnetClient {
   private readonly visiblePlayerListeners = new Set<
     (players: VisiblePlayerState[]) => void
   >();
+  private readonly inventoryListeners = new Set<
+    (inventory: InventoryState) => void
+  >();
   private playerState: PlayerState | null = null;
   private activePlayerNft: PlayerNft | null = null;
   private actionUnlockTimer: number | null = null;
   private playerStateSyncTimer: number | null = null;
   private playerStateSyncing = false;
   private lastPlayerActionStateKey: string | null = null;
+  private lastInventoryState: InventoryState | null = null;
+  private lastInventoryStateKey: string | null = null;
 
   constructor(hudElements: HudElements) {
     this.hud = new HudController(hudElements);
@@ -148,6 +161,7 @@ export class LocalnetClient {
     await Promise.all([this.refreshNetwork(), this.refreshBalance()]);
     this.startPlayerStateSync();
     await this.syncPlayerState({ announceLoaded: true });
+    await this.ensureSelectedPlayerReady();
   }
 
   async movePlayer(point: GridPoint) {
@@ -157,6 +171,7 @@ export class LocalnetClient {
         "position",
         "energy",
         "activeAction",
+        "inventory",
         "worldAuthority",
         "initializeWorldAuthority",
         "worldTerrainRegistry",
@@ -166,6 +181,7 @@ export class LocalnetClient {
         "registerTerrainType",
         "defineTerrainType",
         "defineTileTerrain",
+        "grantStarterInventory",
       ]);
       const player = await this.ensureOnchainPlayer();
       await this.installAnchorProvider(this.erConnection);
@@ -264,6 +280,7 @@ export class LocalnetClient {
       await this.requireDeployedPrograms([
         "energy",
         "activeAction",
+        "inventory",
         "worldAuthority",
         "initializeWorldAuthority",
         "worldTerrainRegistry",
@@ -273,6 +290,7 @@ export class LocalnetClient {
         "registerTerrainType",
         "defineTerrainType",
         "defineTileTerrain",
+        "grantStarterInventory",
       ]);
       const player = await this.ensureOnchainPlayer();
       await this.installAnchorProvider(this.erConnection);
@@ -364,6 +382,18 @@ export class LocalnetClient {
 
     return () => {
       this.visiblePlayerListeners.delete(listener);
+    };
+  }
+
+  subscribeInventory(listener: (inventory: InventoryState) => void) {
+    this.inventoryListeners.add(listener);
+
+    if (this.lastInventoryState) {
+      listener(this.lastInventoryState);
+    }
+
+    return () => {
+      this.inventoryListeners.delete(listener);
     };
   }
 
@@ -490,12 +520,14 @@ export class LocalnetClient {
       const stateKey = this.getPlayerActionStateKey(actionState);
 
       if (stateKey === this.lastPlayerActionStateKey) {
+        await this.syncInventory(player);
         await this.syncVisiblePlayers();
         return;
       }
 
       this.renderActionBusy(actionState.activeAction);
       this.emitPlayerActionState(actionState);
+      await this.syncInventory(player);
       await this.syncVisiblePlayers();
 
       if (options.announceLoaded) {
@@ -696,7 +728,81 @@ export class LocalnetClient {
 
     this.playerState = await this.createPlayerWorldProvisioner().ensurePlayer();
     this.startPlayerStateSync();
+    await this.ensureStarterInventory(this.playerState);
+    await this.syncInventory(this.playerState);
     return this.playerState;
+  }
+
+  private async ensureStarterInventory(player: PlayerState) {
+    const account =
+      (await this.erConnection.getAccountInfo(player.inventoryComponentPda)) ??
+      (await this.baseConnection.getAccountInfo(player.inventoryComponentPda));
+
+    if (!account || account.data.byteLength < 72) {
+      return;
+    }
+
+    if (this.decodeInventory(account.data).slots.length > 0) {
+      return;
+    }
+
+    const useEr = Boolean(
+      await this.erConnection.getAccountInfo(player.inventoryComponentPda)
+    );
+    const connection = useEr ? this.erConnection : this.baseConnection;
+
+    await this.installAnchorProvider(connection);
+
+    const { ApplySystem } = await loadBoltSdk();
+    await this.sendBoltResult(
+      await ApplySystem({
+        authority: this.wallet.publicKey,
+        systemId: PROGRAMS.grantStarterInventory,
+        world: player.worldPda,
+        entities: [
+          {
+            entity: player.entityPda,
+            components: [{ componentId: PROGRAMS.inventory }],
+          },
+        ],
+        args: STARTER_INVENTORY_ARGS,
+      }),
+      connection,
+      useEr ? { skipPreflight: true } : {}
+    );
+  }
+
+  private async ensureSelectedPlayerReady() {
+    if (!this.activePlayerNft || this.playerState) {
+      return;
+    }
+
+    try {
+      await this.installAnchorProvider(this.baseConnection);
+      await this.requireDeployedPrograms([
+        "position",
+        "energy",
+        "activeAction",
+        "inventory",
+        "worldAuthority",
+        "initializeWorldAuthority",
+        "worldTerrainRegistry",
+        "terrainType",
+        "tileTerrain",
+        "registerTerrainType",
+        "defineTerrainType",
+        "defineTileTerrain",
+        "grantStarterInventory",
+      ]);
+      await this.ensureOnchainPlayer();
+      await this.syncPlayerState({ announceLoaded: true });
+    } catch (error) {
+      void logOnchainError(
+        "selected player provisioning skipped",
+        error,
+        this.baseConnection
+      );
+    }
   }
 
   private createPlayerWorldProvisioner() {
@@ -751,6 +857,29 @@ export class LocalnetClient {
     };
   }
 
+  private async syncInventory(player: PlayerState) {
+    if (this.inventoryListeners.size === 0) {
+      return;
+    }
+
+    const account =
+      (await this.erConnection.getAccountInfo(player.inventoryComponentPda)) ??
+      (await this.baseConnection.getAccountInfo(player.inventoryComponentPda));
+
+    if (!account || account.data.byteLength < 72) {
+      return;
+    }
+
+    const inventory = this.decodeInventory(account.data);
+    const stateKey = this.getInventoryStateKey(inventory);
+
+    if (stateKey === this.lastInventoryStateKey) {
+      return;
+    }
+
+    this.emitInventory(inventory);
+  }
+
   private decodePosition(data: Uint8Array): GridPoint {
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
 
@@ -780,6 +909,26 @@ export class LocalnetClient {
       kind: this.getActionKind(action, endsAt),
       startedAt,
       endsAt,
+    };
+  }
+
+  private decodeInventory(data: Uint8Array): InventoryState {
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    const itemIds: number[] = [];
+    const quantities: number[] = [];
+
+    for (let index = 0; index < 16; index += 1) {
+      itemIds.push(view.getUint16(8 + index * 2, true));
+      quantities.push(view.getUint16(40 + index * 2, true));
+    }
+
+    return {
+      slots: itemIds
+        .map((itemId, index) => ({
+          itemId,
+          quantity: quantities[index],
+        }))
+        .filter((slot) => slot.itemId !== 0 && slot.quantity > 0),
     };
   }
 
@@ -834,6 +983,10 @@ export class LocalnetClient {
       return "sleep";
     }
 
+    if (FARM_ACTIONS.has(action)) {
+      return "farm";
+    }
+
     return "unknown";
   }
 
@@ -848,6 +1001,10 @@ export class LocalnetClient {
 
     if (action.kind === "sleep") {
       return "Sleep";
+    }
+
+    if (action.kind === "farm") {
+      return "Farming";
     }
 
     return "Action";
@@ -893,6 +1050,15 @@ export class LocalnetClient {
     }
   }
 
+  private emitInventory(inventory: InventoryState) {
+    this.lastInventoryState = inventory;
+    this.lastInventoryStateKey = this.getInventoryStateKey(inventory);
+
+    for (const listener of this.inventoryListeners) {
+      listener(inventory);
+    }
+  }
+
   private getPlayerAppearance(player: PlayerNft): PlayerAppearance {
     const style = getPlayerColorStyle(player.color);
 
@@ -928,7 +1094,7 @@ export class LocalnetClient {
           getPlayerColorStyle(color).label
         } metadata.`
       );
-      await this.syncPlayerState();
+      await this.ensureSelectedPlayerReady();
       await this.syncVisiblePlayers();
     } finally {
       this.hud.setMintPlayerBusy(false);
@@ -940,9 +1106,11 @@ export class LocalnetClient {
     clearStoredPlayer();
     this.playerState = null;
     this.lastPlayerActionStateKey = null;
+    this.lastInventoryStateKey = null;
+    this.lastInventoryState = null;
     this.refreshPlayerNftHud();
     this.hud.setProgramStatus(`Selected player ${shortAddress(mint)}.`);
-    void this.syncPlayerState({ announceLoaded: true });
+    void this.ensureSelectedPlayerReady();
     void this.syncVisiblePlayers();
   }
 
@@ -957,6 +1125,12 @@ export class LocalnetClient {
       state.activeAction.startedAt,
       state.activeAction.endsAt,
     ].join(":");
+  }
+
+  private getInventoryStateKey(inventory: InventoryState) {
+    return inventory.slots
+      .map((slot) => `${slot.itemId}:${slot.quantity}`)
+      .join("|");
   }
 
   private async sendBoltResult(

@@ -1,4 +1,4 @@
-import Phaser from "phaser";
+import type * as Phaser from "phaser";
 
 export const FarmKind = {
   crop: 1,
@@ -24,6 +24,23 @@ export const FarmItemId = {
   oakLog: 123,
   wood: 124,
 } as const;
+
+export const FARM_ITEM_LABELS: Record<number, string> = {
+  [FarmItemId.turnipSeed]: "Turnip Seed",
+  [FarmItemId.turnip]: "Turnip",
+  [FarmItemId.wheatSeed]: "Wheat Seed",
+  [FarmItemId.wheat]: "Wheat",
+  [FarmItemId.berrySeed]: "Berry Seed",
+  [FarmItemId.berry]: "Wild Berry",
+  [FarmItemId.appleSapling]: "Apple Sapling",
+  [FarmItemId.apple]: "Apple",
+  [FarmItemId.acorn]: "Acorn",
+  [FarmItemId.oakLog]: "Oak Log",
+  [FarmItemId.wood]: "Wood",
+};
+
+export const getFarmItemLabel = (itemId: number) =>
+  FARM_ITEM_LABELS[itemId] ?? `Item ${itemId}`;
 
 export type FarmTypeDefinition = {
   farmTypeId: number;

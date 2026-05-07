@@ -24,6 +24,7 @@ active_action = { version = "0.2.4", path = "../../components/active_action", fe
 bolt-lang.workspace = true
 energy = { version = "0.2.4", path = "../../components/energy", features = ["cpi"] }
 farm_type = { version = "0.2.4", path = "../../components/farm_type", features = ["cpi"] }
+inventory = { version = "0.2.4", path = "../../components/inventory", features = ["cpi"] }
 position = { version = "0.2.4", path = "../../components/position", features = ["cpi"] }
 terrain_type = { version = "0.2.4", path = "../../components/terrain_type", features = ["cpi"] }
 tile_farm = { version = "0.2.4", path = "../../components/tile_farm", features = ["cpi"] }

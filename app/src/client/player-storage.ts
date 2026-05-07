@@ -33,7 +33,8 @@ export const readStoredPlayer = (
     if (
       !positionComponentPda ||
       !state.energyComponentPda ||
-      !state.activeActionComponentPda
+      !state.activeActionComponentPda ||
+      !state.inventoryComponentPda
     ) {
       return null;
     }
@@ -46,9 +47,11 @@ export const readStoredPlayer = (
       positionComponentPda: new PublicKey(positionComponentPda),
       energyComponentPda: new PublicKey(state.energyComponentPda),
       activeActionComponentPda: new PublicKey(state.activeActionComponentPda),
+      inventoryComponentPda: new PublicKey(state.inventoryComponentPda),
       positionDelegated: Boolean(state.positionDelegated),
       energyDelegated: Boolean(state.energyDelegated),
       activeActionDelegated: Boolean(state.activeActionDelegated),
+      inventoryDelegated: Boolean(state.inventoryDelegated),
       terrainTypes: (state.terrainTypes ?? []).map((terrainType) => ({
         terrainTypeId: terrainType.terrainTypeId,
         entityPda: new PublicKey(terrainType.entityPda),
@@ -78,9 +81,11 @@ export const writeStoredPlayer = (wallet: PublicKey, state: PlayerState) => {
     positionComponentPda: state.positionComponentPda.toBase58(),
     energyComponentPda: state.energyComponentPda.toBase58(),
     activeActionComponentPda: state.activeActionComponentPda.toBase58(),
+    inventoryComponentPda: state.inventoryComponentPda.toBase58(),
     positionDelegated: state.positionDelegated,
     energyDelegated: state.energyDelegated,
     activeActionDelegated: state.activeActionDelegated,
+    inventoryDelegated: state.inventoryDelegated,
     terrainTypes: state.terrainTypes.map((terrainType) => ({
       terrainTypeId: terrainType.terrainTypeId,
       entityPda: terrainType.entityPda.toBase58(),

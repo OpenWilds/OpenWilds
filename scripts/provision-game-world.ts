@@ -14,6 +14,7 @@ import {
   createWorldTerrainDefinition,
   TERRAIN_TYPES,
 } from "../app/src/game/terrain";
+import { FARM_TYPES } from "../app/src/game/farm";
 
 const LOCALNET_RPC_URL = process.env.RPC_URL ?? "http://127.0.0.1:8899";
 process.env.ANCHOR_PROVIDER_URL ??= LOCALNET_RPC_URL;
@@ -38,8 +39,12 @@ const PROGRAMS = {
   ),
   terrainType: new PublicKey("G6qkktc5oWkPHFmhk8x3UwzZ5WuQLE5En7PGteko6mhK"),
   tileTerrain: new PublicKey("5hCo8uVeWtjqmeFQAovyLFuW1vZ4wS3kKP7ms7SUyyqk"),
+  farmType: new PublicKey("AeTFPGveiu5u9qaGpoCFLte95RBbaKYHcPA6VJHGzSJh"),
   registerTerrainType: new PublicKey(
     "B9qCeXFe5431no3DTZQdZjexyG1cCep1yHjZrxm5c2AM"
+  ),
+  defineFarmType: new PublicKey(
+    "F14xPRR4xx6S8sufyU9MDfdCeCEp6XAFDGTKDfPzfD4y"
   ),
   defineTileTerrain: new PublicKey(
     "DBfTvysc3GQVoazLgbwLr2yqjs8msjaco9q8fgTaLUTy"
@@ -65,6 +70,12 @@ type StoredGameWorld = {
   };
   terrainTypes: Array<{
     terrainTypeId: number;
+    label: string;
+    entityPda: string;
+    componentPda: string;
+  }>;
+  farmTypes: Array<{
+    farmTypeId: number;
     label: string;
     entityPda: string;
     componentPda: string;
@@ -311,6 +322,7 @@ const main = async () => {
   );
 
   const terrainTypes: StoredGameWorld["terrainTypes"] = [];
+  const farmTypes: StoredGameWorld["farmTypes"] = [];
   const tileTerrains: StoredGameWorld["tileTerrains"] = [];
 
   for (const definition of TERRAIN_TYPES) {
@@ -360,6 +372,61 @@ const main = async () => {
       label: definition.label,
       entityPda: terrainTypeEntityPda.toBase58(),
       componentPda: terrainTypeComponentPda.toBase58(),
+    });
+  }
+
+  for (const definition of FARM_TYPES) {
+    const farmTypeEntityPda = await addEntity(
+      worldResult.worldPda,
+      `farm type ${definition.label}`
+    );
+    const farmTypeComponentPda = await initializeComponent(
+      farmTypeEntityPda,
+      PROGRAMS.farmType,
+      `farm type ${definition.label}`
+    );
+
+    await sendBoltResult(
+      await ApplySystem({
+        authority: provider.wallet.publicKey,
+        systemId: PROGRAMS.defineFarmType,
+        world: worldResult.worldPda,
+        entities: [
+          {
+            entity: worldAuthorityEntityPda,
+            components: [{ componentId: PROGRAMS.worldAuthority }],
+          },
+          {
+            entity: farmTypeEntityPda,
+            components: [{ componentId: PROGRAMS.farmType }],
+          },
+        ],
+        args: {
+          farm_type_id: definition.farmTypeId,
+          farm_kind: definition.kind,
+          seed_item_id: definition.seedItemId,
+          harvest_item_id: definition.harvestItemId,
+          required_growth_seconds: definition.requiredGrowthSeconds,
+          regrow_seconds: definition.regrowSeconds,
+          base_yield: definition.baseYield,
+          chop_item_id: definition.chopItemId,
+          chop_yield: definition.chopYield,
+          stage_count: definition.stageThresholdSeconds.length,
+          stage_threshold_seconds: [
+            ...definition.stageThresholdSeconds,
+            ...Array(8 - definition.stageThresholdSeconds.length).fill(0),
+          ],
+          flags: definition.flags,
+        },
+      }),
+      `Define farm type ${definition.label}`
+    );
+
+    farmTypes.push({
+      farmTypeId: definition.farmTypeId,
+      label: definition.label,
+      entityPda: farmTypeEntityPda.toBase58(),
+      componentPda: farmTypeComponentPda.toBase58(),
     });
   }
 
@@ -431,6 +498,7 @@ const main = async () => {
       componentPda: terrainRegistryComponentPda.toBase58(),
     },
     terrainTypes,
+    farmTypes,
     tileTerrains,
     generatedAt: new Date().toISOString(),
   };

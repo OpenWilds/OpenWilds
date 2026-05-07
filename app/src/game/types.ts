@@ -8,7 +8,12 @@ export type EnergyState = {
   max: number;
 };
 
-export type ActiveActionKind = "idle" | "move" | "sleep" | "unknown";
+export type ActiveActionKind =
+  | "idle"
+  | "move"
+  | "sleep"
+  | "farm"
+  | "unknown";
 
 export type ActiveActionState = {
   action: number;
@@ -21,6 +26,15 @@ export type PlayerActionState = {
   position: GridPoint;
   energy: EnergyState;
   activeAction: ActiveActionState;
+};
+
+export type InventorySlotState = {
+  itemId: number;
+  quantity: number;
+};
+
+export type InventoryState = {
+  slots: InventorySlotState[];
 };
 
 export type PlayerAppearance = {
@@ -57,4 +71,5 @@ export type GameClient = {
   subscribeVisiblePlayers?: (
     listener: (players: VisiblePlayerState[]) => void
   ) => () => void;
+  subscribeInventory?: (listener: (inventory: InventoryState) => void) => () => void;
 };

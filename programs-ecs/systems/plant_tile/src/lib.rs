@@ -2,6 +2,7 @@ use active_action::ActiveAction;
 use bolt_lang::*;
 use energy::Energy;
 use farm_type::FarmType;
+use inventory::Inventory;
 use position::Position;
 use serde::Deserialize;
 use terrain_type::{TerrainType, FEATURE_FARMABLE};
@@ -57,6 +58,13 @@ pub mod plant_tile {
             !ctx.accounts.farm_type.requires_tilled_soil() || tile_farm.is_tilled(),
             PlantTileError::TileNotTilled
         );
+        require!(
+            ctx.accounts
+                .inventory
+                .quantity(ctx.accounts.farm_type.seed_item_id)
+                > 0,
+            PlantTileError::MissingSeed
+        );
 
         let energy = &mut ctx.accounts.energy;
         if energy.max == 0 {
@@ -68,6 +76,9 @@ pub mod plant_tile {
             PlantTileError::NotEnoughEnergy
         );
 
+        ctx.accounts
+            .inventory
+            .remove_item(ctx.accounts.farm_type.seed_item_id, 1)?;
         tile_farm.x = target.x;
         tile_farm.y = target.y;
         tile_farm.farm_type_id = target.farm_type_id;
@@ -92,6 +103,7 @@ pub mod plant_tile {
         pub terrain_type: TerrainType,
         pub farm_type: FarmType,
         pub tile_farm: TileFarm,
+        pub inventory: Inventory,
     }
 }
 
@@ -124,6 +136,8 @@ pub enum PlantTileError {
     TileOccupied,
     #[msg("This farm type requires tilled soil.")]
     TileNotTilled,
+    #[msg("Inventory does not contain the required seed.")]
+    MissingSeed,
     #[msg("Not enough energy for planting.")]
     NotEnoughEnergy,
 }

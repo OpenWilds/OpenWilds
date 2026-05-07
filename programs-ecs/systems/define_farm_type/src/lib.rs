@@ -27,7 +27,10 @@ pub mod define_farm_type {
             definition.stage_count > 0 && definition.stage_count as usize <= MAX_GROWTH_STAGES,
             DefineFarmTypeError::InvalidStageCount
         );
-        require!(definition.base_yield > 0, DefineFarmTypeError::InvalidYield);
+        require!(
+            definition.base_yield > 0 || definition.chop_yield > 0,
+            DefineFarmTypeError::InvalidYield
+        );
         let mut previous_stage_threshold = 0;
         for index in 0..definition.stage_count as usize {
             let stage_threshold = definition.stage_threshold_seconds[index];
@@ -101,7 +104,7 @@ pub enum DefineFarmTypeError {
     InvalidGrowthSeconds,
     #[msg("Stage count must be between 1 and the maximum growth stages.")]
     InvalidStageCount,
-    #[msg("Base yield must be greater than zero.")]
+    #[msg("Farm type must have either harvest yield or chop yield.")]
     InvalidYield,
     #[msg("Stage thresholds must be increasing and no greater than required growth seconds.")]
     InvalidStageThresholds,

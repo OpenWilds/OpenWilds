@@ -7,6 +7,11 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ["buffer", "@solana/web3.js"],
+    include: [
+      "buffer",
+      "@solana/web3.js",
+      "@coral-xyz/anchor",
+      "@magicblock-labs/bolt-sdk",
+    ],
   },
 });

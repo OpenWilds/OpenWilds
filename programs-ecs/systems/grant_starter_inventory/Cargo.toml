@@ -1,0 +1,26 @@
+[package]
+name = "grant_starter_inventory"
+version = "0.2.4"
+description = "Open Wilds starter inventory grant system"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "grant_starter_inventory"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+idl-build = ["bolt-lang/idl-build"]
+anchor-debug = ["bolt-lang/anchor-debug"]
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+bolt-lang.workspace = true
+inventory = { version = "0.2.4", path = "../../components/inventory", features = ["cpi"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

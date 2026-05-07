@@ -2,6 +2,7 @@ use active_action::ActiveAction;
 use bolt_lang::*;
 use energy::Energy;
 use farm_type::{FarmType, FARM_KIND_TREE};
+use inventory::Inventory;
 use position::Position;
 use serde::Deserialize;
 use tile_farm::TileFarm;
@@ -56,6 +57,10 @@ pub mod chop_tile {
             ChopTileError::NotEnoughEnergy
         );
 
+        ctx.accounts.inventory.add_item(
+            ctx.accounts.farm_type.chop_item_id,
+            ctx.accounts.farm_type.chop_yield,
+        )?;
         tile_farm.clear_plant();
         energy.current -= CHOP_ENERGY_COST;
         active_action.start(active_action::ACTION_CHOP, now, CHOP_SECONDS);
@@ -70,6 +75,7 @@ pub mod chop_tile {
         pub active_action: ActiveAction,
         pub farm_type: FarmType,
         pub tile_farm: TileFarm,
+        pub inventory: Inventory,
     }
 }
 

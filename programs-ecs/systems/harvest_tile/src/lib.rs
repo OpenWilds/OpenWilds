@@ -2,6 +2,7 @@ use active_action::ActiveAction;
 use bolt_lang::*;
 use energy::Energy;
 use farm_type::FarmType;
+use inventory::Inventory;
 use position::Position;
 use serde::Deserialize;
 use tile_farm::TileFarm;
@@ -60,6 +61,11 @@ pub mod harvest_tile {
             HarvestTileError::NotEnoughEnergy
         );
 
+        ctx.accounts.inventory.add_item(
+            ctx.accounts.farm_type.harvest_item_id,
+            ctx.accounts.farm_type.base_yield,
+        )?;
+
         if ctx.accounts.farm_type.regrow_seconds == 0 {
             tile_farm.clear_plant();
         } else {
@@ -80,6 +86,7 @@ pub mod harvest_tile {
         pub active_action: ActiveAction,
         pub farm_type: FarmType,
         pub tile_farm: TileFarm,
+        pub inventory: Inventory,
     }
 }
 

@@ -30,9 +30,11 @@ export type StoredPlayerState = {
   positionComponentPda?: string;
   energyComponentPda?: string;
   activeActionComponentPda?: string;
+  inventoryComponentPda?: string;
   positionDelegated?: boolean;
   energyDelegated?: boolean;
   activeActionDelegated?: boolean;
+  inventoryDelegated?: boolean;
   terrainTypes?: StoredTerrainTypeState[];
   tileTerrains?: StoredTileTerrainState[];
 };
@@ -59,9 +61,11 @@ export type PlayerState = {
   positionComponentPda: PublicKey;
   energyComponentPda: PublicKey;
   activeActionComponentPda: PublicKey;
+  inventoryComponentPda: PublicKey;
   positionDelegated: boolean;
   energyDelegated: boolean;
   activeActionDelegated: boolean;
+  inventoryDelegated: boolean;
   terrainTypes: TerrainTypeState[];
   tileTerrains: TileTerrainState[];
 };
