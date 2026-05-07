@@ -22,6 +22,8 @@ export type StoredTileTerrainState = {
 
 export type StoredPlayerState = {
   wallet: string;
+  playerMint?: string;
+  playerColor?: string;
   worldPda: string;
   entityPda: string;
   componentPda?: string;
@@ -50,6 +52,8 @@ export type TileTerrainState = {
 };
 
 export type PlayerState = {
+  playerMint: PublicKey;
+  playerColor: string;
   worldPda: PublicKey;
   entityPda: PublicKey;
   positionComponentPda: PublicKey;

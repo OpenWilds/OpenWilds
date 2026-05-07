@@ -52,6 +52,8 @@ type PlayerWorldProvisionerOptions = {
   baseConnection: Connection;
   erConnection: Connection;
   payer: PublicKey;
+  playerMint: PublicKey;
+  playerColor: string;
   installBaseProvider: () => Promise<void>;
   sendBoltResult: (
     result: BoltResult,
@@ -102,7 +104,7 @@ const playerComponents: PlayerComponentDefinition[] = [
 ];
 
 const tileTerrainKey = ({ x, y }: GridPoint) => `${x},${y}`;
-const playerEntitySeed = (payer: PublicKey) => payer.toBytes();
+const playerEntitySeed = (playerMint: PublicKey) => playerMint.toBytes();
 
 const findDelegationRecordPda = (delegatedAccount: PublicKey) =>
   PublicKey.findProgramAddressSync(
@@ -122,7 +124,10 @@ export class PlayerWorldProvisioner {
    * into their own provisioner methods as the game grows.
    */
   async ensurePlayer() {
-    const storedPlayer = readStoredPlayer(this.options.payer);
+    const storedPlayer = readStoredPlayer(
+      this.options.payer,
+      this.options.playerMint
+    );
     const sharedWorldPda = await this.loadSharedWorldPda();
     const seededPlayer = sharedWorldPda
       ? await this.readSeededPlayer(sharedWorldPda)
@@ -169,7 +174,10 @@ export class PlayerWorldProvisioner {
 
   async loadExistingPlayer() {
     const sharedWorldPda = await this.loadSharedWorldPda();
-    const storedPlayer = readStoredPlayer(this.options.payer);
+    const storedPlayer = readStoredPlayer(
+      this.options.payer,
+      this.options.playerMint
+    );
 
     if (sharedWorldPda) {
       const seededPlayer = await this.readSeededPlayer(sharedWorldPda);
@@ -296,7 +304,7 @@ export class PlayerWorldProvisioner {
     const entityResult = await AddEntity({
       payer: this.options.payer,
       world: worldPda,
-      seed: playerEntitySeed(this.options.payer),
+      seed: playerEntitySeed(this.options.playerMint),
       connection: this.options.baseConnection,
     });
 
@@ -342,6 +350,8 @@ export class PlayerWorldProvisioner {
     }
 
     return {
+      playerMint: this.options.playerMint,
+      playerColor: this.options.playerColor,
       worldPda,
       entityPda: entityResult.entityPda,
       ...components,
@@ -358,7 +368,7 @@ export class PlayerWorldProvisioner {
     const entityResult = await AddEntity({
       payer: this.options.payer,
       world: worldPda,
-      seed: playerEntitySeed(this.options.payer),
+      seed: playerEntitySeed(this.options.playerMint),
       connection: this.options.baseConnection,
     });
 
@@ -409,6 +419,8 @@ export class PlayerWorldProvisioner {
     }
 
     return {
+      playerMint: this.options.playerMint,
+      playerColor: this.options.playerColor,
       worldPda,
       entityPda: entityResult.entityPda,
       ...components,

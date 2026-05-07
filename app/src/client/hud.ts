@@ -1,12 +1,17 @@
 import { Connection, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { PROGRAMS } from "./config";
 import { shortAddress } from "./format";
+import type { PlayerNft } from "./player-nft";
+import { PLAYER_COLORS, getPlayerColorStyle } from "./player-nft";
 
 export type HudElements = {
   networkStatus: HTMLElement | null;
   walletAddress: HTMLElement | null;
   walletBalance: HTMLElement | null;
   programStatus: HTMLElement | null;
+  playerNftSelect: HTMLSelectElement | null;
+  playerColorSelect: HTMLSelectElement | null;
+  mintPlayerButton: HTMLButtonElement | null;
   airdropButton: HTMLButtonElement | null;
   sleepButton: HTMLButtonElement | null;
   commitButton: HTMLButtonElement | null;
@@ -18,6 +23,15 @@ export const getHudElements = (): HudElements => ({
   walletAddress: document.getElementById("wallet-address"),
   walletBalance: document.getElementById("wallet-balance"),
   programStatus: document.getElementById("program-status"),
+  playerNftSelect: document.getElementById(
+    "player-nft-select"
+  ) as HTMLSelectElement,
+  playerColorSelect: document.getElementById(
+    "player-color-select"
+  ) as HTMLSelectElement,
+  mintPlayerButton: document.getElementById(
+    "mint-player-button"
+  ) as HTMLButtonElement,
   airdropButton: document.getElementById("airdrop-button") as HTMLButtonElement,
   sleepButton: document.getElementById("sleep-button") as HTMLButtonElement,
   commitButton: document.getElementById("commit-button") as HTMLButtonElement,
@@ -34,6 +48,59 @@ export class HudController {
     if (this.elements.walletAddress) {
       this.elements.walletAddress.textContent = walletAddress.toBase58();
     }
+  }
+
+  renderPlayerNfts(players: PlayerNft[], activePlayer: PlayerNft | null) {
+    if (this.elements.playerColorSelect) {
+      this.elements.playerColorSelect.innerHTML = "";
+
+      for (const color of PLAYER_COLORS) {
+        const option = document.createElement("option");
+        option.value = color.id;
+        option.textContent = color.label;
+        this.elements.playerColorSelect.append(option);
+      }
+    }
+
+    if (!this.elements.playerNftSelect) {
+      return;
+    }
+
+    this.elements.playerNftSelect.innerHTML = "";
+    this.elements.playerNftSelect.disabled = players.length === 0;
+
+    if (players.length === 0) {
+      const option = document.createElement("option");
+      option.textContent = "No player NFTs";
+      option.value = "";
+      this.elements.playerNftSelect.append(option);
+      return;
+    }
+
+    for (const player of players) {
+      const style = getPlayerColorStyle(player.color);
+      const option = document.createElement("option");
+      option.value = player.mint.toBase58();
+      option.textContent = `${player.metadata.name} · ${
+        style.label
+      } · ${shortAddress(player.mint)}`;
+      this.elements.playerNftSelect.append(option);
+    }
+
+    if (activePlayer) {
+      this.elements.playerNftSelect.value = activePlayer.mint.toBase58();
+    }
+  }
+
+  setMintPlayerBusy(isBusy: boolean) {
+    if (!this.elements.mintPlayerButton) {
+      return;
+    }
+
+    this.elements.mintPlayerButton.disabled = isBusy;
+    this.elements.mintPlayerButton.textContent = isBusy
+      ? "Minting..."
+      : "Mint Player";
   }
 
   renderPrograms(

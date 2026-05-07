@@ -11,17 +11,22 @@ import type {
   ActiveActionState,
   EnergyState,
   GridPoint,
+  PlayerAppearance,
 } from "../types";
 
 export const createPlayerEntity = (
   world: World,
   scene: Phaser.Scene,
-  position: GridPoint
+  position: GridPoint,
+  appearance: Pick<PlayerAppearance, "fill" | "stroke"> = {
+    fill: 0xe24a55,
+    stroke: 0x84242b,
+  }
 ) => {
   const entity = world.createEntity();
   const rectangle = scene.add
-    .rectangle(0, 0, CELL_SIZE - 8, CELL_SIZE - 8, 0xe24a55)
-    .setStrokeStyle(3, 0x84242b)
+    .rectangle(0, 0, CELL_SIZE - 8, CELL_SIZE - 8, appearance.fill)
+    .setStrokeStyle(3, appearance.stroke)
     .setOrigin(0);
 
   world.addComponent(entity, Components.player, true);

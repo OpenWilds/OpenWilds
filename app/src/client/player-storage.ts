@@ -6,7 +6,10 @@ export const clearStoredPlayer = () => {
   window.localStorage.removeItem(PLAYER_STORAGE_KEY);
 };
 
-export const readStoredPlayer = (wallet: PublicKey): PlayerState | null => {
+export const readStoredPlayer = (
+  wallet: PublicKey,
+  playerMint?: PublicKey
+): PlayerState | null => {
   const stored = window.localStorage.getItem(PLAYER_STORAGE_KEY);
 
   if (!stored) {
@@ -17,6 +20,10 @@ export const readStoredPlayer = (wallet: PublicKey): PlayerState | null => {
     const state = JSON.parse(stored) as StoredPlayerState;
 
     if (state.wallet !== wallet.toBase58()) {
+      return null;
+    }
+
+    if (playerMint && state.playerMint !== playerMint.toBase58()) {
       return null;
     }
 
@@ -32,6 +39,8 @@ export const readStoredPlayer = (wallet: PublicKey): PlayerState | null => {
     }
 
     return {
+      playerMint: new PublicKey(state.playerMint ?? wallet.toBase58()),
+      playerColor: state.playerColor ?? "rose",
       worldPda: new PublicKey(state.worldPda),
       entityPda: new PublicKey(state.entityPda),
       positionComponentPda: new PublicKey(positionComponentPda),
@@ -62,6 +71,8 @@ export const readStoredPlayer = (wallet: PublicKey): PlayerState | null => {
 export const writeStoredPlayer = (wallet: PublicKey, state: PlayerState) => {
   const stored: StoredPlayerState = {
     wallet: wallet.toBase58(),
+    playerMint: state.playerMint.toBase58(),
+    playerColor: state.playerColor,
     worldPda: state.worldPda.toBase58(),
     entityPda: state.entityPda.toBase58(),
     positionComponentPda: state.positionComponentPda.toBase58(),

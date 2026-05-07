@@ -23,6 +23,12 @@ export type PlayerActionState = {
   activeAction: ActiveActionState;
 };
 
+export type PlayerAppearance = {
+  color: string;
+  fill: number;
+  stroke: number;
+};
+
 export type ActionTransitionState = {
   active: boolean;
   fromPosition: GridPoint;
@@ -37,5 +43,8 @@ export type GameClient = {
   movePlayer: (point: GridPoint) => Promise<PlayerActionState | null>;
   subscribePlayerActionState?: (
     listener: (state: PlayerActionState) => void
+  ) => () => void;
+  subscribePlayerAppearance?: (
+    listener: (appearance: PlayerAppearance) => void
   ) => () => void;
 };

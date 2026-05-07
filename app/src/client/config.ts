@@ -9,6 +9,9 @@ export const EPHEMERAL_ROLLUP_VALIDATOR =
 
 export const BURNER_STORAGE_KEY = "open-wilds.localnet.burner";
 export const PLAYER_STORAGE_KEY = "open-wilds.localnet.player";
+export const PLAYER_NFT_STORAGE_KEY = "open-wilds.localnet.player-nfts";
+export const ACTIVE_PLAYER_NFT_STORAGE_KEY =
+  "open-wilds.localnet.active-player-nft";
 export const AIRDROP_SOL = 5;
 
 export const PROGRAMS = {

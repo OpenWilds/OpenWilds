@@ -10,6 +10,7 @@ import type {
   ActiveActionState,
   EnergyState,
   GridPoint,
+  PlayerAppearance,
   PlayerActionState,
 } from "../game/types";
 import {
@@ -24,6 +25,16 @@ import {
   readStoredPlayer,
   writeStoredPlayer,
 } from "./player-storage";
+import {
+  clearActivePlayerNft,
+  getPlayerColorStyle,
+  listOwnedPlayerNfts,
+  mintLocalPlayerNft,
+  readActivePlayerNft,
+  setActivePlayerNft,
+  type PlayerColorId,
+  type PlayerNft,
+} from "./player-nft";
 import type { BoltResult, PlayerState } from "./types";
 import { HudController, type HudElements } from "./hud";
 import { installAnchorProvider, loadBoltSdk } from "./sdk";
@@ -108,7 +119,11 @@ export class LocalnetClient {
   private readonly playerActionStateListeners = new Set<
     (state: PlayerActionState) => void
   >();
+  private readonly playerAppearanceListeners = new Set<
+    (appearance: PlayerAppearance) => void
+  >();
   private playerState: PlayerState | null = null;
+  private activePlayerNft: PlayerNft | null = null;
   private actionUnlockTimer: number | null = null;
   private playerStateSyncTimer: number | null = null;
   private playerStateSyncing = false;
@@ -120,6 +135,7 @@ export class LocalnetClient {
 
   async boot() {
     this.hud.renderWallet(this.wallet.publicKey);
+    this.refreshPlayerNftHud();
     this.hud.setNetworkStatus("Connecting to localnet...");
     this.hud.setProgramStatus("Checking deployed programs...");
     this.bindControls();
@@ -324,6 +340,18 @@ export class LocalnetClient {
     };
   }
 
+  subscribePlayerAppearance(listener: (appearance: PlayerAppearance) => void) {
+    this.playerAppearanceListeners.add(listener);
+
+    if (this.activePlayerNft) {
+      listener(this.getPlayerAppearance(this.activePlayerNft));
+    }
+
+    return () => {
+      this.playerAppearanceListeners.delete(listener);
+    };
+  }
+
   private bindControls() {
     this.hud.elements.airdropButton?.addEventListener("click", () => {
       void this.airdrop();
@@ -337,11 +365,25 @@ export class LocalnetClient {
       void this.commitPlayerState();
     });
 
+    this.hud.elements.mintPlayerButton?.addEventListener("click", () => {
+      void this.mintPlayerNft();
+    });
+
+    this.hud.elements.playerNftSelect?.addEventListener("change", (event) => {
+      const mint = (event.target as HTMLSelectElement).value;
+
+      if (mint) {
+        this.selectPlayerNft(new PublicKey(mint));
+      }
+    });
+
     this.hud.elements.resetButton?.addEventListener("click", () => {
       resetBurnerWallet();
       clearStoredPlayer();
+      clearActivePlayerNft();
       this.wallet = readBurnerWallet();
       this.playerState = null;
+      this.activePlayerNft = null;
       this.lastPlayerActionStateKey = null;
       this.renderActionBusy({
         action: ACTION_IDLE,
@@ -350,6 +392,7 @@ export class LocalnetClient {
         endsAt: 0,
       });
       this.hud.renderWallet(this.wallet.publicKey);
+      this.refreshPlayerNftHud();
       this.hud.setProgramStatus("Burner reset. Checking balance...");
       this.startPlayerStateSync();
       void this.refreshBalance();
@@ -414,6 +457,10 @@ export class LocalnetClient {
     this.playerStateSyncing = true;
 
     try {
+      if (!this.activePlayerNft) {
+        return;
+      }
+
       const player =
         this.playerState ??
         (await this.createPlayerWorldProvisioner().loadExistingPlayer());
@@ -504,7 +551,11 @@ export class LocalnetClient {
   }
 
   private async commitPlayerState() {
-    const player = this.playerState ?? readStoredPlayer(this.wallet.publicKey);
+    const player =
+      this.playerState ??
+      (this.activePlayerNft
+        ? readStoredPlayer(this.wallet.publicKey, this.activePlayerNft.mint)
+        : null);
 
     if (!player) {
       this.hud.setProgramStatus(
@@ -579,6 +630,10 @@ export class LocalnetClient {
   }
 
   private async ensureOnchainPlayer() {
+    if (!this.activePlayerNft) {
+      throw new Error("Mint or select a player NFT before playing.");
+    }
+
     this.playerState = await this.createPlayerWorldProvisioner().ensurePlayer();
     this.startPlayerStateSync();
     return this.playerState;
@@ -589,6 +644,8 @@ export class LocalnetClient {
       baseConnection: this.baseConnection,
       erConnection: this.erConnection,
       payer: this.wallet.publicKey,
+      playerMint: this.activePlayerNft!.mint,
+      playerColor: this.activePlayerNft!.color,
       installBaseProvider: () =>
         this.installAnchorProvider(this.baseConnection),
       sendBoltResult: (result, connection, options) =>
@@ -752,6 +809,65 @@ export class LocalnetClient {
     for (const listener of this.playerActionStateListeners) {
       listener(state);
     }
+  }
+
+  private emitPlayerAppearance(player: PlayerNft) {
+    const appearance = this.getPlayerAppearance(player);
+
+    for (const listener of this.playerAppearanceListeners) {
+      listener(appearance);
+    }
+  }
+
+  private getPlayerAppearance(player: PlayerNft): PlayerAppearance {
+    const style = getPlayerColorStyle(player.color);
+
+    return {
+      color: player.color,
+      fill: style.fill,
+      stroke: style.stroke,
+    };
+  }
+
+  private refreshPlayerNftHud() {
+    const players = listOwnedPlayerNfts(this.wallet.publicKey);
+    this.activePlayerNft = readActivePlayerNft(this.wallet.publicKey);
+    this.hud.renderPlayerNfts(players, this.activePlayerNft);
+
+    if (this.activePlayerNft) {
+      this.emitPlayerAppearance(this.activePlayerNft);
+    }
+  }
+
+  private async mintPlayerNft() {
+    this.hud.setMintPlayerBusy(true);
+
+    try {
+      const color =
+        (this.hud.elements.playerColorSelect?.value as PlayerColorId) ?? "rose";
+      const player = mintLocalPlayerNft(this.wallet.publicKey, color);
+      this.playerState = null;
+      this.lastPlayerActionStateKey = null;
+      this.refreshPlayerNftHud();
+      this.hud.setProgramStatus(
+        `Minted ${player.metadata.name} with ${
+          getPlayerColorStyle(color).label
+        } metadata.`
+      );
+      await this.syncPlayerState();
+    } finally {
+      this.hud.setMintPlayerBusy(false);
+    }
+  }
+
+  private selectPlayerNft(mint: PublicKey) {
+    setActivePlayerNft(this.wallet.publicKey, mint);
+    clearStoredPlayer();
+    this.playerState = null;
+    this.lastPlayerActionStateKey = null;
+    this.refreshPlayerNftHud();
+    this.hud.setProgramStatus(`Selected player ${shortAddress(mint)}.`);
+    void this.syncPlayerState({ announceLoaded: true });
   }
 
   private getPlayerActionStateKey(state: PlayerActionState) {

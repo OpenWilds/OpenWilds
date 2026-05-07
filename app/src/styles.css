@@ -115,6 +115,36 @@ h1 {
   padding: 8px 0 2px;
 }
 
+.player-nft-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 130px auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.player-nft-panel label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.player-nft-panel select,
+.player-nft-panel button {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid rgba(247, 241, 229, 0.32);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #f7f1e5;
+  color: #17211e;
+  font: inherit;
+  font-weight: 800;
+}
+
+.player-nft-panel button {
+  cursor: pointer;
+}
+
 .action-progress[hidden] {
   display: none;
 }
@@ -204,6 +234,10 @@ h1 {
 
   .wallet-actions {
     justify-content: stretch;
+  }
+
+  .player-nft-panel {
+    grid-template-columns: 1fr;
   }
 
   .wallet-actions button {

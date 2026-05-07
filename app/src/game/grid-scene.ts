@@ -7,7 +7,8 @@ import { pointerToGrid } from "./grid-math";
 import { installGridResources, type GridInput } from "./resources";
 import { beginActionTransition } from "./systems/action-transition";
 import { gridSystems } from "./systems/index";
-import type { GameClient, PlayerActionState } from "./types";
+import { Components, type RectComponent } from "./components/index";
+import type { GameClient, PlayerActionState, PlayerAppearance } from "./types";
 
 export { GAME_HEIGHT, GAME_WIDTH };
 
@@ -15,6 +16,7 @@ export const createGridScene = (client: GameClient) =>
   class GridScene extends Phaser.Scene {
     private world!: World;
     private unsubscribePlayerActionState: (() => void) | null = null;
+    private unsubscribePlayerAppearance: (() => void) | null = null;
 
     constructor() {
       super("grid-scene");
@@ -39,6 +41,8 @@ export const createGridScene = (client: GameClient) =>
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
         this.unsubscribePlayerActionState?.();
         this.unsubscribePlayerActionState = null;
+        this.unsubscribePlayerAppearance?.();
+        this.unsubscribePlayerAppearance = null;
       });
     }
 
@@ -69,9 +73,27 @@ export const createGridScene = (client: GameClient) =>
         client.subscribePlayerActionState?.((state) =>
           this.applyPlayerActionState(player, state)
         ) ?? null;
+      this.unsubscribePlayerAppearance =
+        client.subscribePlayerAppearance?.((appearance) =>
+          this.applyPlayerAppearance(player, appearance)
+        ) ?? null;
     }
 
     private applyPlayerActionState(player: number, state: PlayerActionState) {
       beginActionTransition(this.world, player, state);
+    }
+
+    private applyPlayerAppearance(
+      player: number,
+      appearance: PlayerAppearance
+    ) {
+      const rectangle = this.world.getComponent<RectComponent>(
+        player,
+        Components.rectangle
+      );
+
+      rectangle?.object
+        .setFillStyle(appearance.fill)
+        .setStrokeStyle(3, appearance.stroke);
     }
   };
