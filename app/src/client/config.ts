@@ -19,6 +19,8 @@ export const PROGRAMS = {
   position: new PublicKey("7ebGfNj5knjG33XBSUdfYAYtXsner8rQzLYSFuURSicZ"),
   energy: new PublicKey("EXfYuzbCqe3VoUrG37gvkhxMmCMBKfvj5DRodsjmG6Pg"),
   activeAction: new PublicKey("g9Y3zHKWC9kJ9CYLQuDkZP7qVwhh6yu2swhxrXn7sVn"),
+  farmType: new PublicKey("AeTFPGveiu5u9qaGpoCFLte95RBbaKYHcPA6VJHGzSJh"),
+  tileFarm: new PublicKey("HtQi1ESxw8jY5383gaTwtv8vwJbSKfZcFuRb3vPq86KU"),
   worldAuthority: new PublicKey("HPVrKGMFzX1VSFkEXU5sf9uZZ5bwqJW1jHkrdFgRGFZg"),
   worldTerrainRegistry: new PublicKey(
     "CbYVrUkZDrFRCBFA6HNNrQtzNgXP111zKqKpMy6KyhYQ"
@@ -39,6 +41,15 @@ export const PROGRAMS = {
   defineTileTerrain: new PublicKey(
     "DBfTvysc3GQVoazLgbwLr2yqjs8msjaco9q8fgTaLUTy"
   ),
+  defineTileTerrainBatch: new PublicKey(
+    "EnjiFX1GJCZXWUAxRFYTbQrDHGdKSi3485EVB5xy2dUa"
+  ),
+  defineFarmType: new PublicKey("F14xPRR4xx6S8sufyU9MDfdCeCEp6XAFDGTKDfPzfD4y"),
+  chopTile: new PublicKey("GctbHkUcDA9AHkDeLtJ1P1sE1oSLoncDGMBYiYPzMAgs"),
+  tillTile: new PublicKey("GGf7T4KZ2sJGwiuu6e7bTAc17VwQAR5xKmp9NvF9CmUN"),
+  waterTile: new PublicKey("Cp5YRnmvnbRPsCucPAGVh6Sorbd5wjDma8sGKYAuveuu"),
+  plantTile: new PublicKey("8g6H4M8cKkieF65YkUDqyJ4AqEFytFUnGEQzrvGc3wkq"),
+  harvestTile: new PublicKey("BGdMrM8tY4myjV3iddnPH4mKpZ8LoaABjY1eoyuqfknp"),
 };
 
 export const DELEGATION_PROGRAM_ID = new PublicKey(

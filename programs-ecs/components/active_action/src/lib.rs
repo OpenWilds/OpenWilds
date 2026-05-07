@@ -5,6 +5,11 @@ declare_id!("g9Y3zHKWC9kJ9CYLQuDkZP7qVwhh6yu2swhxrXn7sVn");
 pub const ACTION_IDLE: u8 = 0;
 pub const ACTION_MOVE: u8 = 1;
 pub const ACTION_SLEEP: u8 = 2;
+pub const ACTION_TILL: u8 = 3;
+pub const ACTION_WATER: u8 = 4;
+pub const ACTION_PLANT: u8 = 5;
+pub const ACTION_HARVEST: u8 = 6;
+pub const ACTION_CHOP: u8 = 7;
 
 #[component(delegate)]
 #[derive(Default)]

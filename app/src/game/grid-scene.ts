@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { createBoard } from "./board";
 import { createHoverEntity, createPlayerEntity } from "./entities/index";
 import { World } from "./ecs";
+import { createFarmCatalog } from "./farm-catalog";
 import { GAME_HEIGHT, GAME_WIDTH } from "./grid-constants";
 import { pointerToGrid } from "./grid-math";
 import { installGridResources, type GridInput } from "./resources";
@@ -37,6 +38,7 @@ export const createGridScene = (client: GameClient) =>
 
       installGridResources(this.world, this, client);
       createBoard(this);
+      createFarmCatalog(this);
       createHoverEntity(this.world, this);
       const player = createPlayerEntity(this.world, this, { x: 10, y: 10 });
       this.activePlayerEntity = player;

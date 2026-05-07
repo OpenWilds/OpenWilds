@@ -24,7 +24,7 @@ body {
 }
 
 .game-shell {
-  width: min(100%, 820px);
+  width: min(100%, 1040px);
 }
 
 .hud {
@@ -199,7 +199,7 @@ h1 {
 
 #game {
   width: 100%;
-  aspect-ratio: 720 / 760;
+  aspect-ratio: 940 / 760;
   overflow: hidden;
   border: 1px solid rgba(247, 241, 229, 0.22);
   border-radius: 8px;

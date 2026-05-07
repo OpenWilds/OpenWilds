@@ -653,6 +653,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
+name = "chop_tile"
+version = "0.2.4"
+dependencies = [
+ "active_action",
+ "bolt-lang",
+ "energy",
+ "farm_type",
+ "position",
+ "serde",
+ "serde_json",
+ "tile_farm",
+]
+
+[[package]]
 name = "cmov"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -765,6 +779,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "define_farm_type"
+version = "0.2.4"
+dependencies = [
+ "bolt-lang",
+ "farm_type",
+ "serde",
+ "serde_json",
+ "world_authority",
+]
+
+[[package]]
 name = "define_terrain_type"
 version = "0.2.4"
 dependencies = [
@@ -777,6 +802,17 @@ dependencies = [
 
 [[package]]
 name = "define_tile_terrain"
+version = "0.2.4"
+dependencies = [
+ "bolt-lang",
+ "serde",
+ "serde_json",
+ "tile_terrain",
+ "world_authority",
+]
+
+[[package]]
+name = "define_tile_terrain_batch"
 version = "0.2.4"
 dependencies = [
  "bolt-lang",
@@ -876,6 +912,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "farm_type"
+version = "0.2.4"
+dependencies = [
+ "bolt-lang",
+]
+
+[[package]]
 name = "feature-probe"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -973,6 +1016,20 @@ dependencies = [
  "libc",
  "wasi 0.11.1+wasi-snapshot-preview1",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "harvest_tile"
+version = "0.2.4"
+dependencies = [
+ "active_action",
+ "bolt-lang",
+ "energy",
+ "farm_type",
+ "position",
+ "serde",
+ "serde_json",
+ "tile_farm",
 ]
 
 [[package]]
@@ -1247,6 +1304,22 @@ name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
+
+[[package]]
+name = "plant_tile"
+version = "0.2.4"
+dependencies = [
+ "active_action",
+ "bolt-lang",
+ "energy",
+ "farm_type",
+ "position",
+ "serde",
+ "serde_json",
+ "terrain_type",
+ "tile_farm",
+ "tile_terrain",
+]
 
 [[package]]
 name = "position"
@@ -2505,10 +2578,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "tile_farm"
+version = "0.2.4"
+dependencies = [
+ "bolt-lang",
+]
+
+[[package]]
 name = "tile_terrain"
 version = "0.2.4"
 dependencies = [
  "bolt-lang",
+]
+
+[[package]]
+name = "till_tile"
+version = "0.2.4"
+dependencies = [
+ "active_action",
+ "bolt-lang",
+ "energy",
+ "position",
+ "serde",
+ "serde_json",
+ "terrain_type",
+ "tile_farm",
+ "tile_terrain",
 ]
 
 [[package]]
@@ -2691,6 +2786,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49757b3c82ebf16c57d69365a142940b384176c24df52a087fb748e2085359ea"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "water_tile"
+version = "0.2.4"
+dependencies = [
+ "active_action",
+ "bolt-lang",
+ "energy",
+ "farm_type",
+ "position",
+ "serde",
+ "serde_json",
+ "tile_farm",
 ]
 
 [[package]]

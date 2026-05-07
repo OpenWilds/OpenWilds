@@ -1,0 +1,30 @@
+[package]
+name = "harvest_tile"
+version = "0.2.4"
+description = "Open Wilds tile harvesting system"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "harvest_tile"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+idl-build = ["bolt-lang/idl-build"]
+anchor-debug = ["bolt-lang/anchor-debug"]
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+active_action = { version = "0.2.4", path = "../../components/active_action", features = ["cpi"] }
+bolt-lang.workspace = true
+energy = { version = "0.2.4", path = "../../components/energy", features = ["cpi"] }
+farm_type = { version = "0.2.4", path = "../../components/farm_type", features = ["cpi"] }
+position = { version = "0.2.4", path = "../../components/position", features = ["cpi"] }
+tile_farm = { version = "0.2.4", path = "../../components/tile_farm", features = ["cpi"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

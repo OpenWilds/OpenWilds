@@ -27,3 +27,4 @@ NO_DNA=1 solana program show C4s2BjhFdGsBN5JTQ88FdQQUoqWMuRKWtwYupzSyd5vB --url 
 NO_DNA=1 solana program show B9qCeXFe5431no3DTZQdZjexyG1cCep1yHjZrxm5c2AM --url "${RPC_URL}"
 NO_DNA=1 solana program show 9HUAZDNqjGrk2jVaQBx95hUFhdkb1vbKq6PDtsoybsLu --url "${RPC_URL}"
 NO_DNA=1 solana program show DBfTvysc3GQVoazLgbwLr2yqjs8msjaco9q8fgTaLUTy --url "${RPC_URL}"
+NO_DNA=1 solana program show EnjiFX1GJCZXWUAxRFYTbQrDHGdKSi3485EVB5xy2dUa --url "${RPC_URL}"

@@ -24,6 +24,7 @@ const GAME_WORLD_CONFIG_PATH = resolve(
   "../app/public/game-world.localnet.json"
 );
 const CATALOG_VERSION = 1;
+const TILE_TERRAIN_BATCH_SIZE = 16;
 const forceProvision = process.argv.includes("--force");
 const provisionTiles = process.argv.includes("--with-tiles");
 
@@ -42,6 +43,9 @@ const PROGRAMS = {
   ),
   defineTileTerrain: new PublicKey(
     "DBfTvysc3GQVoazLgbwLr2yqjs8msjaco9q8fgTaLUTy"
+  ),
+  defineTileTerrainBatch: new PublicKey(
+    "EnjiFX1GJCZXWUAxRFYTbQrDHGdKSi3485EVB5xy2dUa"
   ),
 };
 
@@ -193,6 +197,51 @@ const initializeComponent = async (
   return result.componentPda;
 };
 
+type PendingTileTerrain = {
+  x: number;
+  y: number;
+  terrainTypeId: number;
+  entityPda: PublicKey;
+  componentPda: PublicKey;
+};
+
+const defineTileTerrainBatch = async (
+  worldPda: PublicKey,
+  worldAuthorityEntityPda: PublicKey,
+  pendingTiles: PendingTileTerrain[],
+  batchNumber: number
+) => {
+  if (pendingTiles.length === 0) {
+    return;
+  }
+
+  await sendBoltResult(
+    await ApplySystem({
+      authority: provider.wallet.publicKey,
+      systemId: PROGRAMS.defineTileTerrainBatch,
+      world: worldPda,
+      entities: [
+        {
+          entity: worldAuthorityEntityPda,
+          components: [{ componentId: PROGRAMS.worldAuthority }],
+        },
+        ...pendingTiles.map((tile) => ({
+          entity: tile.entityPda,
+          components: [{ componentId: PROGRAMS.tileTerrain }],
+        })),
+      ],
+      args: {
+        tiles: pendingTiles.map((tile) => ({
+          x: tile.x,
+          y: tile.y,
+          terrain_type_id: tile.terrainTypeId,
+        })),
+      },
+    }),
+    `Define tile terrain batch ${batchNumber} (${pendingTiles.length} tiles)`
+  );
+};
+
 const main = async () => {
   console.log(`Provisioning Open Wilds game world on ${LOCALNET_RPC_URL}`);
   console.log(`Payer: ${provider.wallet.publicKey.toBase58()}`);
@@ -316,6 +365,8 @@ const main = async () => {
 
   if (provisionTiles) {
     const tiles = createWorldTerrainDefinition();
+    let pendingTiles: PendingTileTerrain[] = [];
+    let batchNumber = 1;
 
     for (const tile of tiles) {
       const tileLabel = `tile terrain ${tile.x},${tile.y}`;
@@ -329,29 +380,13 @@ const main = async () => {
         tileLabel
       );
 
-      await sendBoltResult(
-        await ApplySystem({
-          authority: provider.wallet.publicKey,
-          systemId: PROGRAMS.defineTileTerrain,
-          world: worldResult.worldPda,
-          entities: [
-            {
-              entity: worldAuthorityEntityPda,
-              components: [{ componentId: PROGRAMS.worldAuthority }],
-            },
-            {
-              entity: tileTerrainEntityPda,
-              components: [{ componentId: PROGRAMS.tileTerrain }],
-            },
-          ],
-          args: {
-            x: tile.x,
-            y: tile.y,
-            terrain_type_id: tile.terrainTypeId,
-          },
-        }),
-        `Define ${tileLabel}`
-      );
+      pendingTiles.push({
+        x: tile.x,
+        y: tile.y,
+        terrainTypeId: tile.terrainTypeId,
+        entityPda: tileTerrainEntityPda,
+        componentPda: tileTerrainComponentPda,
+      });
 
       tileTerrains.push({
         x: tile.x,
@@ -360,7 +395,25 @@ const main = async () => {
         entityPda: tileTerrainEntityPda.toBase58(),
         componentPda: tileTerrainComponentPda.toBase58(),
       });
+
+      if (pendingTiles.length >= TILE_TERRAIN_BATCH_SIZE) {
+        await defineTileTerrainBatch(
+          worldResult.worldPda,
+          worldAuthorityEntityPda,
+          pendingTiles,
+          batchNumber
+        );
+        pendingTiles = [];
+        batchNumber += 1;
+      }
     }
+
+    await defineTileTerrainBatch(
+      worldResult.worldPda,
+      worldAuthorityEntityPda,
+      pendingTiles,
+      batchNumber
+    );
   }
 
   const storedWorld: StoredGameWorld = {
