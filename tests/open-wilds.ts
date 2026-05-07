@@ -2,12 +2,14 @@ import { PublicKey } from "@solana/web3.js";
 import { Position } from "../target/types/position";
 import { Energy } from "../target/types/energy";
 import { ActiveAction } from "../target/types/active_action";
+import { WorldAuthority } from "../target/types/world_authority";
 import { WorldTerrainRegistry } from "../target/types/world_terrain_registry";
 import { TerrainType } from "../target/types/terrain_type";
 import { TileTerrain } from "../target/types/tile_terrain";
 import { Movement } from "../target/types/movement";
 import { Sleep } from "../target/types/sleep";
 import { RegisterTerrainType } from "../target/types/register_terrain_type";
+import { InitializeWorldAuthority } from "../target/types/initialize_world_authority";
 import { DefineTileTerrain } from "../target/types/define_tile_terrain";
 import {
   InitializeNewWorld,
@@ -30,6 +32,8 @@ describe("open-wilds", () => {
   let positionComponentPda: PublicKey;
   let energyComponentPda: PublicKey;
   let activeActionComponentPda: PublicKey;
+  let worldAuthorityEntityPda: PublicKey;
+  let worldAuthorityComponentPda: PublicKey;
   let terrainRegistryEntityPda: PublicKey;
   let terrainRegistryComponentPda: PublicKey;
   let terrainTypeEntityPda: PublicKey;
@@ -41,6 +45,8 @@ describe("open-wilds", () => {
   const energyComponent = anchor.workspace.Energy as Program<Energy>;
   const activeActionComponent = anchor.workspace
     .ActiveAction as Program<ActiveAction>;
+  const worldAuthorityComponent = anchor.workspace
+    .WorldAuthority as Program<WorldAuthority>;
   const terrainRegistryComponent = anchor.workspace
     .WorldTerrainRegistry as Program<WorldTerrainRegistry>;
   const terrainTypeComponent = anchor.workspace
@@ -49,6 +55,8 @@ describe("open-wilds", () => {
     .TileTerrain as Program<TileTerrain>;
   const systemMovement = anchor.workspace.Movement as Program<Movement>;
   const systemSleep = anchor.workspace.Sleep as Program<Sleep>;
+  const systemInitializeWorldAuthority = anchor.workspace
+    .InitializeWorldAuthority as Program<InitializeWorldAuthority>;
   const systemRegisterTerrainType = anchor.workspace
     .RegisterTerrainType as Program<RegisterTerrainType>;
   const systemDefineTileTerrain = anchor.workspace
@@ -121,6 +129,36 @@ describe("open-wilds", () => {
   });
 
   it("Defines terrain type and tile terrain components", async () => {
+    const addWorldAuthorityEntity = await AddEntity({
+      payer: provider.wallet.publicKey,
+      world: worldPda,
+      connection: provider.connection,
+    });
+    await provider.sendAndConfirm(addWorldAuthorityEntity.transaction);
+    worldAuthorityEntityPda = addWorldAuthorityEntity.entityPda;
+
+    const initializeWorldAuthority = await InitializeComponent({
+      payer: provider.wallet.publicKey,
+      entity: worldAuthorityEntityPda,
+      componentId: worldAuthorityComponent.programId,
+    });
+    await provider.sendAndConfirm(initializeWorldAuthority.transaction);
+    worldAuthorityComponentPda = initializeWorldAuthority.componentPda;
+
+    const setWorldAuthority = await ApplySystem({
+      authority: provider.wallet.publicKey,
+      systemId: systemInitializeWorldAuthority.programId,
+      world: worldPda,
+      entities: [
+        {
+          entity: worldAuthorityEntityPda,
+          components: [{ componentId: worldAuthorityComponent.programId }],
+        },
+      ],
+      args: { terrain_admin: Array.from(provider.wallet.publicKey.toBytes()) },
+    });
+    await provider.sendAndConfirm(setWorldAuthority.transaction);
+
     const addTerrainRegistryEntity = await AddEntity({
       payer: provider.wallet.publicKey,
       world: worldPda,
@@ -158,6 +196,10 @@ describe("open-wilds", () => {
       systemId: systemRegisterTerrainType.programId,
       world: worldPda,
       entities: [
+        {
+          entity: worldAuthorityEntityPda,
+          components: [{ componentId: worldAuthorityComponent.programId }],
+        },
         {
           entity: terrainRegistryEntityPda,
           components: [{ componentId: terrainRegistryComponent.programId }],
@@ -200,6 +242,10 @@ describe("open-wilds", () => {
       world: worldPda,
       entities: [
         {
+          entity: worldAuthorityEntityPda,
+          components: [{ componentId: worldAuthorityComponent.programId }],
+        },
+        {
           entity: tileTerrainEntityPda,
           components: [{ componentId: tileTerrainComponent.programId }],
         },
@@ -208,6 +254,10 @@ describe("open-wilds", () => {
     });
     await provider.sendAndConfirm(defineTileTerrain.transaction);
 
+    const worldAuthority =
+      await worldAuthorityComponent.account.worldAuthority.fetch(
+        worldAuthorityComponentPda
+      );
     const terrainRegistry =
       await terrainRegistryComponent.account.worldTerrainRegistry.fetch(
         terrainRegistryComponentPda
@@ -219,6 +269,9 @@ describe("open-wilds", () => {
       tileTerrainComponentPda
     );
 
+    expect(worldAuthority.terrainAdmin.toBase58()).to.equal(
+      provider.wallet.publicKey.toBase58()
+    );
     expect(terrainRegistry.version).to.equal(1);
     expect(terrainRegistry.terrainTypeCount).to.equal(1);
     expect(terrainType.terrainTypeId).to.equal(3);

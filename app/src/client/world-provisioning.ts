@@ -63,6 +63,11 @@ type PlayerWorldProvisionerOptions = {
 
 type GameWorldConfig = {
   worldPda: string;
+  worldAuthority?: {
+    terrainAdmin: string;
+    entityPda: string;
+    componentPda: string;
+  };
   terrainRegistry: {
     entityPda: string;
     componentPda: string;

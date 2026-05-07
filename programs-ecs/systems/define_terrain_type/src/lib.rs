@@ -1,6 +1,7 @@
 use bolt_lang::*;
 use serde::Deserialize;
 use terrain_type::TerrainType;
+use world_authority::WorldAuthority;
 
 declare_id!("9HUAZDNqjGrk2jVaQBx95hUFhdkb1vbKq6PDtsoybsLu");
 
@@ -20,6 +21,11 @@ pub mod define_terrain_type {
             definition.drop_rate_bps <= MAX_DROP_RATE_BPS,
             DefineTerrainTypeError::InvalidDropRate
         );
+        require_keys_eq!(
+            ctx.accounts.authority.key(),
+            ctx.accounts.world_authority.terrain_admin,
+            DefineTerrainTypeError::Unauthorized
+        );
 
         let terrain_type = &mut ctx.accounts.terrain_type;
         terrain_type.terrain_type_id = definition.terrain_type_id;
@@ -33,6 +39,7 @@ pub mod define_terrain_type {
 
     #[system_input]
     pub struct Components {
+        pub world_authority: WorldAuthority,
         pub terrain_type: TerrainType,
     }
 }
@@ -56,4 +63,6 @@ pub enum DefineTerrainTypeError {
     InvalidTerrainTypeId,
     #[msg("Drop rate must be between 0 and 10000 basis points.")]
     InvalidDropRate,
+    #[msg("Only the terrain admin may define terrain types.")]
+    Unauthorized,
 }

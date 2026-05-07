@@ -17,6 +17,7 @@ import {
 
 const LOCALNET_RPC_URL = process.env.RPC_URL ?? "http://127.0.0.1:8899";
 process.env.ANCHOR_PROVIDER_URL ??= LOCALNET_RPC_URL;
+process.env.ANCHOR_WALLET ??= `${process.env.HOME}/.config/solana/id.json`;
 
 const GAME_WORLD_CONFIG_PATH = resolve(
   __dirname,
@@ -24,9 +25,13 @@ const GAME_WORLD_CONFIG_PATH = resolve(
 );
 const CATALOG_VERSION = 1;
 const forceProvision = process.argv.includes("--force");
-const provisionTiles = !process.argv.includes("--skip-tiles");
+const provisionTiles = process.argv.includes("--with-tiles");
 
 const PROGRAMS = {
+  worldAuthority: new PublicKey("HPVrKGMFzX1VSFkEXU5sf9uZZ5bwqJW1jHkrdFgRGFZg"),
+  initializeWorldAuthority: new PublicKey(
+    "C4s2BjhFdGsBN5JTQ88FdQQUoqWMuRKWtwYupzSyd5vB"
+  ),
   worldTerrainRegistry: new PublicKey(
     "CbYVrUkZDrFRCBFA6HNNrQtzNgXP111zKqKpMy6KyhYQ"
   ),
@@ -45,6 +50,11 @@ type StoredGameWorld = {
   rpcUrl: string;
   catalogVersion: number;
   worldPda: string;
+  worldAuthority: {
+    terrainAdmin: string;
+    entityPda: string;
+    componentPda: string;
+  };
   terrainRegistry: {
     entityPda: string;
     componentPda: string;
@@ -84,6 +94,10 @@ const sendBoltResult = async (
   if (!transaction) {
     throw new Error(`${label} did not return a transaction or instruction.`);
   }
+
+  const latestBlockhash = await connection.getLatestBlockhash("confirmed");
+  transaction.feePayer ??= provider.wallet.publicKey;
+  transaction.recentBlockhash = latestBlockhash.blockhash;
 
   const signature = await provider.sendAndConfirm(transaction, [], {
     commitment: "confirmed",
@@ -209,6 +223,34 @@ const main = async () => {
     throw new Error("World PDA missing after initialization.");
   }
 
+  const worldAuthorityEntityPda = await addEntity(
+    worldResult.worldPda,
+    "world authority"
+  );
+  const worldAuthorityComponentPda = await initializeComponent(
+    worldAuthorityEntityPda,
+    PROGRAMS.worldAuthority,
+    "world authority"
+  );
+
+  await sendBoltResult(
+    await ApplySystem({
+      authority: provider.wallet.publicKey,
+      systemId: PROGRAMS.initializeWorldAuthority,
+      world: worldResult.worldPda,
+      entities: [
+        {
+          entity: worldAuthorityEntityPda,
+          components: [{ componentId: PROGRAMS.worldAuthority }],
+        },
+      ],
+      args: {
+        terrain_admin: Array.from(provider.wallet.publicKey.toBytes()),
+      },
+    }),
+    "Initialize world authority"
+  );
+
   const terrainRegistryEntityPda = await addEntity(
     worldResult.worldPda,
     "terrain registry"
@@ -239,6 +281,10 @@ const main = async () => {
         systemId: PROGRAMS.registerTerrainType,
         world: worldResult.worldPda,
         entities: [
+          {
+            entity: worldAuthorityEntityPda,
+            components: [{ componentId: PROGRAMS.worldAuthority }],
+          },
           {
             entity: terrainRegistryEntityPda,
             components: [{ componentId: PROGRAMS.worldTerrainRegistry }],
@@ -290,6 +336,10 @@ const main = async () => {
           world: worldResult.worldPda,
           entities: [
             {
+              entity: worldAuthorityEntityPda,
+              components: [{ componentId: PROGRAMS.worldAuthority }],
+            },
+            {
               entity: tileTerrainEntityPda,
               components: [{ componentId: PROGRAMS.tileTerrain }],
             },
@@ -318,6 +368,11 @@ const main = async () => {
     rpcUrl: LOCALNET_RPC_URL,
     catalogVersion: CATALOG_VERSION,
     worldPda: worldResult.worldPda.toBase58(),
+    worldAuthority: {
+      terrainAdmin: provider.wallet.publicKey.toBase58(),
+      entityPda: worldAuthorityEntityPda.toBase58(),
+      componentPda: worldAuthorityComponentPda.toBase58(),
+    },
     terrainRegistry: {
       entityPda: terrainRegistryEntityPda.toBase58(),
       componentPda: terrainRegistryComponentPda.toBase58(),

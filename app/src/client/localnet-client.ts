@@ -130,6 +130,8 @@ export class LocalnetClient {
         "position",
         "energy",
         "activeAction",
+        "worldAuthority",
+        "initializeWorldAuthority",
         "worldTerrainRegistry",
         "terrainType",
         "tileTerrain",
@@ -234,6 +236,8 @@ export class LocalnetClient {
       await this.requireDeployedPrograms([
         "energy",
         "activeAction",
+        "worldAuthority",
+        "initializeWorldAuthority",
         "worldTerrainRegistry",
         "terrainType",
         "tileTerrain",

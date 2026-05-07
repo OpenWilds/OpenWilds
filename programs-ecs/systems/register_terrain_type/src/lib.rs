@@ -1,6 +1,7 @@
 use bolt_lang::*;
 use serde::Deserialize;
 use terrain_type::TerrainType;
+use world_authority::WorldAuthority;
 use world_terrain_registry::WorldTerrainRegistry;
 
 declare_id!("B9qCeXFe5431no3DTZQdZjexyG1cCep1yHjZrxm5c2AM");
@@ -24,6 +25,11 @@ pub mod register_terrain_type {
         require!(
             definition.drop_rate_bps <= MAX_DROP_RATE_BPS,
             RegisterTerrainTypeError::InvalidDropRate
+        );
+        require_keys_eq!(
+            ctx.accounts.authority.key(),
+            ctx.accounts.world_authority.terrain_admin,
+            RegisterTerrainTypeError::Unauthorized
         );
 
         let registry = &mut ctx.accounts.world_terrain_registry;
@@ -58,6 +64,7 @@ pub mod register_terrain_type {
 
     #[system_input]
     pub struct Components {
+        pub world_authority: WorldAuthority,
         pub world_terrain_registry: WorldTerrainRegistry,
         pub terrain_type: TerrainType,
     }
@@ -87,4 +94,6 @@ pub enum RegisterTerrainTypeError {
     CatalogVersionMismatch,
     #[msg("Terrain registry cannot track more terrain types.")]
     TooManyTerrainTypes,
+    #[msg("Only the terrain admin may register terrain types.")]
+    Unauthorized,
 }

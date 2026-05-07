@@ -16,6 +16,7 @@ export const PROGRAMS = {
   position: new PublicKey("7ebGfNj5knjG33XBSUdfYAYtXsner8rQzLYSFuURSicZ"),
   energy: new PublicKey("EXfYuzbCqe3VoUrG37gvkhxMmCMBKfvj5DRodsjmG6Pg"),
   activeAction: new PublicKey("g9Y3zHKWC9kJ9CYLQuDkZP7qVwhh6yu2swhxrXn7sVn"),
+  worldAuthority: new PublicKey("HPVrKGMFzX1VSFkEXU5sf9uZZ5bwqJW1jHkrdFgRGFZg"),
   worldTerrainRegistry: new PublicKey(
     "CbYVrUkZDrFRCBFA6HNNrQtzNgXP111zKqKpMy6KyhYQ"
   ),
@@ -25,6 +26,9 @@ export const PROGRAMS = {
   sleep: new PublicKey("AHpcKdhujpiTq8oGbxbCknEfmQQwya6cmvywFL89iZUs"),
   registerTerrainType: new PublicKey(
     "B9qCeXFe5431no3DTZQdZjexyG1cCep1yHjZrxm5c2AM"
+  ),
+  initializeWorldAuthority: new PublicKey(
+    "C4s2BjhFdGsBN5JTQ88FdQQUoqWMuRKWtwYupzSyd5vB"
   ),
   defineTerrainType: new PublicKey(
     "9HUAZDNqjGrk2jVaQBx95hUFhdkb1vbKq6PDtsoybsLu"

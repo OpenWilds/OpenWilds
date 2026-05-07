@@ -772,6 +772,7 @@ dependencies = [
  "serde",
  "serde_json",
  "terrain_type",
+ "world_authority",
 ]
 
 [[package]]
@@ -782,6 +783,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tile_terrain",
+ "world_authority",
 ]
 
 [[package]]
@@ -1020,6 +1022,16 @@ checksum = "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9"
 dependencies = [
  "equivalent",
  "hashbrown 0.17.0",
+]
+
+[[package]]
+name = "initialize_world_authority"
+version = "0.2.4"
+dependencies = [
+ "bolt-lang",
+ "serde",
+ "serde_json",
+ "world_authority",
 ]
 
 [[package]]
@@ -1405,6 +1417,7 @@ dependencies = [
  "serde",
  "serde_json",
  "terrain_type",
+ "world_authority",
  "world_terrain_registry",
 ]
 
@@ -2725,6 +2738,13 @@ dependencies = [
  "bolt-system",
  "solana-security-txt",
  "tuple-conv",
+]
+
+[[package]]
+name = "world_authority"
+version = "0.2.4"
+dependencies = [
+ "bolt-lang",
 ]
 
 [[package]]

@@ -1,6 +1,7 @@
 use bolt_lang::*;
 use serde::Deserialize;
 use tile_terrain::TileTerrain;
+use world_authority::WorldAuthority;
 
 declare_id!("DBfTvysc3GQVoazLgbwLr2yqjs8msjaco9q8fgTaLUTy");
 
@@ -23,6 +24,11 @@ pub mod define_tile_terrain {
             definition.terrain_type_id > 0,
             DefineTileTerrainError::InvalidTerrainTypeId
         );
+        require_keys_eq!(
+            ctx.accounts.authority.key(),
+            ctx.accounts.world_authority.terrain_admin,
+            DefineTileTerrainError::Unauthorized
+        );
 
         let tile_terrain = &mut ctx.accounts.tile_terrain;
         tile_terrain.x = definition.x;
@@ -34,6 +40,7 @@ pub mod define_tile_terrain {
 
     #[system_input]
     pub struct Components {
+        pub world_authority: WorldAuthority,
         pub tile_terrain: TileTerrain,
     }
 }
@@ -53,4 +60,6 @@ pub enum DefineTileTerrainError {
     TileOutOfBounds,
     #[msg("Terrain type id must be greater than zero.")]
     InvalidTerrainTypeId,
+    #[msg("Only the terrain admin may define tile terrain.")]
+    Unauthorized,
 }
