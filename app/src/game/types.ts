@@ -29,6 +29,13 @@ export type PlayerAppearance = {
   stroke: number;
 };
 
+export type VisiblePlayerState = {
+  mint: string;
+  isActive: boolean;
+  appearance: PlayerAppearance;
+  state: PlayerActionState;
+};
+
 export type ActionTransitionState = {
   active: boolean;
   fromPosition: GridPoint;
@@ -46,5 +53,8 @@ export type GameClient = {
   ) => () => void;
   subscribePlayerAppearance?: (
     listener: (appearance: PlayerAppearance) => void
+  ) => () => void;
+  subscribeVisiblePlayers?: (
+    listener: (players: VisiblePlayerState[]) => void
   ) => () => void;
 };

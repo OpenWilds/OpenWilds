@@ -21,7 +21,8 @@ export const createPlayerEntity = (
   appearance: Pick<PlayerAppearance, "fill" | "stroke"> = {
     fill: 0xe24a55,
     stroke: 0x84242b,
-  }
+  },
+  isLocalPlayer = true
 ) => {
   const entity = world.createEntity();
   const rectangle = scene.add
@@ -29,7 +30,11 @@ export const createPlayerEntity = (
     .setStrokeStyle(3, appearance.stroke)
     .setOrigin(0);
 
-  world.addComponent(entity, Components.player, true);
+  world.addComponent(
+    entity,
+    isLocalPlayer ? Components.player : Components.remotePlayer,
+    true
+  );
   world.addComponent<GridPoint>(entity, Components.position, position);
   world.addComponent<EnergyState>(entity, Components.energy, {
     current: 100,

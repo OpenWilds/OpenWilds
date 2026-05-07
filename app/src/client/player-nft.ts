@@ -86,6 +86,11 @@ export const listOwnedPlayerNfts = (owner: PublicKey): PlayerNft[] =>
     .sort((a, b) => a.mintedAt - b.mintedAt)
     .map(hydratePlayerNft);
 
+export const listPlayerNftsInCollection = (): PlayerNft[] =>
+  readAllStoredPlayerNfts()
+    .sort((a, b) => a.mintedAt - b.mintedAt)
+    .map(hydratePlayerNft);
+
 export const readActivePlayerNft = (owner: PublicKey): PlayerNft | null => {
   const activeMint = window.localStorage.getItem(ACTIVE_PLAYER_NFT_STORAGE_KEY);
   const ownedNfts = listOwnedPlayerNfts(owner);

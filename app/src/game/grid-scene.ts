@@ -8,7 +8,12 @@ import { installGridResources, type GridInput } from "./resources";
 import { beginActionTransition } from "./systems/action-transition";
 import { gridSystems } from "./systems/index";
 import { Components, type RectComponent } from "./components/index";
-import type { GameClient, PlayerActionState, PlayerAppearance } from "./types";
+import type {
+  GameClient,
+  PlayerActionState,
+  PlayerAppearance,
+  VisiblePlayerState,
+} from "./types";
 
 export { GAME_HEIGHT, GAME_WIDTH };
 
@@ -17,6 +22,10 @@ export const createGridScene = (client: GameClient) =>
     private world!: World;
     private unsubscribePlayerActionState: (() => void) | null = null;
     private unsubscribePlayerAppearance: (() => void) | null = null;
+    private unsubscribeVisiblePlayers: (() => void) | null = null;
+    private activePlayerEntity: number | null = null;
+    private readonly remotePlayerEntities = new Map<string, number>();
+    private readonly remotePlayerStateKeys = new Map<string, string>();
 
     constructor() {
       super("grid-scene");
@@ -30,6 +39,7 @@ export const createGridScene = (client: GameClient) =>
       createBoard(this);
       createHoverEntity(this.world, this);
       const player = createPlayerEntity(this.world, this, { x: 10, y: 10 });
+      this.activePlayerEntity = player;
       this.bindPlayerActionState(player);
 
       for (const system of gridSystems) {
@@ -43,6 +53,8 @@ export const createGridScene = (client: GameClient) =>
         this.unsubscribePlayerActionState = null;
         this.unsubscribePlayerAppearance?.();
         this.unsubscribePlayerAppearance = null;
+        this.unsubscribeVisiblePlayers?.();
+        this.unsubscribeVisiblePlayers = null;
       });
     }
 
@@ -77,6 +89,10 @@ export const createGridScene = (client: GameClient) =>
         client.subscribePlayerAppearance?.((appearance) =>
           this.applyPlayerAppearance(player, appearance)
         ) ?? null;
+      this.unsubscribeVisiblePlayers =
+        client.subscribeVisiblePlayers?.((players) =>
+          this.applyVisiblePlayers(players)
+        ) ?? null;
     }
 
     private applyPlayerActionState(player: number, state: PlayerActionState) {
@@ -95,5 +111,69 @@ export const createGridScene = (client: GameClient) =>
       rectangle?.object
         .setFillStyle(appearance.fill)
         .setStrokeStyle(3, appearance.stroke);
+    }
+
+    private applyVisiblePlayers(players: VisiblePlayerState[]) {
+      const visibleRemoteMints = new Set<string>();
+
+      for (const player of players) {
+        if (player.isActive) {
+          continue;
+        }
+
+        visibleRemoteMints.add(player.mint);
+        const entity =
+          this.remotePlayerEntities.get(player.mint) ??
+          this.createRemotePlayerEntity(player);
+        const stateKey = this.getPlayerStateKey(player.state);
+
+        this.applyPlayerAppearance(entity, player.appearance);
+        if (this.remotePlayerStateKeys.get(player.mint) === stateKey) {
+          continue;
+        }
+
+        this.remotePlayerStateKeys.set(player.mint, stateKey);
+        beginActionTransition(this.world, entity, player.state);
+      }
+
+      for (const [mint, entity] of this.remotePlayerEntities) {
+        if (visibleRemoteMints.has(mint)) {
+          continue;
+        }
+
+        this.world
+          .getComponent<RectComponent>(entity, Components.rectangle)
+          ?.object.setVisible(false);
+        this.remotePlayerEntities.delete(mint);
+        this.remotePlayerStateKeys.delete(mint);
+      }
+    }
+
+    private createRemotePlayerEntity(player: VisiblePlayerState) {
+      const entity = createPlayerEntity(
+        this.world,
+        this,
+        player.state.position,
+        player.appearance,
+        false
+      );
+      this.world
+        .requireComponent<RectComponent>(entity, Components.rectangle)
+        .object.setAlpha(0.72);
+      this.remotePlayerEntities.set(player.mint, entity);
+      return entity;
+    }
+
+    private getPlayerStateKey(state: PlayerActionState) {
+      return [
+        state.position.x,
+        state.position.y,
+        state.energy.current,
+        state.energy.max,
+        state.activeAction.action,
+        state.activeAction.kind,
+        state.activeAction.startedAt,
+        state.activeAction.endsAt,
+      ].join(":");
     }
   };

@@ -6,6 +6,7 @@ export const Components = {
   hoverCursor: "hoverCursor",
   energy: "energy",
   player: "player",
+  remotePlayer: "remotePlayer",
   position: "position",
   rectangle: "rectangle",
   renderState: "renderState",

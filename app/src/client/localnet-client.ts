@@ -12,6 +12,7 @@ import type {
   GridPoint,
   PlayerAppearance,
   PlayerActionState,
+  VisiblePlayerState,
 } from "../game/types";
 import {
   AIRDROP_SOL,
@@ -28,6 +29,7 @@ import {
 import {
   clearActivePlayerNft,
   getPlayerColorStyle,
+  listPlayerNftsInCollection,
   listOwnedPlayerNfts,
   mintLocalPlayerNft,
   readActivePlayerNft,
@@ -121,6 +123,9 @@ export class LocalnetClient {
   >();
   private readonly playerAppearanceListeners = new Set<
     (appearance: PlayerAppearance) => void
+  >();
+  private readonly visiblePlayerListeners = new Set<
+    (players: VisiblePlayerState[]) => void
   >();
   private playerState: PlayerState | null = null;
   private activePlayerNft: PlayerNft | null = null;
@@ -234,6 +239,7 @@ export class LocalnetClient {
       );
       this.renderActionBusy(confirmedState.activeAction);
       this.emitPlayerActionState(confirmedState);
+      await this.syncVisiblePlayers();
       return confirmedState;
     } catch (error) {
       const message = await describeOnchainError(
@@ -311,6 +317,7 @@ export class LocalnetClient {
       );
       this.renderActionBusy(confirmedState.activeAction);
       this.emitPlayerActionState(confirmedState);
+      await this.syncVisiblePlayers();
       return confirmedState;
     } catch (error) {
       if (error instanceof MissingProgramsError) {
@@ -349,6 +356,14 @@ export class LocalnetClient {
 
     return () => {
       this.playerAppearanceListeners.delete(listener);
+    };
+  }
+
+  subscribeVisiblePlayers(listener: (players: VisiblePlayerState[]) => void) {
+    this.visiblePlayerListeners.add(listener);
+
+    return () => {
+      this.visiblePlayerListeners.delete(listener);
     };
   }
 
@@ -475,11 +490,13 @@ export class LocalnetClient {
       const stateKey = this.getPlayerActionStateKey(actionState);
 
       if (stateKey === this.lastPlayerActionStateKey) {
+        await this.syncVisiblePlayers();
         return;
       }
 
       this.renderActionBusy(actionState.activeAction);
       this.emitPlayerActionState(actionState);
+      await this.syncVisiblePlayers();
 
       if (options.announceLoaded) {
         this.hud.setProgramStatus(
@@ -495,6 +512,49 @@ export class LocalnetClient {
     } finally {
       this.playerStateSyncing = false;
     }
+  }
+
+  private async syncVisiblePlayers() {
+    if (this.visiblePlayerListeners.size === 0) {
+      return;
+    }
+
+    const visiblePlayers: VisiblePlayerState[] = [];
+
+    for (const playerNft of listPlayerNftsInCollection()) {
+      const isActive =
+        this.activePlayerNft?.mint.equals(playerNft.mint) ?? false;
+
+      try {
+        const player =
+          isActive && this.playerState?.playerMint.equals(playerNft.mint)
+            ? this.playerState
+            : await this.createPlayerWorldProvisionerFor(
+                playerNft
+              ).loadExistingPlayer();
+
+        if (!player) {
+          continue;
+        }
+
+        const state = await this.fetchPlayerActionStateOnEr(player);
+        visiblePlayers.push({
+          mint: playerNft.mint.toBase58(),
+          isActive,
+          appearance: this.getPlayerAppearance(playerNft),
+          state,
+        });
+      } catch (error) {
+        console.debug(
+          `[Open Wilds] skipped visible player ${shortAddress(
+            playerNft.mint
+          )}`,
+          error
+        );
+      }
+    }
+
+    this.emitVisiblePlayers(visiblePlayers);
   }
 
   private async requireDeployedPrograms(programNames: ProgramName[]) {
@@ -640,12 +700,20 @@ export class LocalnetClient {
   }
 
   private createPlayerWorldProvisioner() {
+    if (!this.activePlayerNft) {
+      throw new Error("Mint or select a player NFT before playing.");
+    }
+
+    return this.createPlayerWorldProvisionerFor(this.activePlayerNft);
+  }
+
+  private createPlayerWorldProvisionerFor(playerNft: PlayerNft) {
     return new PlayerWorldProvisioner({
       baseConnection: this.baseConnection,
       erConnection: this.erConnection,
       payer: this.wallet.publicKey,
-      playerMint: this.activePlayerNft!.mint,
-      playerColor: this.activePlayerNft!.color,
+      playerMint: playerNft.mint,
+      playerColor: playerNft.color,
       installBaseProvider: () =>
         this.installAnchorProvider(this.baseConnection),
       sendBoltResult: (result, connection, options) =>
@@ -819,6 +887,12 @@ export class LocalnetClient {
     }
   }
 
+  private emitVisiblePlayers(players: VisiblePlayerState[]) {
+    for (const listener of this.visiblePlayerListeners) {
+      listener(players);
+    }
+  }
+
   private getPlayerAppearance(player: PlayerNft): PlayerAppearance {
     const style = getPlayerColorStyle(player.color);
 
@@ -855,6 +929,7 @@ export class LocalnetClient {
         } metadata.`
       );
       await this.syncPlayerState();
+      await this.syncVisiblePlayers();
     } finally {
       this.hud.setMintPlayerBusy(false);
     }
@@ -868,6 +943,7 @@ export class LocalnetClient {
     this.refreshPlayerNftHud();
     this.hud.setProgramStatus(`Selected player ${shortAddress(mint)}.`);
     void this.syncPlayerState({ announceLoaded: true });
+    void this.syncVisiblePlayers();
   }
 
   private getPlayerActionStateKey(state: PlayerActionState) {

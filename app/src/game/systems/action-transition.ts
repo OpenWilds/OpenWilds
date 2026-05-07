@@ -86,7 +86,6 @@ export const actionTransitionSystem = (world: World) => {
   const now = Date.now() / 1000;
 
   for (const player of world.view(
-    Components.player,
     Components.actionTransition,
     Components.position,
     Components.energy,
