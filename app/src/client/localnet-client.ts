@@ -179,6 +179,7 @@ export class LocalnetClient {
   private lastFarmTileStateKey: string | null = null;
   private lastTileItemStates: TileItemState[] = [];
   private lastTileItemStateKey: string | null = null;
+  private readonly knownPlayerTileFarms = new Map<string, TileFarmState[]>();
 
   constructor(hudElements: HudElements) {
     this.hud = new HudController(hudElements);
@@ -863,6 +864,7 @@ export class LocalnetClient {
       this.lastFarmTileStateKey = null;
       this.lastTileItemStates = [];
       this.lastTileItemStateKey = null;
+      this.knownPlayerTileFarms.clear();
       this.renderActionBusy({
         action: ACTION_IDLE,
         kind: "idle",
@@ -1006,6 +1008,10 @@ export class LocalnetClient {
           continue;
         }
 
+        this.knownPlayerTileFarms.set(
+          playerNft.mint.toBase58(),
+          player.tileFarms
+        );
         const state = await this.fetchPlayerActionStateOnEr(player);
         visiblePlayers.push({
           mint: playerNft.mint.toBase58(),
@@ -1014,6 +1020,7 @@ export class LocalnetClient {
           state,
         });
       } catch (error) {
+        this.knownPlayerTileFarms.delete(playerNft.mint.toBase58());
         console.debug(
           `[Open Wilds] skipped visible player ${shortAddress(playerNft.mint)}`,
           error
@@ -1550,12 +1557,33 @@ export class LocalnetClient {
   }
 
   private async syncFarmTiles(player: PlayerState) {
-    if (this.farmTileListeners.size === 0 || player.tileFarms.length === 0) {
+    if (this.farmTileListeners.size === 0) {
+      return;
+    }
+
+    this.knownPlayerTileFarms.set(
+      player.playerMint.toBase58(),
+      player.tileFarms
+    );
+    await this.discoverKnownPlayerTileFarms();
+
+    const tileFarmsByAccount = new Map<string, TileFarmState>();
+
+    for (const tileFarms of this.knownPlayerTileFarms.values()) {
+      for (const tileFarm of tileFarms) {
+        tileFarmsByAccount.set(tileFarm.componentPda.toBase58(), tileFarm);
+      }
+    }
+
+    if (tileFarmsByAccount.size === 0) {
+      if (this.lastFarmTileStateKey !== "") {
+        this.emitFarmTiles([]);
+      }
       return;
     }
 
     const tiles = await Promise.all(
-      player.tileFarms.map((tileFarm) =>
+      [...tileFarmsByAccount.values()].map((tileFarm) =>
         this.fetchFarmTileState(
           tileFarm.componentPda,
           this.parseTileKey(tileFarm.key)
@@ -1582,9 +1610,22 @@ export class LocalnetClient {
       string,
       { x: number; y: number; componentPda: string }
     >();
+    const activeTileItems = this.playerState
+      ? await this.createPlayerWorldProvisioner().discoverActiveTileItems(
+          this.playerState.worldPda
+        )
+      : [];
 
     for (const entry of config.tileItems ?? []) {
       entries.set(getWorldItemKey(entry), entry);
+    }
+
+    for (const entry of activeTileItems) {
+      const point = this.parseTileKey(entry.key);
+      entries.set(entry.key, {
+        ...point,
+        componentPda: entry.componentPda.toBase58(),
+      });
     }
 
     for (const entry of this.playerState?.tileItems ?? []) {
@@ -1609,6 +1650,36 @@ export class LocalnetClient {
     }
 
     this.emitTileItems(items);
+  }
+
+  private async discoverKnownPlayerTileFarms() {
+    for (const playerNft of listPlayerNftsInCollection()) {
+      try {
+        const player =
+          this.activePlayerNft?.mint.equals(playerNft.mint) &&
+          this.playerState?.playerMint.equals(playerNft.mint)
+            ? this.playerState
+            : await this.createPlayerWorldProvisionerFor(
+                playerNft
+              ).loadExistingPlayer();
+
+        if (!player) {
+          this.knownPlayerTileFarms.delete(playerNft.mint.toBase58());
+          continue;
+        }
+
+        this.knownPlayerTileFarms.set(
+          playerNft.mint.toBase58(),
+          player.tileFarms
+        );
+      } catch (error) {
+        this.knownPlayerTileFarms.delete(playerNft.mint.toBase58());
+        console.debug(
+          `[Open Wilds] skipped farm tiles for ${shortAddress(playerNft.mint)}`,
+          error
+        );
+      }
+    }
   }
 
   private decodePosition(data: Uint8Array): GridPoint {
@@ -1865,6 +1936,7 @@ export class LocalnetClient {
       this.lastFarmTileStateKey = null;
       this.lastTileItemStates = [];
       this.lastTileItemStateKey = null;
+      this.knownPlayerTileFarms.clear();
       this.refreshPlayerNftHud();
       this.hud.setProgramStatus(
         `Minted ${player.metadata.name} with ${
@@ -1889,6 +1961,7 @@ export class LocalnetClient {
     this.lastFarmTileStates = [];
     this.lastTileItemStateKey = null;
     this.lastTileItemStates = [];
+    this.knownPlayerTileFarms.clear();
     this.refreshPlayerNftHud();
     this.hud.setProgramStatus(`Selected player ${shortAddress(mint)}.`);
     void this.ensureSelectedPlayerReady();

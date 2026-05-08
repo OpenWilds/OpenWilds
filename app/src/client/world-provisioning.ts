@@ -402,6 +402,21 @@ export class PlayerWorldProvisioner {
     return tileItem;
   }
 
+  async discoverActiveTileItems(worldPda: PublicKey) {
+    const candidates = await this.deriveTileItemCandidates(worldPda);
+    const componentPdas = candidates.map((candidate) => candidate.componentPda);
+    const [erAccounts, baseAccounts] = await Promise.all([
+      this.getMultipleAccountsInfo(this.options.erConnection, componentPdas),
+      this.getMultipleAccountsInfo(this.options.baseConnection, componentPdas),
+    ]);
+
+    return candidates.filter((candidate, index) => {
+      const account = erAccounts[index] ?? baseAccounts[index];
+
+      return account ? this.isTileItemAccountActive(account.data) : false;
+    });
+  }
+
   private async hasStoredComponents(player: PlayerState) {
     const accounts = playerComponents.map((component) => player[component.key]);
     const accountInfos =
@@ -711,7 +726,10 @@ export class PlayerWorldProvisioner {
     };
   }
 
-  private async initializePlayerOwner(worldPda: PublicKey, entityPda: PublicKey) {
+  private async initializePlayerOwner(
+    worldPda: PublicKey,
+    entityPda: PublicKey
+  ) {
     const { ApplySystem } = await loadBoltSdk();
     await this.options.sendBoltResult(
       await ApplySystem({
@@ -807,6 +825,46 @@ export class PlayerWorldProvisioner {
     return candidates;
   }
 
+  private async deriveTileItemCandidates(worldPda: PublicKey) {
+    const { AddEntity, InitializeComponent } = await loadBoltSdk();
+    const candidates: TileItemComponentState[] = [];
+
+    for (let y = 0; y < GRID_SIZE; y += 1) {
+      for (let x = 0; x < GRID_SIZE; x += 1) {
+        const point = { x, y };
+        const entityResult = await AddEntity({
+          payer: this.options.payer,
+          world: worldPda,
+          seed: tileItemEntitySeed(point),
+          connection: this.options.baseConnection,
+        });
+
+        if (!entityResult.entityPda) {
+          continue;
+        }
+
+        const componentResult = await InitializeComponent({
+          payer: this.options.payer,
+          entity: entityResult.entityPda,
+          componentId: PROGRAMS.tileItem,
+        });
+
+        if (!componentResult.componentPda) {
+          continue;
+        }
+
+        candidates.push({
+          key: tileTerrainKey(point),
+          entityPda: entityResult.entityPda,
+          componentPda: componentResult.componentPda,
+          delegated: false,
+        });
+      }
+    }
+
+    return candidates;
+  }
+
   private async getMultipleAccountsInfo(
     connection: Connection,
     accounts: PublicKey[]
@@ -837,6 +895,16 @@ export class PlayerWorldProvisioner {
       view.getUint32(35, true) !== 0 ||
       this.readI64(view, 47) !== 0
     );
+  }
+
+  private isTileItemAccountActive(data: Uint8Array) {
+    if (data.byteLength < 28) {
+      return false;
+    }
+
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+
+    return view.getUint16(24, true) !== 0 && view.getUint16(26, true) !== 0;
   }
 
   private readI64(view: DataView, offset: number) {
