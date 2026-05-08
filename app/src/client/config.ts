@@ -22,6 +22,7 @@ export const PROGRAMS = {
   inventory: new PublicKey("GkbbrRx8N4XsM6ELpKPQVaSvtU7mpNaKdUYh8X14ddCq"),
   farmType: new PublicKey("AeTFPGveiu5u9qaGpoCFLte95RBbaKYHcPA6VJHGzSJh"),
   tileFarm: new PublicKey("HtQi1ESxw8jY5383gaTwtv8vwJbSKfZcFuRb3vPq86KU"),
+  tileItem: new PublicKey("6RLX336UuzR9yU4FCrLcTc1SE62YyPc57L8pqjk3xdwP"),
   worldAuthority: new PublicKey("HPVrKGMFzX1VSFkEXU5sf9uZZ5bwqJW1jHkrdFgRGFZg"),
   worldTerrainRegistry: new PublicKey(
     "CbYVrUkZDrFRCBFA6HNNrQtzNgXP111zKqKpMy6KyhYQ"
@@ -46,9 +47,11 @@ export const PROGRAMS = {
     "EnjiFX1GJCZXWUAxRFYTbQrDHGdKSi3485EVB5xy2dUa"
   ),
   defineFarmType: new PublicKey("F14xPRR4xx6S8sufyU9MDfdCeCEp6XAFDGTKDfPzfD4y"),
+  defineTileItem: new PublicKey("AkakKkvTyQoT9jUeYze5KWG841RcpPfY8XV3Bzk5wn4Z"),
   grantStarterInventory: new PublicKey(
     "DAMdALMLCxCbiMHJovqEvr5c1kvfNdfyN9Nfxs93rhxY"
   ),
+  grabTile: new PublicKey("3UEFZZDhmaMh1mBZYvxZxk2PZ2Zb4niHg4wpg2iYiW8J"),
   chopTile: new PublicKey("GctbHkUcDA9AHkDeLtJ1P1sE1oSLoncDGMBYiYPzMAgs"),
   tillTile: new PublicKey("GGf7T4KZ2sJGwiuu6e7bTAc17VwQAR5xKmp9NvF9CmUN"),
   waterTile: new PublicKey("Cp5YRnmvnbRPsCucPAGVh6Sorbd5wjDma8sGKYAuveuu"),

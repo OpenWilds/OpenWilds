@@ -38,7 +38,8 @@ export type FarmActionMode =
   | "water"
   | "plant"
   | "harvest"
-  | "chop";
+  | "chop"
+  | "grab";
 
 export type FarmTileState = GridPoint & {
   soilState: "untilled" | "tilled";
@@ -53,7 +54,13 @@ export type FarmTileState = GridPoint & {
 
 export type FarmActionResult = {
   player: PlayerActionState;
-  tile: FarmTileState;
+  tile?: FarmTileState;
+  item?: TileItemState | null;
+};
+
+export type TileItemState = GridPoint & {
+  itemId: number;
+  quantity: number;
 };
 
 export type PlayerAppearance = {
@@ -100,5 +107,8 @@ export type GameClient = {
   ) => () => void;
   subscribeFarmTiles?: (
     listener: (tiles: FarmTileState[]) => void
+  ) => () => void;
+  subscribeTileItems?: (
+    listener: (items: TileItemState[]) => void
   ) => () => void;
 };

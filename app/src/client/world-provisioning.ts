@@ -96,6 +96,14 @@ type GameWorldConfig = {
     entityPda: string;
     componentPda: string;
   }>;
+  tileItems?: Array<{
+    x: number;
+    y: number;
+    itemId: number;
+    quantity: number;
+    entityPda: string;
+    componentPda: string;
+  }>;
 };
 
 const GRID_SIZE = 20;
@@ -338,6 +346,25 @@ export class PlayerWorldProvisioner {
     return tileFarm;
   }
 
+  async ensureTileItem(player: PlayerState, point: GridPoint) {
+    const key = tileTerrainKey(point);
+    const sharedTileItem = await this.readSharedTileItem(point);
+
+    if (!sharedTileItem) {
+      throw new Error(`No item is provisioned on tile ${key}.`);
+    }
+
+    await this.ensureComponentDelegated(
+      player,
+      {
+        label: `Tile Item ${key}`,
+        programId: PROGRAMS.tileItem,
+      },
+      sharedTileItem
+    );
+    return sharedTileItem;
+  }
+
   private async hasStoredComponents(player: PlayerState) {
     const accounts = playerComponents.map((component) => player[component.key]);
     const accountInfos =
@@ -383,6 +410,26 @@ export class PlayerWorldProvisioner {
       componentPda: new PublicKey(tile.componentPda),
       delegated: await this.isComponentDelegated(
         new PublicKey(tile.componentPda)
+      ),
+    };
+  }
+
+  private async readSharedTileItem(point: GridPoint) {
+    const config = await this.loadGameWorldConfig();
+    const item = config?.tileItems?.find(
+      (candidate) => candidate.x === point.x && candidate.y === point.y
+    );
+
+    if (!item) {
+      return null;
+    }
+
+    return {
+      key: tileTerrainKey(point),
+      entityPda: new PublicKey(item.entityPda),
+      componentPda: new PublicKey(item.componentPda),
+      delegated: await this.isComponentDelegated(
+        new PublicKey(item.componentPda)
       ),
     };
   }

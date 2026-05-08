@@ -15,6 +15,7 @@ import {
   TERRAIN_TYPES,
 } from "../app/src/game/terrain";
 import { FARM_TYPES } from "../app/src/game/farm";
+import { WORLD_ITEM_DROPS } from "../app/src/game/world-items";
 
 const LOCALNET_RPC_URL = process.env.RPC_URL ?? "http://127.0.0.1:8899";
 process.env.ANCHOR_PROVIDER_URL ??= LOCALNET_RPC_URL;
@@ -42,13 +43,13 @@ const PROGRAMS = {
   ),
   terrainType: new PublicKey("G6qkktc5oWkPHFmhk8x3UwzZ5WuQLE5En7PGteko6mhK"),
   tileTerrain: new PublicKey("5hCo8uVeWtjqmeFQAovyLFuW1vZ4wS3kKP7ms7SUyyqk"),
+  tileItem: new PublicKey("6RLX336UuzR9yU4FCrLcTc1SE62YyPc57L8pqjk3xdwP"),
   farmType: new PublicKey("AeTFPGveiu5u9qaGpoCFLte95RBbaKYHcPA6VJHGzSJh"),
   registerTerrainType: new PublicKey(
     "B9qCeXFe5431no3DTZQdZjexyG1cCep1yHjZrxm5c2AM"
   ),
-  defineFarmType: new PublicKey(
-    "F14xPRR4xx6S8sufyU9MDfdCeCEp6XAFDGTKDfPzfD4y"
-  ),
+  defineFarmType: new PublicKey("F14xPRR4xx6S8sufyU9MDfdCeCEp6XAFDGTKDfPzfD4y"),
+  defineTileItem: new PublicKey("AkakKkvTyQoT9jUeYze5KWG841RcpPfY8XV3Bzk5wn4Z"),
   defineTileTerrain: new PublicKey(
     "DBfTvysc3GQVoazLgbwLr2yqjs8msjaco9q8fgTaLUTy"
   ),
@@ -87,6 +88,14 @@ type StoredGameWorld = {
     x: number;
     y: number;
     terrainTypeId: number;
+    entityPda: string;
+    componentPda: string;
+  }>;
+  tileItems: Array<{
+    x: number;
+    y: number;
+    itemId: number;
+    quantity: number;
     entityPda: string;
     componentPda: string;
   }>;
@@ -327,6 +336,7 @@ const main = async () => {
   const terrainTypes: StoredGameWorld["terrainTypes"] = [];
   const farmTypes: StoredGameWorld["farmTypes"] = [];
   const tileTerrains: StoredGameWorld["tileTerrains"] = [];
+  const tileItems: StoredGameWorld["tileItems"] = [];
 
   for (const definition of TERRAIN_TYPES) {
     const terrainTypeEntityPda = await addEntity(
@@ -488,6 +498,50 @@ const main = async () => {
     );
   }
 
+  for (const item of WORLD_ITEM_DROPS) {
+    const itemLabel = `tile item ${item.x},${item.y}`;
+    const tileItemEntityPda = await addEntity(worldResult.worldPda, itemLabel);
+    const tileItemComponentPda = await initializeComponent(
+      tileItemEntityPda,
+      PROGRAMS.tileItem,
+      itemLabel
+    );
+
+    await sendBoltResult(
+      await ApplySystem({
+        authority: provider.wallet.publicKey,
+        systemId: PROGRAMS.defineTileItem,
+        world: worldResult.worldPda,
+        entities: [
+          {
+            entity: worldAuthorityEntityPda,
+            components: [{ componentId: PROGRAMS.worldAuthority }],
+          },
+          {
+            entity: tileItemEntityPda,
+            components: [{ componentId: PROGRAMS.tileItem }],
+          },
+        ],
+        args: {
+          x: item.x,
+          y: item.y,
+          item_id: item.itemId,
+          quantity: item.quantity,
+        },
+      }),
+      `Define tile item ${item.x},${item.y}`
+    );
+
+    tileItems.push({
+      x: item.x,
+      y: item.y,
+      itemId: item.itemId,
+      quantity: item.quantity,
+      entityPda: tileItemEntityPda.toBase58(),
+      componentPda: tileItemComponentPda.toBase58(),
+    });
+  }
+
   const storedWorld: StoredGameWorld = {
     cluster: "localnet",
     rpcUrl: LOCALNET_RPC_URL,
@@ -505,6 +559,7 @@ const main = async () => {
     terrainTypes,
     farmTypes,
     tileTerrains,
+    tileItems,
     generatedAt: new Date().toISOString(),
   };
 

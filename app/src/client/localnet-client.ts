@@ -16,10 +16,12 @@ import type {
   InventoryState,
   PlayerAppearance,
   PlayerActionState,
+  TileItemState,
   VisiblePlayerState,
 } from "../game/types";
 import { FARM_TYPES } from "../game/farm";
 import { getTileTerrainDefinition } from "../game/terrain";
+import { getWorldItemKey } from "../game/world-items";
 import {
   AIRDROP_SOL,
   EPHEMERAL_ROLLUP_RPC_URL,
@@ -122,12 +124,13 @@ type WorldCatalogEntry = {
 type GameWorldConfig = {
   terrainTypes: WorldCatalogEntry[];
   farmTypes: WorldCatalogEntry[];
+  tileItems?: Array<WorldCatalogEntry & TileItemState>;
 };
 
 const ACTION_IDLE = 0;
 const ACTION_MOVE = 1;
 const ACTION_SLEEP = 2;
-const FARM_ACTIONS = new Set([3, 4, 5, 6, 7]);
+const FARM_ACTIONS = new Set([3, 4, 5, 6, 7, 8]);
 const STARTER_INVENTORY_ARGS = {
   turnip_seeds: 6,
   wheat_seeds: 4,
@@ -161,6 +164,9 @@ export class LocalnetClient {
   private readonly farmTileListeners = new Set<
     (tiles: FarmTileState[]) => void
   >();
+  private readonly tileItemListeners = new Set<
+    (items: TileItemState[]) => void
+  >();
   private playerState: PlayerState | null = null;
   private activePlayerNft: PlayerNft | null = null;
   private actionUnlockTimer: number | null = null;
@@ -171,6 +177,8 @@ export class LocalnetClient {
   private lastInventoryStateKey: string | null = null;
   private lastFarmTileStates: FarmTileState[] = [];
   private lastFarmTileStateKey: string | null = null;
+  private lastTileItemStates: TileItemState[] = [];
+  private lastTileItemStateKey: string | null = null;
 
   constructor(hudElements: HudElements) {
     this.hud = new HudController(hudElements);
@@ -407,6 +415,10 @@ export class LocalnetClient {
         : null;
     }
 
+    if (mode === "grab") {
+      return this.performGrabAction(point);
+    }
+
     try {
       await this.installAnchorProvider(this.baseConnection);
       await this.requireDeployedPrograms([
@@ -521,6 +533,109 @@ export class LocalnetClient {
     }
   }
 
+  private async performGrabAction(
+    point: GridPoint
+  ): Promise<FarmActionResult | null> {
+    try {
+      await this.installAnchorProvider(this.baseConnection);
+      await this.requireDeployedPrograms([
+        "position",
+        "activeAction",
+        "inventory",
+        "tileItem",
+        "grabTile",
+      ]);
+
+      const player = await this.ensureOnchainPlayer();
+      const tileItem = await this.createPlayerWorldProvisioner().ensureTileItem(
+        player,
+        point
+      );
+
+      await this.installAnchorProvider(this.erConnection);
+      const actionState = await this.fetchPlayerActionStateOnEr(player);
+
+      if (this.isActionActive(actionState.activeAction)) {
+        this.hud.setProgramStatus(
+          `${this.describeAction(actionState.activeAction)} in progress.`
+        );
+        this.renderActionBusy(actionState.activeAction);
+        this.emitPlayerActionState(actionState);
+        return null;
+      }
+
+      const itemState = await this.fetchTileItemState(
+        tileItem.componentPda,
+        point
+      );
+
+      if (!itemState || itemState.itemId === 0 || itemState.quantity === 0) {
+        this.hud.setProgramStatus("There is no item on that tile.");
+        await this.syncTileItems();
+        return null;
+      }
+
+      const { ApplySystem } = await loadBoltSdk();
+
+      this.hud.setProgramStatus(`Grabbing item at ${point.x}, ${point.y}...`);
+      await this.sendBoltResult(
+        await ApplySystem({
+          authority: this.wallet.publicKey,
+          systemId: PROGRAMS.grabTile,
+          world: player.worldPda,
+          entities: [
+            {
+              entity: player.entityPda,
+              components: [
+                { componentId: PROGRAMS.position },
+                { componentId: PROGRAMS.activeAction },
+              ],
+            },
+            {
+              entity: tileItem.entityPda,
+              components: [{ componentId: PROGRAMS.tileItem }],
+            },
+            {
+              entity: player.entityPda,
+              components: [{ componentId: PROGRAMS.inventory }],
+            },
+          ],
+          args: point,
+        }),
+        this.erConnection,
+        { skipPreflight: true }
+      );
+
+      const confirmedState = await this.fetchPlayerActionStateOnEr(player);
+      const confirmedItem = await this.fetchTileItemState(
+        tileItem.componentPda,
+        point
+      );
+
+      this.hud.setProgramStatus("Grab confirmed.");
+      this.renderActionBusy(confirmedState.activeAction);
+      this.emitPlayerActionState(confirmedState);
+      await this.syncInventory(player);
+      await this.syncTileItems();
+      await this.syncVisiblePlayers();
+
+      return {
+        player: confirmedState,
+        item: confirmedItem,
+      };
+    } catch (error) {
+      const message = await describeOnchainError(
+        "grab action failed",
+        error,
+        this.erConnection
+      );
+      this.hud.setProgramStatus(
+        message ? `Grab failed: ${message}` : "Grab failed."
+      );
+      return null;
+    }
+  }
+
   subscribePlayerActionState(listener: (state: PlayerActionState) => void) {
     this.playerActionStateListeners.add(listener);
 
@@ -573,6 +688,18 @@ export class LocalnetClient {
     };
   }
 
+  subscribeTileItems(listener: (items: TileItemState[]) => void) {
+    this.tileItemListeners.add(listener);
+
+    if (this.lastTileItemStates.length > 0) {
+      listener(this.lastTileItemStates);
+    }
+
+    return () => {
+      this.tileItemListeners.delete(listener);
+    };
+  }
+
   private bindControls() {
     this.hud.elements.airdropButton?.addEventListener("click", () => {
       void this.airdrop();
@@ -608,6 +735,8 @@ export class LocalnetClient {
       this.lastPlayerActionStateKey = null;
       this.lastFarmTileStates = [];
       this.lastFarmTileStateKey = null;
+      this.lastTileItemStates = [];
+      this.lastTileItemStateKey = null;
       this.renderActionBusy({
         action: ACTION_IDLE,
         kind: "idle",
@@ -700,6 +829,7 @@ export class LocalnetClient {
       if (stateKey === this.lastPlayerActionStateKey) {
         await this.syncInventory(player);
         await this.syncFarmTiles(player);
+        await this.syncTileItems();
         await this.syncVisiblePlayers();
         return;
       }
@@ -708,6 +838,7 @@ export class LocalnetClient {
       this.emitPlayerActionState(actionState);
       await this.syncInventory(player);
       await this.syncFarmTiles(player);
+      await this.syncTileItems();
       await this.syncVisiblePlayers();
 
       if (options.announceLoaded) {
@@ -979,6 +1110,21 @@ export class LocalnetClient {
       lastHarvestedAt: this.readI64(view, 55),
       harvestCount: view.getUint32(63, true),
     };
+  }
+
+  private async fetchTileItemState(
+    tileItemPda: PublicKey,
+    fallbackPoint: GridPoint
+  ): Promise<TileItemState | null> {
+    const account =
+      (await this.erConnection.getAccountInfo(tileItemPda)) ??
+      (await this.baseConnection.getAccountInfo(tileItemPda));
+
+    if (!account) {
+      return null;
+    }
+
+    return this.decodeTileItem(account.data, fallbackPoint);
   }
 
   private describeFarmMode(mode: FarmActionMode) {
@@ -1294,6 +1440,29 @@ export class LocalnetClient {
     this.emitFarmTiles(activeTiles);
   }
 
+  private async syncTileItems() {
+    if (this.tileItemListeners.size === 0) {
+      return;
+    }
+
+    const config = await this.loadGameWorldConfig();
+    const entries = config.tileItems ?? [];
+    const items = (
+      await Promise.all(
+        entries.map((entry) =>
+          this.fetchTileItemState(new PublicKey(entry.componentPda), entry)
+        )
+      )
+    ).filter((item): item is TileItemState => Boolean(item?.itemId));
+    const stateKey = this.getTileItemStateKey(items);
+
+    if (stateKey === this.lastTileItemStateKey) {
+      return;
+    }
+
+    this.emitTileItems(items);
+  }
+
   private decodePosition(data: Uint8Array): GridPoint {
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
 
@@ -1343,6 +1512,30 @@ export class LocalnetClient {
           quantity: quantities[index],
         }))
         .filter((slot) => slot.itemId !== 0 && slot.quantity > 0),
+    };
+  }
+
+  private decodeTileItem(
+    data: Uint8Array,
+    fallbackPoint: GridPoint
+  ): TileItemState | null {
+    if (data.byteLength < 28) {
+      return null;
+    }
+
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    const itemId = view.getUint16(24, true);
+    const quantity = view.getUint16(26, true);
+
+    if (itemId === 0 || quantity === 0) {
+      return null;
+    }
+
+    return {
+      x: this.readI64(view, 8) || fallbackPoint.x,
+      y: this.readI64(view, 16) || fallbackPoint.y,
+      itemId,
+      quantity,
     };
   }
 
@@ -1482,6 +1675,15 @@ export class LocalnetClient {
     }
   }
 
+  private emitTileItems(items: TileItemState[]) {
+    this.lastTileItemStates = items;
+    this.lastTileItemStateKey = this.getTileItemStateKey(items);
+
+    for (const listener of this.tileItemListeners) {
+      listener(items);
+    }
+  }
+
   private getPlayerAppearance(player: PlayerNft): PlayerAppearance {
     const style = getPlayerColorStyle(player.color);
 
@@ -1513,6 +1715,8 @@ export class LocalnetClient {
       this.lastPlayerActionStateKey = null;
       this.lastFarmTileStates = [];
       this.lastFarmTileStateKey = null;
+      this.lastTileItemStates = [];
+      this.lastTileItemStateKey = null;
       this.refreshPlayerNftHud();
       this.hud.setProgramStatus(
         `Minted ${player.metadata.name} with ${
@@ -1535,6 +1739,8 @@ export class LocalnetClient {
     this.lastInventoryState = null;
     this.lastFarmTileStateKey = null;
     this.lastFarmTileStates = [];
+    this.lastTileItemStateKey = null;
+    this.lastTileItemStates = [];
     this.refreshPlayerNftHud();
     this.hud.setProgramStatus(`Selected player ${shortAddress(mint)}.`);
     void this.ensureSelectedPlayerReady();
@@ -1575,6 +1781,15 @@ export class LocalnetClient {
           tile.lastHarvestedAt,
           tile.harvestCount,
         ].join(":")
+      )
+      .sort()
+      .join("|");
+  }
+
+  private getTileItemStateKey(items: TileItemState[]) {
+    return items
+      .map((item) =>
+        [getWorldItemKey(item), item.itemId, item.quantity].join(":")
       )
       .sort()
       .join("|");

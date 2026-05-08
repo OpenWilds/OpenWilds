@@ -3,7 +3,8 @@ import { createBoard } from "./board";
 import { createHoverEntity, createPlayerEntity } from "./entities/index";
 import { World } from "./ecs";
 import { createFarmCatalog } from "./farm-catalog";
-import { FARM_TYPES, FarmFeature, FarmKind } from "./farm";
+import { FARM_TYPES, FarmFeature, FarmKind, getFarmItemLabel } from "./farm";
+import { getItemColor, getWorldItemKey } from "./world-items";
 import { projectFarmGrowth } from "./farm-growth";
 import { GAME_SECONDS_PER_DAY, getGameTimeSeconds } from "./game-time";
 import { GAME_HEIGHT, GAME_WIDTH } from "./grid-constants";
@@ -20,6 +21,7 @@ import type {
   InventoryState,
   PlayerActionState,
   PlayerAppearance,
+  TileItemState,
   VisiblePlayerState,
 } from "./types";
 
@@ -46,14 +48,21 @@ export const createGridScene = (client: GameClient) =>
     private unsubscribeVisiblePlayers: (() => void) | null = null;
     private unsubscribeInventory: (() => void) | null = null;
     private unsubscribeFarmTiles: (() => void) | null = null;
+    private unsubscribeTileItems: (() => void) | null = null;
     private farmCatalog: ReturnType<typeof createFarmCatalog> | null = null;
     private activePlayerEntity: number | null = null;
     private farmActionPending = false;
     private farmTileRenderElapsedMs = 0;
     private selectedFarmTileKey: string | null = null;
+    private selectedTileItemKey: string | null = null;
     private plantInfoPanel: PlantInfoPanel | null = null;
     private readonly farmTiles = new Map<string, FarmTileState>();
     private readonly farmTileGraphics = new Map<
+      string,
+      Phaser.GameObjects.Graphics
+    >();
+    private readonly tileItems = new Map<string, TileItemState>();
+    private readonly tileItemGraphics = new Map<
       string,
       Phaser.GameObjects.Graphics
     >();
@@ -101,6 +110,8 @@ export const createGridScene = (client: GameClient) =>
         this.unsubscribeInventory = null;
         this.unsubscribeFarmTiles?.();
         this.unsubscribeFarmTiles = null;
+        this.unsubscribeTileItems?.();
+        this.unsubscribeTileItems = null;
       });
     }
 
@@ -165,6 +176,9 @@ export const createGridScene = (client: GameClient) =>
         ) ?? null;
       this.unsubscribeFarmTiles =
         client.subscribeFarmTiles?.((tiles) => this.applyFarmTiles(tiles)) ??
+        null;
+      this.unsubscribeTileItems =
+        client.subscribeTileItems?.((items) => this.applyTileItems(items)) ??
         null;
     }
 
@@ -254,6 +268,34 @@ export const createGridScene = (client: GameClient) =>
       this.inspectHoveredFarmTile(this.gridInput.hoverPoint);
     }
 
+    private applyTileItems(items: TileItemState[]) {
+      const visibleItems = new Set<string>();
+      this.tileItems.clear();
+
+      for (const item of items) {
+        const key = getWorldItemKey(item);
+        visibleItems.add(key);
+        this.tileItems.set(key, item);
+        this.drawTileItem(item);
+      }
+
+      for (const [key, graphics] of this.tileItemGraphics) {
+        if (!visibleItems.has(key)) {
+          graphics.destroy();
+          this.tileItemGraphics.delete(key);
+        }
+      }
+
+      if (
+        this.selectedTileItemKey &&
+        !this.tileItems.has(this.selectedTileItemKey)
+      ) {
+        this.hidePlantInfo();
+      }
+
+      this.inspectHoveredFarmTile(this.gridInput.hoverPoint);
+    }
+
     private redrawFarmTiles() {
       const nowGameSeconds = getGameTimeSeconds();
 
@@ -292,11 +334,61 @@ export const createGridScene = (client: GameClient) =>
           );
         }
 
-        this.farmTiles.set(this.getTileKey(result.tile), result.tile);
-        this.drawFarmTile(result.tile);
-        this.refreshPlantInfo();
+        if (result.tile) {
+          this.farmTiles.set(this.getTileKey(result.tile), result.tile);
+          this.drawFarmTile(result.tile);
+          this.refreshPlantInfo();
+        }
+
+        if (result.item) {
+          this.drawTileItem(result.item);
+        } else if (mode === "grab") {
+          const key = getWorldItemKey(point);
+          this.tileItemGraphics.get(key)?.destroy();
+          this.tileItemGraphics.delete(key);
+          this.tileItems.delete(key);
+          if (this.selectedTileItemKey === key) {
+            this.hidePlantInfo();
+          }
+        }
       } finally {
         this.farmActionPending = false;
+      }
+    }
+
+    private drawTileItem(item: TileItemState) {
+      const key = getWorldItemKey(item);
+
+      if (item.itemId === 0 || item.quantity === 0) {
+        this.tileItemGraphics.get(key)?.destroy();
+        this.tileItemGraphics.delete(key);
+        this.tileItems.delete(key);
+        return;
+      }
+
+      const graphics =
+        this.tileItemGraphics.get(key) ?? this.add.graphics().setDepth(6);
+      this.tileItemGraphics.set(key, graphics);
+      graphics.clear();
+
+      const left = GRID_ORIGIN_X + item.x * CELL_SIZE;
+      const top = GRID_ORIGIN_Y + item.y * CELL_SIZE;
+      const centerX = left + CELL_SIZE / 2;
+      const centerY = top + CELL_SIZE / 2;
+      const color = getItemColor(item.itemId);
+
+      graphics.fillStyle(0x2f3a32, 0.18);
+      graphics.fillEllipse(centerX, centerY + 10, 24, 8);
+      graphics.fillStyle(color, 1);
+      graphics.fillCircle(centerX, centerY, 8);
+      graphics.lineStyle(2, 0xffffff, 0.9);
+      graphics.strokeCircle(centerX, centerY, 8);
+
+      if (item.quantity > 1) {
+        graphics.fillStyle(0x17211e, 0.82);
+        graphics.fillRoundedRect(centerX + 4, centerY + 3, 14, 12, 4);
+        graphics.lineStyle(1, 0xffffff, 0.7);
+        graphics.strokeRoundedRect(centerX + 4, centerY + 3, 14, 12, 4);
       }
     }
 
@@ -415,12 +507,34 @@ export const createGridScene = (client: GameClient) =>
 
     private showPlantInfo(tile: FarmTileState) {
       this.selectedFarmTileKey = this.getTileKey(tile);
+      this.selectedTileItemKey = null;
       this.refreshPlantInfo();
+    }
+
+    private showTileItemInfo(item: TileItemState) {
+      this.selectedFarmTileKey = null;
+      this.selectedTileItemKey = getWorldItemKey(item);
+
+      const panel = this.ensurePlantInfoPanel();
+      const label = getFarmItemLabel(item.itemId);
+
+      this.positionInfoPanel(item, panel, 0xf0c15b);
+      panel.barTrack.clear();
+      panel.barFill.clear();
+      panel.title.setText(`${label} (${item.x}, ${item.y})`);
+      panel.body.setText(`Quantity ${item.quantity}`);
     }
 
     private inspectHoveredFarmTile(point: { x: number; y: number } | null) {
       if (!point) {
         this.hidePlantInfo();
+        return;
+      }
+
+      const item = this.tileItems.get(getWorldItemKey(point));
+
+      if (item) {
+        this.showTileItemInfo(item);
         return;
       }
 
@@ -529,8 +643,16 @@ export const createGridScene = (client: GameClient) =>
     }
 
     private positionPlantInfoPanel(tile: FarmTileState, panel: PlantInfoPanel) {
-      const tileLeft = GRID_ORIGIN_X + tile.x * CELL_SIZE;
-      const tileTop = GRID_ORIGIN_Y + tile.y * CELL_SIZE;
+      this.positionInfoPanel(tile, panel, 0xffe0a3);
+    }
+
+    private positionInfoPanel(
+      point: { x: number; y: number },
+      panel: PlantInfoPanel,
+      highlightColor: number
+    ) {
+      const tileLeft = GRID_ORIGIN_X + point.x * CELL_SIZE;
+      const tileTop = GRID_ORIGIN_Y + point.y * CELL_SIZE;
       const x = Math.min(
         GAME_WIDTH - PLANT_INFO_WIDTH - 18,
         Math.max(18, tileLeft + CELL_SIZE + 8)
@@ -541,7 +663,7 @@ export const createGridScene = (client: GameClient) =>
       );
 
       panel.highlight.clear();
-      panel.highlight.lineStyle(2, 0xffe0a3, 1);
+      panel.highlight.lineStyle(2, highlightColor, 1);
       panel.highlight.strokeRoundedRect(
         tileLeft + 3,
         tileTop + 3,
@@ -592,6 +714,7 @@ export const createGridScene = (client: GameClient) =>
 
     private hidePlantInfo() {
       this.selectedFarmTileKey = null;
+      this.selectedTileItemKey = null;
 
       if (!this.plantInfoPanel) {
         return;

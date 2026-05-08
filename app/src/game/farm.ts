@@ -1,4 +1,5 @@
 import type * as Phaser from "phaser";
+import { ItemId } from "./terrain";
 
 export const FarmKind = {
   crop: 1,
@@ -26,6 +27,10 @@ export const FarmItemId = {
 } as const;
 
 export const FARM_ITEM_LABELS: Record<number, string> = {
+  [ItemId.grassFiber]: "Grass Fiber",
+  [ItemId.berry]: "Wild Berry",
+  [ItemId.stone]: "Stone",
+  [ItemId.reed]: "Reed",
   [FarmItemId.turnipSeed]: "Turnip Seed",
   [FarmItemId.turnip]: "Turnip",
   [FarmItemId.wheatSeed]: "Wheat Seed",
@@ -200,7 +205,13 @@ export const drawFarmPlaceholder = (
 
   if (farm.kind === FarmKind.tree) {
     graphics.fillStyle(0x7a5130, 1);
-    graphics.fillRoundedRect(x - 4 * scale, y + 4 * scale, 8 * scale, 14 * scale, 3 * scale);
+    graphics.fillRoundedRect(
+      x - 4 * scale,
+      y + 4 * scale,
+      8 * scale,
+      14 * scale,
+      3 * scale
+    );
     graphics.fillStyle(farm.color, 1);
     graphics.fillCircle(x, y, 15 * scale);
     graphics.fillCircle(x - 10 * scale, y + 4 * scale, 10 * scale);
