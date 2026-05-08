@@ -1,9 +1,12 @@
 import Phaser from "phaser";
-import type { GameClient, GridPoint } from "./types";
+import type { FarmActionMode, GameClient, GridPoint } from "./types";
 
 export type GridInput = {
   hoverPoint: GridPoint | null;
   requestedMove: GridPoint | null;
+  requestedFarmAction: GridPoint | null;
+  farmActionMode: FarmActionMode;
+  selectedItemId: number | null;
 };
 
 export type MoveState = {
@@ -38,6 +41,9 @@ export const installGridResources = (
   world.setResource<GridResources["input"]>("input", {
     hoverPoint: null,
     requestedMove: null,
+    requestedFarmAction: null,
+    farmActionMode: "move",
+    selectedItemId: null,
   });
   world.setResource<GridResources["move"]>("move", {
     pending: false,

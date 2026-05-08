@@ -17,6 +17,7 @@ pub mod chop_tile {
     pub fn execute(ctx: Context<Components>, args: Vec<u8>) -> Result<Components> {
         let target: TileTarget =
             serde_json::from_slice(&args).map_err(|_| error!(ChopTileError::InvalidTileArgs))?;
+        let farm_type = load_farm_type(&ctx)?;
         let now = Clock::get()?.unix_timestamp;
         let active_action = &mut ctx.accounts.active_action;
 
@@ -37,15 +38,15 @@ pub mod chop_tile {
         );
         require!(tile_farm.has_plant(), ChopTileError::NoTree);
         require!(
-            tile_farm.farm_type_id == ctx.accounts.farm_type.farm_type_id,
+            tile_farm.farm_type_id == farm_type.farm_type_id,
             ChopTileError::FarmTypeMismatch
         );
         require!(
-            ctx.accounts.farm_type.farm_kind == FARM_KIND_TREE,
+            farm_type.farm_kind == FARM_KIND_TREE,
             ChopTileError::NotTree
         );
 
-        tile_farm.settle_growth(now, ctx.accounts.farm_type.needs_water());
+        tile_farm.settle_growth(now, farm_type.needs_water());
 
         let energy = &mut ctx.accounts.energy;
         if energy.max == 0 {
@@ -57,10 +58,9 @@ pub mod chop_tile {
             ChopTileError::NotEnoughEnergy
         );
 
-        ctx.accounts.inventory.add_item(
-            ctx.accounts.farm_type.chop_item_id,
-            ctx.accounts.farm_type.chop_yield,
-        )?;
+        ctx.accounts
+            .inventory
+            .add_item(farm_type.chop_item_id, farm_type.chop_yield)?;
         tile_farm.clear_plant();
         energy.current -= CHOP_ENERGY_COST;
         active_action.start(active_action::ACTION_CHOP, now, CHOP_SECONDS);
@@ -73,10 +73,21 @@ pub mod chop_tile {
         pub position: Position,
         pub energy: Energy,
         pub active_action: ActiveAction,
-        pub farm_type: FarmType,
         pub tile_farm: TileFarm,
         pub inventory: Inventory,
     }
+}
+
+fn load_farm_type(ctx: &Context<Components>) -> Result<FarmType> {
+    for account_info in ctx.remaining_accounts.iter() {
+        if *account_info.owner == farm_type::ID {
+            let data = &mut &account_info.try_borrow_data()?[..];
+            return FarmType::try_deserialize(data)
+                .map_err(|_| error!(ChopTileError::InvalidFarmTypeAccount));
+        }
+    }
+
+    err!(ChopTileError::MissingValidationAccount)
 }
 
 #[derive(Deserialize)]
@@ -103,4 +114,8 @@ pub enum ChopTileError {
     NotTree,
     #[msg("Not enough energy for chopping.")]
     NotEnoughEnergy,
+    #[msg("Chopping action is missing validation accounts.")]
+    MissingValidationAccount,
+    #[msg("Farm type validation account is invalid.")]
+    InvalidFarmTypeAccount,
 }

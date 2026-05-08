@@ -64,6 +64,12 @@ export const readStoredPlayer = (
         componentPda: new PublicKey(tileTerrain.componentPda),
         delegated: Boolean(tileTerrain.delegated),
       })),
+      tileFarms: (state.tileFarms ?? []).map((tileFarm) => ({
+        key: tileFarm.key,
+        entityPda: new PublicKey(tileFarm.entityPda),
+        componentPda: new PublicKey(tileFarm.componentPda),
+        delegated: Boolean(tileFarm.delegated),
+      })),
     };
   } catch {
     clearStoredPlayer();
@@ -97,6 +103,12 @@ export const writeStoredPlayer = (wallet: PublicKey, state: PlayerState) => {
       entityPda: tileTerrain.entityPda.toBase58(),
       componentPda: tileTerrain.componentPda.toBase58(),
       delegated: tileTerrain.delegated,
+    })),
+    tileFarms: state.tileFarms.map((tileFarm) => ({
+      key: tileFarm.key,
+      entityPda: tileFarm.entityPda.toBase58(),
+      componentPda: tileFarm.componentPda.toBase58(),
+      delegated: tileFarm.delegated,
     })),
   };
 

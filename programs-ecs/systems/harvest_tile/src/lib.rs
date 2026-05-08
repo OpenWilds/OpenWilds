@@ -17,6 +17,7 @@ pub mod harvest_tile {
     pub fn execute(ctx: Context<Components>, args: Vec<u8>) -> Result<Components> {
         let target: TileTarget =
             serde_json::from_slice(&args).map_err(|_| error!(HarvestTileError::InvalidTileArgs))?;
+        let farm_type = load_farm_type(&ctx)?;
         let now = Clock::get()?.unix_timestamp;
         let active_action = &mut ctx.accounts.active_action;
 
@@ -37,16 +38,16 @@ pub mod harvest_tile {
         );
         require!(tile_farm.has_plant(), HarvestTileError::NoPlant);
         require!(
-            tile_farm.farm_type_id == ctx.accounts.farm_type.farm_type_id,
+            tile_farm.farm_type_id == farm_type.farm_type_id,
             HarvestTileError::FarmTypeMismatch
         );
 
-        tile_farm.settle_growth(now, ctx.accounts.farm_type.needs_water());
+        tile_farm.settle_growth(now, farm_type.needs_water());
         require!(
             tile_farm.is_harvest_ready(
                 now,
-                ctx.accounts.farm_type.required_growth_seconds,
-                ctx.accounts.farm_type.regrow_seconds,
+                farm_type.required_growth_seconds,
+                farm_type.regrow_seconds,
             ),
             HarvestTileError::NotReady
         );
@@ -61,12 +62,11 @@ pub mod harvest_tile {
             HarvestTileError::NotEnoughEnergy
         );
 
-        ctx.accounts.inventory.add_item(
-            ctx.accounts.farm_type.harvest_item_id,
-            ctx.accounts.farm_type.base_yield,
-        )?;
+        ctx.accounts
+            .inventory
+            .add_item(farm_type.harvest_item_id, farm_type.base_yield)?;
 
-        if ctx.accounts.farm_type.regrow_seconds == 0 {
+        if farm_type.regrow_seconds == 0 {
             tile_farm.clear_plant();
         } else {
             tile_farm.last_harvested_at = now;
@@ -84,10 +84,21 @@ pub mod harvest_tile {
         pub position: Position,
         pub energy: Energy,
         pub active_action: ActiveAction,
-        pub farm_type: FarmType,
         pub tile_farm: TileFarm,
         pub inventory: Inventory,
     }
+}
+
+fn load_farm_type(ctx: &Context<Components>) -> Result<FarmType> {
+    for account_info in ctx.remaining_accounts.iter() {
+        if *account_info.owner == farm_type::ID {
+            let data = &mut &account_info.try_borrow_data()?[..];
+            return FarmType::try_deserialize(data)
+                .map_err(|_| error!(HarvestTileError::InvalidFarmTypeAccount));
+        }
+    }
+
+    err!(HarvestTileError::MissingValidationAccount)
 }
 
 #[derive(Deserialize)]
@@ -114,4 +125,8 @@ pub enum HarvestTileError {
     NotReady,
     #[msg("Not enough energy for harvesting.")]
     NotEnoughEnergy,
+    #[msg("Harvesting action is missing validation accounts.")]
+    MissingValidationAccount,
+    #[msg("Farm type validation account is invalid.")]
+    InvalidFarmTypeAccount,
 }

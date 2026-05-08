@@ -6,6 +6,10 @@ use world_authority::WorldAuthority;
 declare_id!("DBfTvysc3GQVoazLgbwLr2yqjs8msjaco9q8fgTaLUTy");
 
 const GRID_SIZE: i64 = 20;
+const TERRAIN_TYPE_MEADOW: u16 = 1;
+const TERRAIN_TYPE_FOREST: u16 = 2;
+const TERRAIN_TYPE_STONE: u16 = 3;
+const TERRAIN_TYPE_WATER: u16 = 4;
 
 #[system]
 pub mod define_tile_terrain {
@@ -24,11 +28,14 @@ pub mod define_tile_terrain {
             definition.terrain_type_id > 0,
             DefineTileTerrainError::InvalidTerrainTypeId
         );
-        require_keys_eq!(
-            ctx.accounts.authority.key(),
-            ctx.accounts.world_authority.terrain_admin,
-            DefineTileTerrainError::Unauthorized
-        );
+
+        if ctx.accounts.authority.key() != ctx.accounts.world_authority.terrain_admin {
+            require!(
+                definition.terrain_type_id
+                    == deterministic_terrain_type(definition.x, definition.y),
+                DefineTileTerrainError::UnauthorizedTerrainDefinition
+            );
+        }
 
         let tile_terrain = &mut ctx.accounts.tile_terrain;
         tile_terrain.x = definition.x;
@@ -42,6 +49,18 @@ pub mod define_tile_terrain {
     pub struct Components {
         pub world_authority: WorldAuthority,
         pub tile_terrain: TileTerrain,
+    }
+}
+
+fn deterministic_terrain_type(x: i64, y: i64) -> u16 {
+    if x <= 1 || y <= 1 {
+        TERRAIN_TYPE_WATER
+    } else if x > 14 && y < 7 {
+        TERRAIN_TYPE_STONE
+    } else if x > 4 && x < 10 && y > 3 && y < 12 {
+        TERRAIN_TYPE_FOREST
+    } else {
+        TERRAIN_TYPE_MEADOW
     }
 }
 
@@ -62,4 +81,6 @@ pub enum DefineTileTerrainError {
     InvalidTerrainTypeId,
     #[msg("Only the terrain admin may define tile terrain.")]
     Unauthorized,
+    #[msg("Non-admin tile terrain definitions must match deterministic world terrain.")]
+    UnauthorizedTerrainDefinition,
 }

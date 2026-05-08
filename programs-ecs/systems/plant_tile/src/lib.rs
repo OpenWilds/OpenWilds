@@ -19,6 +19,9 @@ pub mod plant_tile {
     pub fn execute(ctx: Context<Components>, args: Vec<u8>) -> Result<Components> {
         let target: PlantTarget =
             serde_json::from_slice(&args).map_err(|_| error!(PlantTileError::InvalidPlantArgs))?;
+        let tile_terrain = load_tile_terrain(&ctx)?;
+        let terrain_type = load_terrain_type(&ctx)?;
+        let farm_type = load_farm_type(&ctx)?;
         let now = Clock::get()?.unix_timestamp;
         let active_action = &mut ctx.accounts.active_action;
 
@@ -32,19 +35,19 @@ pub mod plant_tile {
             PlantTileError::PlayerNotOnTile
         );
         require!(
-            ctx.accounts.tile_terrain.x == target.x && ctx.accounts.tile_terrain.y == target.y,
+            tile_terrain.x == target.x && tile_terrain.y == target.y,
             PlantTileError::TileMismatch
         );
         require!(
-            ctx.accounts.tile_terrain.terrain_type_id == ctx.accounts.terrain_type.terrain_type_id,
+            tile_terrain.terrain_type_id == terrain_type.terrain_type_id,
             PlantTileError::TerrainTypeMismatch
         );
         require!(
-            ctx.accounts.terrain_type.feature_flags & FEATURE_FARMABLE != 0,
+            terrain_type.feature_flags & FEATURE_FARMABLE != 0,
             PlantTileError::TileNotFarmable
         );
         require!(
-            target.farm_type_id == ctx.accounts.farm_type.farm_type_id,
+            target.farm_type_id == farm_type.farm_type_id,
             PlantTileError::FarmTypeMismatch
         );
 
@@ -55,14 +58,11 @@ pub mod plant_tile {
         );
         require!(!tile_farm.has_plant(), PlantTileError::TileOccupied);
         require!(
-            !ctx.accounts.farm_type.requires_tilled_soil() || tile_farm.is_tilled(),
+            !farm_type.requires_tilled_soil() || tile_farm.is_tilled(),
             PlantTileError::TileNotTilled
         );
         require!(
-            ctx.accounts
-                .inventory
-                .quantity(ctx.accounts.farm_type.seed_item_id)
-                > 0,
+            ctx.accounts.inventory.quantity(farm_type.seed_item_id) > 0,
             PlantTileError::MissingSeed
         );
 
@@ -78,7 +78,7 @@ pub mod plant_tile {
 
         ctx.accounts
             .inventory
-            .remove_item(ctx.accounts.farm_type.seed_item_id, 1)?;
+            .remove_item(farm_type.seed_item_id, 1)?;
         tile_farm.x = target.x;
         tile_farm.y = target.y;
         tile_farm.farm_type_id = target.farm_type_id;
@@ -99,12 +99,45 @@ pub mod plant_tile {
         pub position: Position,
         pub energy: Energy,
         pub active_action: ActiveAction,
-        pub tile_terrain: TileTerrain,
-        pub terrain_type: TerrainType,
-        pub farm_type: FarmType,
         pub tile_farm: TileFarm,
         pub inventory: Inventory,
     }
+}
+
+fn load_tile_terrain(ctx: &Context<Components>) -> Result<TileTerrain> {
+    for account_info in ctx.remaining_accounts.iter() {
+        if *account_info.owner == tile_terrain::ID {
+            let data = &mut &account_info.try_borrow_data()?[..];
+            return TileTerrain::try_deserialize(data)
+                .map_err(|_| error!(PlantTileError::InvalidTileTerrainAccount));
+        }
+    }
+
+    err!(PlantTileError::MissingValidationAccount)
+}
+
+fn load_terrain_type(ctx: &Context<Components>) -> Result<TerrainType> {
+    for account_info in ctx.remaining_accounts.iter() {
+        if *account_info.owner == terrain_type::ID {
+            let data = &mut &account_info.try_borrow_data()?[..];
+            return TerrainType::try_deserialize(data)
+                .map_err(|_| error!(PlantTileError::InvalidTerrainTypeAccount));
+        }
+    }
+
+    err!(PlantTileError::MissingValidationAccount)
+}
+
+fn load_farm_type(ctx: &Context<Components>) -> Result<FarmType> {
+    for account_info in ctx.remaining_accounts.iter() {
+        if *account_info.owner == farm_type::ID {
+            let data = &mut &account_info.try_borrow_data()?[..];
+            return FarmType::try_deserialize(data)
+                .map_err(|_| error!(PlantTileError::InvalidFarmTypeAccount));
+        }
+    }
+
+    err!(PlantTileError::MissingValidationAccount)
 }
 
 #[derive(Deserialize)]
@@ -140,4 +173,12 @@ pub enum PlantTileError {
     MissingSeed,
     #[msg("Not enough energy for planting.")]
     NotEnoughEnergy,
+    #[msg("Planting action is missing validation accounts.")]
+    MissingValidationAccount,
+    #[msg("Tile terrain validation account is invalid.")]
+    InvalidTileTerrainAccount,
+    #[msg("Terrain type validation account is invalid.")]
+    InvalidTerrainTypeAccount,
+    #[msg("Farm type validation account is invalid.")]
+    InvalidFarmTypeAccount,
 }

@@ -37,6 +37,26 @@ export type InventoryState = {
   slots: InventorySlotState[];
 };
 
+export type FarmActionMode =
+  | "move"
+  | "till"
+  | "water"
+  | "plant"
+  | "harvest"
+  | "chop";
+
+export type FarmTileState = GridPoint & {
+  soilState: "untilled" | "tilled";
+  farmTypeId: number;
+  growthSeconds: number;
+  wateredUntil: number;
+};
+
+export type FarmActionResult = {
+  player: PlayerActionState;
+  tile: FarmTileState;
+};
+
 export type PlayerAppearance = {
   color: string;
   fill: number;
@@ -62,6 +82,11 @@ export type ActionTransitionState = {
 
 export type GameClient = {
   movePlayer: (point: GridPoint) => Promise<PlayerActionState | null>;
+  performFarmAction?: (
+    mode: FarmActionMode,
+    point: GridPoint,
+    selectedItemId?: number | null
+  ) => Promise<FarmActionResult | null>;
   subscribePlayerActionState?: (
     listener: (state: PlayerActionState) => void
   ) => () => void;

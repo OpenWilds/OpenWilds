@@ -17,6 +17,8 @@ pub mod till_tile {
     pub fn execute(ctx: Context<Components>, args: Vec<u8>) -> Result<Components> {
         let target: TileTarget =
             serde_json::from_slice(&args).map_err(|_| error!(TillTileError::InvalidTileArgs))?;
+        let tile_terrain = load_tile_terrain(&ctx)?;
+        let terrain_type = load_terrain_type(&ctx)?;
         let now = Clock::get()?.unix_timestamp;
         let active_action = &mut ctx.accounts.active_action;
 
@@ -30,15 +32,15 @@ pub mod till_tile {
             TillTileError::PlayerNotOnTile
         );
         require!(
-            ctx.accounts.tile_terrain.x == target.x && ctx.accounts.tile_terrain.y == target.y,
+            tile_terrain.x == target.x && tile_terrain.y == target.y,
             TillTileError::TileMismatch
         );
         require!(
-            ctx.accounts.tile_terrain.terrain_type_id == ctx.accounts.terrain_type.terrain_type_id,
+            tile_terrain.terrain_type_id == terrain_type.terrain_type_id,
             TillTileError::TerrainTypeMismatch
         );
         require!(
-            ctx.accounts.terrain_type.feature_flags & FEATURE_FARMABLE != 0,
+            terrain_type.feature_flags & FEATURE_FARMABLE != 0,
             TillTileError::TileNotFarmable
         );
 
@@ -76,10 +78,32 @@ pub mod till_tile {
         pub position: Position,
         pub energy: Energy,
         pub active_action: ActiveAction,
-        pub tile_terrain: TileTerrain,
-        pub terrain_type: TerrainType,
         pub tile_farm: TileFarm,
     }
+}
+
+fn load_tile_terrain(ctx: &Context<Components>) -> Result<TileTerrain> {
+    for account_info in ctx.remaining_accounts.iter() {
+        if *account_info.owner == tile_terrain::ID {
+            let data = &mut &account_info.try_borrow_data()?[..];
+            return TileTerrain::try_deserialize(data)
+                .map_err(|_| error!(TillTileError::InvalidTileTerrainAccount));
+        }
+    }
+
+    err!(TillTileError::MissingValidationAccount)
+}
+
+fn load_terrain_type(ctx: &Context<Components>) -> Result<TerrainType> {
+    for account_info in ctx.remaining_accounts.iter() {
+        if *account_info.owner == terrain_type::ID {
+            let data = &mut &account_info.try_borrow_data()?[..];
+            return TerrainType::try_deserialize(data)
+                .map_err(|_| error!(TillTileError::InvalidTerrainTypeAccount));
+        }
+    }
+
+    err!(TillTileError::MissingValidationAccount)
 }
 
 #[derive(Deserialize)]
@@ -108,4 +132,10 @@ pub enum TillTileError {
     FarmTileMismatch,
     #[msg("Tile is already prepared or occupied.")]
     TileAlreadyPrepared,
+    #[msg("Farming action is missing terrain validation accounts.")]
+    MissingValidationAccount,
+    #[msg("Tile terrain validation account is invalid.")]
+    InvalidTileTerrainAccount,
+    #[msg("Terrain type validation account is invalid.")]
+    InvalidTerrainTypeAccount,
 }

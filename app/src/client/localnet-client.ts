@@ -9,12 +9,17 @@ import {
 import type {
   ActiveActionState,
   EnergyState,
+  FarmActionMode,
+  FarmActionResult,
+  FarmTileState,
   GridPoint,
   InventoryState,
   PlayerAppearance,
   PlayerActionState,
   VisiblePlayerState,
 } from "../game/types";
+import { FARM_TYPES } from "../game/farm";
+import { getTileTerrainDefinition } from "../game/terrain";
 import {
   AIRDROP_SOL,
   EPHEMERAL_ROLLUP_RPC_URL,
@@ -38,7 +43,7 @@ import {
   type PlayerColorId,
   type PlayerNft,
 } from "./player-nft";
-import type { BoltResult, PlayerState } from "./types";
+import type { BoltResult, PlayerState, TileFarmState, TileTerrainState } from "./types";
 import { HudController, type HudElements } from "./hud";
 import { installAnchorProvider, loadBoltSdk } from "./sdk";
 import {
@@ -103,6 +108,16 @@ const GRID_SIZE = 20;
 const WALK_ENERGY_PER_TILE = 1;
 const PLAYER_STATE_SYNC_INTERVAL_MS = 500;
 type ProgramName = keyof typeof PROGRAMS;
+type WorldCatalogEntry = {
+  farmTypeId?: number;
+  terrainTypeId?: number;
+  entityPda: string;
+  componentPda: string;
+};
+type GameWorldConfig = {
+  terrainTypes: WorldCatalogEntry[];
+  farmTypes: WorldCatalogEntry[];
+};
 
 const ACTION_IDLE = 0;
 const ACTION_MOVE = 1;
@@ -357,6 +372,134 @@ export class LocalnetClient {
     }
   }
 
+  async performFarmAction(
+    mode: FarmActionMode,
+    point: GridPoint,
+    selectedItemId?: number | null
+  ): Promise<FarmActionResult | null> {
+    if (mode === "move") {
+      const player = await this.movePlayer(point);
+      return player
+        ? {
+            player,
+            tile: {
+              ...point,
+              soilState: "untilled",
+              farmTypeId: 0,
+              growthSeconds: 0,
+              wateredUntil: 0,
+            },
+          }
+        : null;
+    }
+
+    try {
+      await this.installAnchorProvider(this.baseConnection);
+      await this.requireDeployedPrograms([
+        "position",
+        "energy",
+        "activeAction",
+        "inventory",
+        "tileFarm",
+        "farmType",
+        "terrainType",
+        "tileTerrain",
+        "tillTile",
+        "waterTile",
+        "plantTile",
+        "harvestTile",
+        "chopTile",
+      ]);
+
+      const player = await this.ensureOnchainPlayer();
+      const tileTerrain = await this.createPlayerWorldProvisioner().ensureTileTerrain(
+        player,
+        point
+      );
+      const tileFarm = await this.createPlayerWorldProvisioner().ensureTileFarm(
+        player,
+        point
+      );
+      const worldConfig = await this.loadGameWorldConfig();
+      const terrainDefinition = getTileTerrainDefinition(point);
+      const terrainType = this.findTerrainTypeEntry(
+        worldConfig,
+        terrainDefinition.terrainTypeId
+      );
+      const farmType = await this.findFarmTypeForAction(
+        mode,
+        selectedItemId,
+        tileFarm.componentPda,
+        worldConfig
+      );
+
+      await this.installAnchorProvider(this.erConnection);
+      const actionState = await this.fetchPlayerActionStateOnEr(player);
+
+      if (this.isActionActive(actionState.activeAction)) {
+        this.hud.setProgramStatus(
+          `${this.describeAction(actionState.activeAction)} in progress.`
+        );
+        this.renderActionBusy(actionState.activeAction);
+        this.emitPlayerActionState(actionState);
+        return null;
+      }
+
+      const { ApplySystem } = await loadBoltSdk();
+      const systemId = this.getFarmActionProgram(mode);
+      const { entities, extraAccounts } = this.getFarmActionAccounts(
+        mode,
+        player,
+        tileTerrain,
+        tileFarm,
+        terrainType,
+        farmType
+      );
+      const args =
+        mode === "plant"
+          ? { x: point.x, y: point.y, farm_type_id: farmType.farmTypeId }
+          : { x: point.x, y: point.y };
+
+      this.hud.setProgramStatus(`${this.describeFarmMode(mode)} ${point.x}, ${point.y}...`);
+      await this.sendBoltResult(
+        await ApplySystem({
+          authority: this.wallet.publicKey,
+          systemId,
+          world: player.worldPda,
+          entities,
+          extraAccounts,
+          args,
+        }),
+        this.erConnection,
+        { skipPreflight: true }
+      );
+
+      const confirmedState = await this.fetchPlayerActionStateOnEr(player);
+      const confirmedTile = await this.fetchFarmTileState(tileFarm.componentPda, point);
+
+      this.hud.setProgramStatus(`${this.describeFarmMode(mode)} confirmed.`);
+      this.renderActionBusy(confirmedState.activeAction);
+      this.emitPlayerActionState(confirmedState);
+      await this.syncInventory(player);
+      await this.syncVisiblePlayers();
+
+      return {
+        player: confirmedState,
+        tile: confirmedTile,
+      };
+    } catch (error) {
+      const message = await describeOnchainError(
+        "farm action failed",
+        error,
+        this.erConnection
+      );
+      this.hud.setProgramStatus(
+        message ? `Farm action failed: ${message}` : "Farm action failed."
+      );
+      return null;
+    }
+  }
+
   subscribePlayerActionState(listener: (state: PlayerActionState) => void) {
     this.playerActionStateListeners.add(listener);
 
@@ -604,6 +747,212 @@ export class LocalnetClient {
           ", "
         )}. Run localnet deploy.`
       );
+    }
+  }
+
+  private async loadGameWorldConfig(): Promise<GameWorldConfig> {
+    const response = await fetch("/game-world.localnet.json", {
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      throw new Error("Game world manifest is missing. Run localnet provision.");
+    }
+
+    return (await response.json()) as GameWorldConfig;
+  }
+
+  private findTerrainTypeEntry(
+    config: GameWorldConfig,
+    terrainTypeId: number
+  ) {
+    const entry = config.terrainTypes.find(
+      (terrain) => terrain.terrainTypeId === terrainTypeId
+    );
+
+    if (!entry) {
+      throw new Error(`Terrain type ${terrainTypeId} is not provisioned.`);
+    }
+
+    return {
+      entityPda: new PublicKey(entry.entityPda),
+      componentPda: new PublicKey(entry.componentPda),
+    };
+  }
+
+  private async findFarmTypeForAction(
+    mode: FarmActionMode,
+    selectedItemId: number | null | undefined,
+    tileFarmPda: PublicKey,
+    config: GameWorldConfig
+  ) {
+    let farmTypeId =
+      mode === "plant"
+        ? FARM_TYPES.find((farm) => farm.seedItemId === selectedItemId)
+            ?.farmTypeId
+        : undefined;
+
+    if (!farmTypeId && mode !== "till") {
+      const tile = await this.fetchFarmTileState(tileFarmPda, { x: 0, y: 0 });
+      farmTypeId = tile.farmTypeId || FARM_TYPES[0].farmTypeId;
+    }
+
+    if (!farmTypeId) {
+      farmTypeId = FARM_TYPES[0].farmTypeId;
+    }
+
+    if (mode === "plant" && !selectedItemId) {
+      throw new Error("Select a seed, sapling, or acorn before planting.");
+    }
+
+    const entry = config.farmTypes.find(
+      (farmType) => farmType.farmTypeId === farmTypeId
+    );
+
+    if (!entry) {
+      throw new Error(`Farm type ${farmTypeId} is not provisioned.`);
+    }
+
+    return {
+      farmTypeId,
+      entityPda: new PublicKey(entry.entityPda),
+      componentPda: new PublicKey(entry.componentPda),
+    };
+  }
+
+  private getFarmActionProgram(mode: FarmActionMode) {
+    switch (mode) {
+      case "till":
+        return PROGRAMS.tillTile;
+      case "water":
+        return PROGRAMS.waterTile;
+      case "plant":
+        return PROGRAMS.plantTile;
+      case "harvest":
+        return PROGRAMS.harvestTile;
+      case "chop":
+        return PROGRAMS.chopTile;
+      default:
+        return PROGRAMS.movement;
+    }
+  }
+
+  private getFarmActionAccounts(
+    mode: FarmActionMode,
+    player: PlayerState,
+    tileTerrain: TileTerrainState,
+    tileFarm: TileFarmState,
+    terrainType: { componentPda: PublicKey },
+    farmType: { componentPda: PublicKey }
+  ) {
+    const playerComponents = [
+      { componentId: PROGRAMS.position },
+      { componentId: PROGRAMS.energy },
+      { componentId: PROGRAMS.activeAction },
+    ];
+
+    const entities = [
+      {
+        entity: player.entityPda,
+        components: playerComponents,
+      },
+    ];
+
+    entities.push({
+      entity: tileFarm.entityPda,
+      components: [{ componentId: PROGRAMS.tileFarm }],
+    });
+
+    if (mode === "plant" || mode === "harvest" || mode === "chop") {
+      entities.push({
+        entity: player.entityPda,
+        components: [{ componentId: PROGRAMS.inventory }],
+      });
+    }
+
+    const extraAccounts: Array<{
+      pubkey: PublicKey;
+      isSigner: boolean;
+      isWritable: boolean;
+    }> = [];
+
+    if (mode === "till" || mode === "plant") {
+      extraAccounts.push(
+        {
+          pubkey: tileTerrain.componentPda,
+          isSigner: false,
+          isWritable: false,
+        },
+        {
+          pubkey: terrainType.componentPda,
+          isSigner: false,
+          isWritable: false,
+        }
+      );
+    }
+
+    if (mode !== "till") {
+      extraAccounts.push({
+        pubkey: farmType.componentPda,
+        isSigner: false,
+        isWritable: false,
+      });
+    }
+
+    return { entities, extraAccounts };
+  }
+
+  private async fetchFarmTileState(
+    tileFarmPda: PublicKey,
+    fallbackPoint: GridPoint
+  ): Promise<FarmTileState> {
+    const account =
+      (await this.erConnection.getAccountInfo(tileFarmPda)) ??
+      (await this.baseConnection.getAccountInfo(tileFarmPda));
+
+    if (!account || account.data.byteLength < 57) {
+      return {
+        ...fallbackPoint,
+        soilState: "untilled",
+        farmTypeId: 0,
+        growthSeconds: 0,
+        wateredUntil: 0,
+      };
+    }
+
+    const view = new DataView(
+      account.data.buffer,
+      account.data.byteOffset,
+      account.data.byteLength
+    );
+    const x = this.readI64(view, 8);
+    const y = this.readI64(view, 16);
+    const farmTypeId = view.getUint16(25, true);
+
+    return {
+      x: x || fallbackPoint.x,
+      y: y || fallbackPoint.y,
+      soilState: view.getUint8(24) === 1 ? "tilled" : "untilled",
+      farmTypeId,
+      growthSeconds: view.getUint32(35, true),
+      wateredUntil: this.readI64(view, 47),
+    };
+  }
+
+  private describeFarmMode(mode: FarmActionMode) {
+    switch (mode) {
+      case "till":
+        return "Tilling";
+      case "water":
+        return "Watering";
+      case "plant":
+        return "Planting";
+      case "harvest":
+        return "Harvesting";
+      case "chop":
+        return "Chopping";
+      default:
+        return "Moving";
     }
   }
 

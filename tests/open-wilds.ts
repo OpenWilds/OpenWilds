@@ -6,11 +6,21 @@ import { WorldAuthority } from "../target/types/world_authority";
 import { WorldTerrainRegistry } from "../target/types/world_terrain_registry";
 import { TerrainType } from "../target/types/terrain_type";
 import { TileTerrain } from "../target/types/tile_terrain";
+import { TileFarm } from "../target/types/tile_farm";
+import { FarmType } from "../target/types/farm_type";
+import { Inventory } from "../target/types/inventory";
 import { Movement } from "../target/types/movement";
 import { Sleep } from "../target/types/sleep";
 import { RegisterTerrainType } from "../target/types/register_terrain_type";
 import { InitializeWorldAuthority } from "../target/types/initialize_world_authority";
 import { DefineTileTerrain } from "../target/types/define_tile_terrain";
+import { DefineFarmType } from "../target/types/define_farm_type";
+import { GrantStarterInventory } from "../target/types/grant_starter_inventory";
+import { TillTile } from "../target/types/till_tile";
+import { PlantTile } from "../target/types/plant_tile";
+import { WaterTile } from "../target/types/water_tile";
+import { HarvestTile } from "../target/types/harvest_tile";
+import { ChopTile } from "../target/types/chop_tile";
 import {
   InitializeNewWorld,
   AddEntity,
@@ -40,6 +50,11 @@ describe("open-wilds", () => {
   let terrainTypeComponentPda: PublicKey;
   let tileTerrainEntityPda: PublicKey;
   let tileTerrainComponentPda: PublicKey;
+  let tileFarmEntityPda: PublicKey;
+  let tileFarmComponentPda: PublicKey;
+  let farmTypeEntityPda: PublicKey;
+  let farmTypeComponentPda: PublicKey;
+  let inventoryComponentPda: PublicKey;
 
   const positionComponent = anchor.workspace.Position as Program<Position>;
   const energyComponent = anchor.workspace.Energy as Program<Energy>;
@@ -53,14 +68,27 @@ describe("open-wilds", () => {
     .TerrainType as Program<TerrainType>;
   const tileTerrainComponent = anchor.workspace
     .TileTerrain as Program<TileTerrain>;
+  const tileFarmComponent = anchor.workspace.TileFarm as Program<TileFarm>;
+  const farmTypeComponent = anchor.workspace.FarmType as Program<FarmType>;
+  const inventoryComponent = anchor.workspace.Inventory as Program<Inventory>;
   const systemMovement = anchor.workspace.Movement as Program<Movement>;
   const systemSleep = anchor.workspace.Sleep as Program<Sleep>;
+  const systemTillTile = anchor.workspace.TillTile as Program<TillTile>;
+  const systemPlantTile = anchor.workspace.PlantTile as Program<PlantTile>;
+  const systemWaterTile = anchor.workspace.WaterTile as Program<WaterTile>;
+  const systemHarvestTile = anchor.workspace
+    .HarvestTile as Program<HarvestTile>;
+  const systemChopTile = anchor.workspace.ChopTile as Program<ChopTile>;
   const systemInitializeWorldAuthority = anchor.workspace
     .InitializeWorldAuthority as Program<InitializeWorldAuthority>;
   const systemRegisterTerrainType = anchor.workspace
     .RegisterTerrainType as Program<RegisterTerrainType>;
   const systemDefineTileTerrain = anchor.workspace
     .DefineTileTerrain as Program<DefineTileTerrain>;
+  const systemDefineFarmType = anchor.workspace
+    .DefineFarmType as Program<DefineFarmType>;
+  const systemGrantStarterInventory = anchor.workspace
+    .GrantStarterInventory as Program<GrantStarterInventory>;
 
   it("InitializeNewWorld", async () => {
     const initNewWorld = await InitializeNewWorld({
@@ -212,7 +240,7 @@ describe("open-wilds", () => {
       args: {
         catalog_version: 1,
         terrain_type_id: 3,
-        feature_flags: 2,
+        feature_flags: 1,
         primary_drop_item_id: 3,
         secondary_drop_item_id: 0,
         drop_rate_bps: 8000,
@@ -250,7 +278,7 @@ describe("open-wilds", () => {
           components: [{ componentId: tileTerrainComponent.programId }],
         },
       ],
-      args: { x: 15, y: 4, terrain_type_id: 3 },
+      args: { x: 1, y: 0, terrain_type_id: 3 },
     });
     await provider.sendAndConfirm(defineTileTerrain.transaction);
 
@@ -275,11 +303,11 @@ describe("open-wilds", () => {
     expect(terrainRegistry.version).to.equal(1);
     expect(terrainRegistry.terrainTypeCount).to.equal(1);
     expect(terrainType.terrainTypeId).to.equal(3);
-    expect(terrainType.featureFlags).to.equal(2);
+    expect(terrainType.featureFlags).to.equal(1);
     expect(terrainType.primaryDropItemId).to.equal(3);
     expect(terrainType.dropRateBps).to.equal(8000);
-    expect(tileTerrain.x.toNumber()).to.equal(15);
-    expect(tileTerrain.y.toNumber()).to.equal(4);
+    expect(tileTerrain.x.toNumber()).to.equal(1);
+    expect(tileTerrain.y.toNumber()).to.equal(0);
     expect(tileTerrain.terrainTypeId).to.equal(3);
   });
 
@@ -355,5 +383,424 @@ describe("open-wilds", () => {
     );
     expect(energyAfter.current.toNumber()).to.equal(100);
     expect(energyAfter.max.toNumber()).to.equal(100);
+  });
+
+  it("Tills the current tile using terrain as readonly validation accounts", async () => {
+    await new Promise((resolve) => setTimeout(resolve, 5100));
+
+    const addTileFarmEntity = await AddEntity({
+      payer: provider.wallet.publicKey,
+      world: worldPda,
+      connection: provider.connection,
+    });
+    await provider.sendAndConfirm(addTileFarmEntity.transaction);
+    tileFarmEntityPda = addTileFarmEntity.entityPda;
+
+    const initializeTileFarm = await InitializeComponent({
+      payer: provider.wallet.publicKey,
+      entity: tileFarmEntityPda,
+      componentId: tileFarmComponent.programId,
+    });
+    await provider.sendAndConfirm(initializeTileFarm.transaction);
+    tileFarmComponentPda = initializeTileFarm.componentPda;
+
+    const tillTile = await ApplySystem({
+      authority: provider.wallet.publicKey,
+      systemId: systemTillTile.programId,
+      world: worldPda,
+      entities: [
+        {
+          entity: entityPda,
+          components: [
+            { componentId: positionComponent.programId },
+            { componentId: energyComponent.programId },
+            { componentId: activeActionComponent.programId },
+          ],
+        },
+        {
+          entity: tileFarmEntityPda,
+          components: [{ componentId: tileFarmComponent.programId }],
+        },
+      ],
+      extraAccounts: [
+        {
+          pubkey: tileTerrainComponentPda,
+          isSigner: false,
+          isWritable: false,
+        },
+        {
+          pubkey: terrainTypeComponentPda,
+          isSigner: false,
+          isWritable: false,
+        },
+      ],
+      args: { x: 1, y: 0 },
+    });
+    await provider.sendAndConfirm(tillTile.transaction);
+
+    const tileFarm = await tileFarmComponent.account.tileFarm.fetch(
+      tileFarmComponentPda
+    );
+    const energyAfter = await energyComponent.account.energy.fetch(
+      energyComponentPda
+    );
+
+    expect(tileFarm.x.toNumber()).to.equal(1);
+    expect(tileFarm.y.toNumber()).to.equal(0);
+    expect(tileFarm.soilState).to.equal(1);
+    expect(energyAfter.current.toNumber()).to.equal(98);
+  });
+
+  it("Plants and harvests a crop using farm type as a readonly validation account", async () => {
+    const initializeInventory = await InitializeComponent({
+      payer: provider.wallet.publicKey,
+      entity: entityPda,
+      componentId: inventoryComponent.programId,
+    });
+    await provider.sendAndConfirm(initializeInventory.transaction);
+    inventoryComponentPda = initializeInventory.componentPda;
+
+    const grantStarterInventory = await ApplySystem({
+      authority: provider.wallet.publicKey,
+      systemId: systemGrantStarterInventory.programId,
+      world: worldPda,
+      entities: [
+        {
+          entity: entityPda,
+          components: [{ componentId: inventoryComponent.programId }],
+        },
+      ],
+      args: {
+        turnip_seeds: 1,
+        wheat_seeds: 0,
+        apple_saplings: 0,
+        acorns: 1,
+      },
+    });
+    await provider.sendAndConfirm(grantStarterInventory.transaction);
+
+    const addFarmTypeEntity = await AddEntity({
+      payer: provider.wallet.publicKey,
+      world: worldPda,
+      connection: provider.connection,
+    });
+    await provider.sendAndConfirm(addFarmTypeEntity.transaction);
+    farmTypeEntityPda = addFarmTypeEntity.entityPda;
+
+    const initializeFarmType = await InitializeComponent({
+      payer: provider.wallet.publicKey,
+      entity: farmTypeEntityPda,
+      componentId: farmTypeComponent.programId,
+    });
+    await provider.sendAndConfirm(initializeFarmType.transaction);
+    farmTypeComponentPda = initializeFarmType.componentPda;
+
+    const defineFarmType = await ApplySystem({
+      authority: provider.wallet.publicKey,
+      systemId: systemDefineFarmType.programId,
+      world: worldPda,
+      entities: [
+        {
+          entity: worldAuthorityEntityPda,
+          components: [{ componentId: worldAuthorityComponent.programId }],
+        },
+        {
+          entity: farmTypeEntityPda,
+          components: [{ componentId: farmTypeComponent.programId }],
+        },
+      ],
+      args: {
+        farm_type_id: 1,
+        farm_kind: 1,
+        seed_item_id: 100,
+        harvest_item_id: 101,
+        required_growth_seconds: 1,
+        regrow_seconds: 0,
+        base_yield: 2,
+        chop_item_id: 0,
+        chop_yield: 0,
+        stage_count: 2,
+        stage_threshold_seconds: [0, 1, 0, 0, 0, 0, 0, 0],
+        flags: 1,
+      },
+    });
+    await provider.sendAndConfirm(defineFarmType.transaction);
+
+    await new Promise((resolve) => setTimeout(resolve, 2100));
+
+    const plantTile = await ApplySystem({
+      authority: provider.wallet.publicKey,
+      systemId: systemPlantTile.programId,
+      world: worldPda,
+      entities: [
+        {
+          entity: entityPda,
+          components: [
+            { componentId: positionComponent.programId },
+            { componentId: energyComponent.programId },
+            { componentId: activeActionComponent.programId },
+          ],
+        },
+        {
+          entity: tileFarmEntityPda,
+          components: [{ componentId: tileFarmComponent.programId }],
+        },
+        {
+          entity: entityPda,
+          components: [{ componentId: inventoryComponent.programId }],
+        },
+      ],
+      extraAccounts: [
+        {
+          pubkey: tileTerrainComponentPda,
+          isSigner: false,
+          isWritable: false,
+        },
+        {
+          pubkey: terrainTypeComponentPda,
+          isSigner: false,
+          isWritable: false,
+        },
+        {
+          pubkey: farmTypeComponentPda,
+          isSigner: false,
+          isWritable: false,
+        },
+      ],
+      args: { x: 1, y: 0, farm_type_id: 1 },
+    });
+    await provider.sendAndConfirm(plantTile.transaction);
+
+    let tileFarm = await tileFarmComponent.account.tileFarm.fetch(
+      tileFarmComponentPda
+    );
+    let inventory = await inventoryComponent.account.inventory.fetch(
+      inventoryComponentPda
+    );
+    expect(tileFarm.farmTypeId).to.equal(1);
+    expect(inventory.itemIds[0]).to.equal(0);
+    expect(inventory.quantities[0]).to.equal(0);
+
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+
+    const waterTile = await ApplySystem({
+      authority: provider.wallet.publicKey,
+      systemId: systemWaterTile.programId,
+      world: worldPda,
+      entities: [
+        {
+          entity: entityPda,
+          components: [
+            { componentId: positionComponent.programId },
+            { componentId: energyComponent.programId },
+            { componentId: activeActionComponent.programId },
+          ],
+        },
+        {
+          entity: tileFarmEntityPda,
+          components: [{ componentId: tileFarmComponent.programId }],
+        },
+      ],
+      extraAccounts: [
+        {
+          pubkey: farmTypeComponentPda,
+          isSigner: false,
+          isWritable: false,
+        },
+      ],
+      args: { x: 1, y: 0, water_duration_seconds: 60 },
+    });
+    await provider.sendAndConfirm(waterTile.transaction);
+
+    tileFarm = await tileFarmComponent.account.tileFarm.fetch(
+      tileFarmComponentPda
+    );
+    expect(tileFarm.wateredUntil.toNumber()).to.be.greaterThan(0);
+
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+
+    const harvestTile = await ApplySystem({
+      authority: provider.wallet.publicKey,
+      systemId: systemHarvestTile.programId,
+      world: worldPda,
+      entities: [
+        {
+          entity: entityPda,
+          components: [
+            { componentId: positionComponent.programId },
+            { componentId: energyComponent.programId },
+            { componentId: activeActionComponent.programId },
+          ],
+        },
+        {
+          entity: tileFarmEntityPda,
+          components: [{ componentId: tileFarmComponent.programId }],
+        },
+        {
+          entity: entityPda,
+          components: [{ componentId: inventoryComponent.programId }],
+        },
+      ],
+      extraAccounts: [
+        {
+          pubkey: farmTypeComponentPda,
+          isSigner: false,
+          isWritable: false,
+        },
+      ],
+      args: { x: 1, y: 0 },
+    });
+    await provider.sendAndConfirm(harvestTile.transaction);
+
+    tileFarm = await tileFarmComponent.account.tileFarm.fetch(
+      tileFarmComponentPda
+    );
+    inventory = await inventoryComponent.account.inventory.fetch(
+      inventoryComponentPda
+    );
+    const harvestedSlot = inventory.itemIds.findIndex((itemId) => itemId === 101);
+
+    expect(tileFarm.farmTypeId).to.equal(0);
+    expect(harvestedSlot).to.be.greaterThanOrEqual(0);
+    expect(inventory.quantities[harvestedSlot]).to.equal(2);
+
+    const addTreeFarmTypeEntity = await AddEntity({
+      payer: provider.wallet.publicKey,
+      world: worldPda,
+      connection: provider.connection,
+    });
+    await provider.sendAndConfirm(addTreeFarmTypeEntity.transaction);
+    const treeFarmTypeEntityPda = addTreeFarmTypeEntity.entityPda;
+
+    const initializeTreeFarmType = await InitializeComponent({
+      payer: provider.wallet.publicKey,
+      entity: treeFarmTypeEntityPda,
+      componentId: farmTypeComponent.programId,
+    });
+    await provider.sendAndConfirm(initializeTreeFarmType.transaction);
+    const treeFarmTypeComponentPda = initializeTreeFarmType.componentPda;
+
+    const defineTreeFarmType = await ApplySystem({
+      authority: provider.wallet.publicKey,
+      systemId: systemDefineFarmType.programId,
+      world: worldPda,
+      entities: [
+        {
+          entity: worldAuthorityEntityPda,
+          components: [{ componentId: worldAuthorityComponent.programId }],
+        },
+        {
+          entity: treeFarmTypeEntityPda,
+          components: [{ componentId: farmTypeComponent.programId }],
+        },
+      ],
+      args: {
+        farm_type_id: 2,
+        farm_kind: 2,
+        seed_item_id: 122,
+        harvest_item_id: 0,
+        required_growth_seconds: 1,
+        regrow_seconds: 0,
+        base_yield: 0,
+        chop_item_id: 130,
+        chop_yield: 3,
+        stage_count: 2,
+        stage_threshold_seconds: [0, 1, 0, 0, 0, 0, 0, 0],
+        flags: 1,
+      },
+    });
+    await provider.sendAndConfirm(defineTreeFarmType.transaction);
+
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+
+    const plantTree = await ApplySystem({
+      authority: provider.wallet.publicKey,
+      systemId: systemPlantTile.programId,
+      world: worldPda,
+      entities: [
+        {
+          entity: entityPda,
+          components: [
+            { componentId: positionComponent.programId },
+            { componentId: energyComponent.programId },
+            { componentId: activeActionComponent.programId },
+          ],
+        },
+        {
+          entity: tileFarmEntityPda,
+          components: [{ componentId: tileFarmComponent.programId }],
+        },
+        {
+          entity: entityPda,
+          components: [{ componentId: inventoryComponent.programId }],
+        },
+      ],
+      extraAccounts: [
+        {
+          pubkey: tileTerrainComponentPda,
+          isSigner: false,
+          isWritable: false,
+        },
+        {
+          pubkey: terrainTypeComponentPda,
+          isSigner: false,
+          isWritable: false,
+        },
+        {
+          pubkey: treeFarmTypeComponentPda,
+          isSigner: false,
+          isWritable: false,
+        },
+      ],
+      args: { x: 1, y: 0, farm_type_id: 2 },
+    });
+    await provider.sendAndConfirm(plantTree.transaction);
+
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+
+    const chopTile = await ApplySystem({
+      authority: provider.wallet.publicKey,
+      systemId: systemChopTile.programId,
+      world: worldPda,
+      entities: [
+        {
+          entity: entityPda,
+          components: [
+            { componentId: positionComponent.programId },
+            { componentId: energyComponent.programId },
+            { componentId: activeActionComponent.programId },
+          ],
+        },
+        {
+          entity: tileFarmEntityPda,
+          components: [{ componentId: tileFarmComponent.programId }],
+        },
+        {
+          entity: entityPda,
+          components: [{ componentId: inventoryComponent.programId }],
+        },
+      ],
+      extraAccounts: [
+        {
+          pubkey: treeFarmTypeComponentPda,
+          isSigner: false,
+          isWritable: false,
+        },
+      ],
+      args: { x: 1, y: 0 },
+    });
+    await provider.sendAndConfirm(chopTile.transaction);
+
+    tileFarm = await tileFarmComponent.account.tileFarm.fetch(
+      tileFarmComponentPda
+    );
+    inventory = await inventoryComponent.account.inventory.fetch(
+      inventoryComponentPda
+    );
+    const choppedSlot = inventory.itemIds.findIndex((itemId) => itemId === 130);
+
+    expect(tileFarm.farmTypeId).to.equal(0);
+    expect(choppedSlot).to.be.greaterThanOrEqual(0);
+    expect(inventory.quantities[choppedSlot]).to.equal(3);
   });
 });

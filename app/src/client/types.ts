@@ -20,6 +20,8 @@ export type StoredTileTerrainState = {
   delegated?: boolean;
 };
 
+export type StoredTileFarmState = StoredTileTerrainState;
+
 export type StoredPlayerState = {
   wallet: string;
   playerMint?: string;
@@ -37,6 +39,7 @@ export type StoredPlayerState = {
   inventoryDelegated?: boolean;
   terrainTypes?: StoredTerrainTypeState[];
   tileTerrains?: StoredTileTerrainState[];
+  tileFarms?: StoredTileFarmState[];
 };
 
 export type TerrainTypeState = {
@@ -53,6 +56,8 @@ export type TileTerrainState = {
   delegated: boolean;
 };
 
+export type TileFarmState = TileTerrainState;
+
 export type PlayerState = {
   playerMint: PublicKey;
   playerColor: string;
@@ -68,6 +73,7 @@ export type PlayerState = {
   inventoryDelegated: boolean;
   terrainTypes: TerrainTypeState[];
   tileTerrains: TileTerrainState[];
+  tileFarms: TileFarmState[];
 };
 
 export type BoltResult = {
@@ -92,6 +98,11 @@ export type BoltSdk = {
     entities: Array<{
       entity: PublicKey;
       components: Array<{ componentId: PublicKey }>;
+    }>;
+    extraAccounts?: Array<{
+      pubkey: PublicKey;
+      isSigner: boolean;
+      isWritable: boolean;
     }>;
     args?: GridPoint | Record<string, number>;
   }) => Promise<BoltResult>;

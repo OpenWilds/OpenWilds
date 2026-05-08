@@ -18,6 +18,7 @@ pub mod water_tile {
     pub fn execute(ctx: Context<Components>, args: Vec<u8>) -> Result<Components> {
         let target: TileTarget =
             serde_json::from_slice(&args).map_err(|_| error!(WaterTileError::InvalidTileArgs))?;
+        let farm_type = load_farm_type(&ctx)?;
         let now = Clock::get()?.unix_timestamp;
         let active_action = &mut ctx.accounts.active_action;
 
@@ -41,12 +42,11 @@ pub mod water_tile {
             WaterTileError::TileNotPrepared
         );
         require!(
-            tile_farm.farm_type_id == 0
-                || tile_farm.farm_type_id == ctx.accounts.farm_type.farm_type_id,
+            tile_farm.farm_type_id == 0 || tile_farm.farm_type_id == farm_type.farm_type_id,
             WaterTileError::FarmTypeMismatch
         );
 
-        let needs_water = tile_farm.has_plant() && ctx.accounts.farm_type.needs_water();
+        let needs_water = tile_farm.has_plant() && farm_type.needs_water();
         tile_farm.settle_growth(now, needs_water);
 
         let energy = &mut ctx.accounts.energy;
@@ -76,9 +76,20 @@ pub mod water_tile {
         pub position: Position,
         pub energy: Energy,
         pub active_action: ActiveAction,
-        pub farm_type: FarmType,
         pub tile_farm: TileFarm,
     }
+}
+
+fn load_farm_type(ctx: &Context<Components>) -> Result<FarmType> {
+    for account_info in ctx.remaining_accounts.iter() {
+        if *account_info.owner == farm_type::ID {
+            let data = &mut &account_info.try_borrow_data()?[..];
+            return FarmType::try_deserialize(data)
+                .map_err(|_| error!(WaterTileError::InvalidFarmTypeAccount));
+        }
+    }
+
+    err!(WaterTileError::MissingValidationAccount)
 }
 
 #[derive(Deserialize)]
@@ -104,4 +115,8 @@ pub enum WaterTileError {
     FarmTypeMismatch,
     #[msg("Not enough energy for watering.")]
     NotEnoughEnergy,
+    #[msg("Watering action is missing validation accounts.")]
+    MissingValidationAccount,
+    #[msg("Farm type validation account is invalid.")]
+    InvalidFarmTypeAccount,
 }

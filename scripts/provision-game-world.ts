@@ -25,9 +25,12 @@ const GAME_WORLD_CONFIG_PATH = resolve(
   "../app/public/game-world.localnet.json"
 );
 const CATALOG_VERSION = 1;
-const TILE_TERRAIN_BATCH_SIZE = 16;
+const TILE_TERRAIN_BATCH_SIZE = 8;
 const forceProvision = process.argv.includes("--force");
-const provisionTiles = process.argv.includes("--with-tiles");
+const provisionTiles = !process.argv.includes("--skip-tiles");
+const provisionAllTiles = process.argv.includes("--all-tiles");
+const isPrototypeFarmPlotTile = (tile: { x: number; y: number }) =>
+  tile.x >= 10 && tile.x <= 14 && tile.y >= 10 && tile.y <= 14;
 
 const PROGRAMS = {
   worldAuthority: new PublicKey("HPVrKGMFzX1VSFkEXU5sf9uZZ5bwqJW1jHkrdFgRGFZg"),
@@ -431,7 +434,9 @@ const main = async () => {
   }
 
   if (provisionTiles) {
-    const tiles = createWorldTerrainDefinition();
+    const tiles = createWorldTerrainDefinition().filter((tile) =>
+      provisionAllTiles ? true : isPrototypeFarmPlotTile(tile)
+    );
     let pendingTiles: PendingTileTerrain[] = [];
     let batchNumber = 1;
 

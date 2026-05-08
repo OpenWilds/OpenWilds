@@ -7,15 +7,26 @@ import {
   getFarmItemLabel,
 } from "./farm";
 import type { InventorySlotState, InventoryState } from "./types";
+import type { FarmActionMode } from "./types";
 
 const PANEL_X = 700;
 const PANEL_Y = 84;
 const PANEL_WIDTH = 212;
+const GRID_TOOLBAR_X = 34;
 const INVENTORY_Y = PANEL_Y + 58;
 const INVENTORY_HEIGHT = 94;
 const CATALOG_Y = INVENTORY_Y + INVENTORY_HEIGHT + 12;
 const ROW_HEIGHT = 92;
 const INVENTORY_ROW_HEIGHT = 15;
+const TOOLBAR_Y = 12;
+const TOOL_BUTTONS: Array<{ mode: FarmActionMode; label: string }> = [
+  { mode: "move", label: "Move" },
+  { mode: "till", label: "Hoe" },
+  { mode: "water", label: "Water" },
+  { mode: "plant", label: "Plant" },
+  { mode: "harvest", label: "Harvest" },
+  { mode: "chop", label: "Axe" },
+];
 
 type InventoryRow = {
   itemId: number;
@@ -23,7 +34,11 @@ type InventoryRow = {
   label: Phaser.GameObjects.Text;
 };
 
-export const createFarmCatalog = (scene: Phaser.Scene) => {
+export const createFarmCatalog = (
+  scene: Phaser.Scene,
+  onModeChange?: (mode: FarmActionMode) => void,
+  onItemSelect?: (itemId: number | null) => void
+) => {
   const panel = scene.add.graphics();
 
   panel.fillStyle(0xf7f1e5, 1);
@@ -98,6 +113,12 @@ export const createFarmCatalog = (scene: Phaser.Scene) => {
 
   const inventoryTexts = new Map<number, Phaser.GameObjects.Text>();
   const inventoryRows: InventoryRow[] = [];
+  const toolButtons: Array<{
+    mode: FarmActionMode;
+    background: Phaser.GameObjects.Graphics;
+    label: Phaser.GameObjects.Text;
+  }> = [];
+  let selectedMode: FarmActionMode = "move";
   let selectedItemId: number | null = null;
 
   const destroyInventoryRows = () => {
@@ -144,6 +165,61 @@ export const createFarmCatalog = (scene: Phaser.Scene) => {
     }
   };
 
+  const refreshToolButtons = () => {
+    for (const button of toolButtons) {
+      button.background.clear();
+      button.background.fillStyle(
+        button.mode === selectedMode ? 0xffe0a3 : 0xf7f1e5,
+        1
+      );
+      button.background.fillRoundedRect(button.label.x - 7, TOOLBAR_Y, 64, 25, 7);
+      button.background.lineStyle(
+        1,
+        button.mode === selectedMode ? 0xa26924 : 0xc7d8c4,
+        1
+      );
+      button.background.strokeRoundedRect(button.label.x - 7, TOOLBAR_Y, 64, 25, 7);
+    }
+  };
+
+  TOOL_BUTTONS.forEach((tool, index) => {
+    const x = GRID_TOOLBAR_X + index * 72;
+    const background = scene.add.graphics().setDepth(8);
+    const label = scene.add
+      .text(x, TOOLBAR_Y + 6, tool.label, {
+        color: "#17211e",
+        fixedWidth: 50,
+        fontFamily: "Inter, sans-serif",
+        fontSize: "11px",
+        fontStyle: "700",
+        align: "center",
+      })
+      .setDepth(9);
+
+    background
+      .setInteractive(
+        new Phaser.Geom.Rectangle(x - 7, TOOLBAR_Y, 64, 25),
+        Phaser.Geom.Rectangle.Contains
+      )
+      .on(
+        "pointerdown",
+        (
+          _pointer: Phaser.Input.Pointer,
+          _localX: number,
+          _localY: number,
+          event: Phaser.Types.Input.EventData
+        ) => {
+          event.stopPropagation();
+          selectedMode = tool.mode;
+          refreshToolButtons();
+          onModeChange?.(selectedMode);
+        }
+      );
+
+    toolButtons.push({ mode: tool.mode, background, label });
+  });
+  refreshToolButtons();
+
   const createInventoryRow = (slot: InventorySlotState, index: number) => {
     const rowY = INVENTORY_Y + 31 + index * (INVENTORY_ROW_HEIGHT + 2);
     const background = scene.add.graphics().setDepth(5);
@@ -186,6 +262,7 @@ export const createFarmCatalog = (scene: Phaser.Scene) => {
           selectedItemId =
             selectedItemId === slot.itemId ? null : slot.itemId;
           refreshSelectedItem();
+          onItemSelect?.(selectedItemId);
         }
       );
     label.on(
@@ -199,6 +276,7 @@ export const createFarmCatalog = (scene: Phaser.Scene) => {
         event.stopPropagation();
         selectedItemId = selectedItemId === slot.itemId ? null : slot.itemId;
         refreshSelectedItem();
+        onItemSelect?.(selectedItemId);
       }
     );
 
@@ -262,6 +340,7 @@ export const createFarmCatalog = (scene: Phaser.Scene) => {
         !inventory.slots.some((slot) => slot.itemId === selectedItemId)
       ) {
         selectedItemId = null;
+        onItemSelect?.(selectedItemId);
       }
 
       destroyInventoryRows();
@@ -305,6 +384,9 @@ export const createFarmCatalog = (scene: Phaser.Scene) => {
     },
     getSelectedItemId() {
       return selectedItemId;
+    },
+    getSelectedMode() {
+      return selectedMode;
     },
   };
 };
