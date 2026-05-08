@@ -278,7 +278,7 @@ describe("open-wilds", () => {
           components: [{ componentId: tileTerrainComponent.programId }],
         },
       ],
-      args: { x: 1, y: 0, terrain_type_id: 3 },
+      args: { x: 2, y: 1, terrain_type_id: 3 },
     });
     await provider.sendAndConfirm(defineTileTerrain.transaction);
 
@@ -306,8 +306,8 @@ describe("open-wilds", () => {
     expect(terrainType.featureFlags).to.equal(1);
     expect(terrainType.primaryDropItemId).to.equal(3);
     expect(terrainType.dropRateBps).to.equal(8000);
-    expect(tileTerrain.x.toNumber()).to.equal(1);
-    expect(tileTerrain.y.toNumber()).to.equal(0);
+    expect(tileTerrain.x.toNumber()).to.equal(2);
+    expect(tileTerrain.y.toNumber()).to.equal(1);
     expect(tileTerrain.terrainTypeId).to.equal(3);
   });
 
@@ -385,7 +385,7 @@ describe("open-wilds", () => {
     expect(energyAfter.max.toNumber()).to.equal(100);
   });
 
-  it("Tills the current tile using terrain as readonly validation accounts", async () => {
+  it("Tills an adjacent tile using terrain as readonly validation accounts", async () => {
     await new Promise((resolve) => setTimeout(resolve, 15000));
 
     const addTileFarmEntity = await AddEntity({
@@ -434,7 +434,7 @@ describe("open-wilds", () => {
           isWritable: false,
         },
       ],
-      args: { x: 1, y: 0 },
+      args: { x: 2, y: 1 },
     });
     await provider.sendAndConfirm(tillTile.transaction);
 
@@ -445,8 +445,8 @@ describe("open-wilds", () => {
       energyComponentPda
     );
 
-    expect(tileFarm.x.toNumber()).to.equal(1);
-    expect(tileFarm.y.toNumber()).to.equal(0);
+    expect(tileFarm.x.toNumber()).to.equal(2);
+    expect(tileFarm.y.toNumber()).to.equal(1);
     expect(tileFarm.soilState).to.equal(1);
     expect(energyAfter.current.toNumber()).to.equal(98);
   });
@@ -567,7 +567,7 @@ describe("open-wilds", () => {
           isWritable: false,
         },
       ],
-      args: { x: 1, y: 0, farm_type_id: 1 },
+      args: { x: 2, y: 1, farm_type_id: 1 },
     });
     await provider.sendAndConfirm(plantTile.transaction);
 
@@ -608,7 +608,7 @@ describe("open-wilds", () => {
           isWritable: false,
         },
       ],
-      args: { x: 1, y: 0, water_duration_seconds: 60 },
+      args: { x: 2, y: 1, water_duration_seconds: 60 },
     });
     await provider.sendAndConfirm(waterTile.transaction);
 
@@ -648,7 +648,7 @@ describe("open-wilds", () => {
           isWritable: false,
         },
       ],
-      args: { x: 1, y: 0 },
+      args: { x: 2, y: 1 },
     });
     await provider.sendAndConfirm(harvestTile.transaction);
 
@@ -752,7 +752,7 @@ describe("open-wilds", () => {
           isWritable: false,
         },
       ],
-      args: { x: 1, y: 0, farm_type_id: 2 },
+      args: { x: 2, y: 1, farm_type_id: 2 },
     });
     await provider.sendAndConfirm(plantTree.transaction);
 
@@ -787,7 +787,7 @@ describe("open-wilds", () => {
           isWritable: false,
         },
       ],
-      args: { x: 1, y: 0 },
+      args: { x: 2, y: 1 },
     });
     await provider.sendAndConfirm(chopTile.transaction);
 

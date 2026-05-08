@@ -29,7 +29,7 @@ pub mod water_tile {
             WaterTileError::ActionInProgress
         );
         require!(
-            ctx.accounts.position.x == target.x && ctx.accounts.position.y == target.y,
+            is_reachable_tile(&ctx.accounts.position, target.x, target.y),
             WaterTileError::PlayerNotOnTile
         );
 
@@ -100,13 +100,17 @@ struct TileTarget {
     water_duration_seconds: Option<i64>,
 }
 
+fn is_reachable_tile(position: &Position, target_x: i64, target_y: i64) -> bool {
+    position.x.abs_diff(target_x) <= 1 && position.y.abs_diff(target_y) <= 1
+}
+
 #[error_code]
 pub enum WaterTileError {
     #[msg("Watering expected JSON args with x, y, and optional water_duration_seconds.")]
     InvalidTileArgs,
     #[msg("Another action is still in progress.")]
     ActionInProgress,
-    #[msg("Player must be standing on the tile.")]
+    #[msg("Player must be standing on or next to the tile.")]
     PlayerNotOnTile,
     #[msg("Tile farm component does not match the target tile.")]
     TileMismatch,
