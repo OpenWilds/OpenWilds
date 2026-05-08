@@ -1,5 +1,6 @@
 use bolt_lang::*;
 use inventory::Inventory;
+use player_owner::PlayerOwner;
 use serde::Deserialize;
 
 declare_id!("DAMdALMLCxCbiMHJovqEvr5c1kvfNdfyN9Nfxs93rhxY");
@@ -20,6 +21,14 @@ pub mod grant_starter_inventory {
         };
 
         let inventory = &mut ctx.accounts.inventory;
+        require!(
+            is_player_authority(
+                &ctx.accounts.player_owner,
+                ctx.accounts.authority.key(),
+                &[inventory.bolt_metadata.authority],
+            ),
+            GrantStarterInventoryError::InvalidPlayerAuthority
+        );
 
         require!(
             inventory.item_ids.iter().all(|item_id| *item_id == 0),
@@ -36,6 +45,7 @@ pub mod grant_starter_inventory {
 
     #[system_input]
     pub struct Components {
+        pub player_owner: PlayerOwner,
         pub inventory: Inventory,
     }
 }
@@ -59,10 +69,23 @@ impl Default for StarterGrant {
     }
 }
 
+fn is_player_authority(
+    player_owner: &PlayerOwner,
+    signer: Pubkey,
+    component_authorities: &[Pubkey],
+) -> bool {
+    player_owner.owner == signer
+        && component_authorities
+            .iter()
+            .all(|component_authority| *component_authority == signer)
+}
+
 #[error_code]
 pub enum GrantStarterInventoryError {
     #[msg("Starter inventory args must include turnip_seeds, wheat_seeds, apple_saplings, and acorns.")]
     InvalidGrantArgs,
     #[msg("Starter inventory has already been granted.")]
     AlreadyGranted,
+    #[msg("Player inventory must belong to the transaction authority.")]
+    InvalidPlayerAuthority,
 }

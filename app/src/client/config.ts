@@ -20,6 +20,7 @@ export const PROGRAMS = {
   energy: new PublicKey("EXfYuzbCqe3VoUrG37gvkhxMmCMBKfvj5DRodsjmG6Pg"),
   activeAction: new PublicKey("g9Y3zHKWC9kJ9CYLQuDkZP7qVwhh6yu2swhxrXn7sVn"),
   inventory: new PublicKey("GkbbrRx8N4XsM6ELpKPQVaSvtU7mpNaKdUYh8X14ddCq"),
+  playerOwner: new PublicKey("DRtu8UJRPVQFyVboeX9uzx5qdgsGC9bVyViRCxHSgZwJ"),
   farmType: new PublicKey("AeTFPGveiu5u9qaGpoCFLte95RBbaKYHcPA6VJHGzSJh"),
   tileFarm: new PublicKey("HtQi1ESxw8jY5383gaTwtv8vwJbSKfZcFuRb3vPq86KU"),
   tileItem: new PublicKey("6RLX336UuzR9yU4FCrLcTc1SE62YyPc57L8pqjk3xdwP"),
@@ -37,6 +38,9 @@ export const PROGRAMS = {
   initializeWorldAuthority: new PublicKey(
     "C4s2BjhFdGsBN5JTQ88FdQQUoqWMuRKWtwYupzSyd5vB"
   ),
+  initializePlayerOwner: new PublicKey(
+    "AQfDaprdLStvVNdsn9bNXUH5bwoaWXUbL54ZsJpNm5EV"
+  ),
   defineTerrainType: new PublicKey(
     "9HUAZDNqjGrk2jVaQBx95hUFhdkb1vbKq6PDtsoybsLu"
   ),
@@ -46,6 +50,7 @@ export const PROGRAMS = {
   defineTileTerrainBatch: new PublicKey(
     "EnjiFX1GJCZXWUAxRFYTbQrDHGdKSi3485EVB5xy2dUa"
   ),
+  dropTile: new PublicKey("ENLdCrebMYYvRQFaMCNJAn3DCzEZSJ8JXpwVBFX9R7NH"),
   defineFarmType: new PublicKey("F14xPRR4xx6S8sufyU9MDfdCeCEp6XAFDGTKDfPzfD4y"),
   defineTileItem: new PublicKey("AkakKkvTyQoT9jUeYze5KWG841RcpPfY8XV3Bzk5wn4Z"),
   grantStarterInventory: new PublicKey(

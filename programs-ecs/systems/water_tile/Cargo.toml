@@ -22,6 +22,7 @@ custom-panic = []
 [dependencies]
 active_action = { version = "0.2.4", path = "../../components/active_action", features = ["cpi"] }
 bolt-lang.workspace = true
+player_owner = { path = "../../components/player_owner", features = ["cpi"] }
 energy = { version = "0.2.4", path = "../../components/energy", features = ["cpi"] }
 farm_type = { version = "0.2.4", path = "../../components/farm_type", features = ["cpi"] }
 position = { version = "0.2.4", path = "../../components/position", features = ["cpi"] }

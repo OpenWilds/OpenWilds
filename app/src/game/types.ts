@@ -39,7 +39,8 @@ export type FarmActionMode =
   | "plant"
   | "harvest"
   | "chop"
-  | "grab";
+  | "grab"
+  | "drop";
 
 export type FarmTileState = GridPoint & {
   soilState: "untilled" | "tilled";
@@ -91,7 +92,8 @@ export type GameClient = {
   performFarmAction?: (
     mode: FarmActionMode,
     point: GridPoint,
-    selectedItemId?: number | null
+    selectedItemId?: number | null,
+    selectedQuantity?: number | null
   ) => Promise<FarmActionResult | null>;
   subscribePlayerActionState?: (
     listener: (state: PlayerActionState) => void

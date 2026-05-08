@@ -18,6 +18,7 @@ import type {
   BoltResult,
   PlayerState,
   TileFarmState,
+  TileItemComponentState,
   TerrainTypeState,
   TileTerrainState,
 } from "./types";
@@ -132,6 +133,12 @@ const playerComponents: PlayerComponentDefinition[] = [
     label: "Inventory",
     programId: PROGRAMS.inventory,
   },
+  {
+    key: "playerOwnerComponentPda",
+    delegatedKey: "playerOwnerDelegated",
+    label: "Player Owner",
+    programId: PROGRAMS.playerOwner,
+  },
 ];
 
 const tileTerrainKey = ({ x, y }: GridPoint) => `${x},${y}`;
@@ -140,6 +147,13 @@ const tileFarmEntitySeed = (playerMint: PublicKey, { x, y }: GridPoint) => {
   const seed = Buffer.alloc(32);
   seed.set(playerMint.toBytes().slice(0, 20), 0);
   seed.write("farm", 20, "utf8");
+  seed.writeInt32LE(x, 24);
+  seed.writeInt32LE(y, 28);
+  return seed;
+};
+const tileItemEntitySeed = ({ x, y }: GridPoint) => {
+  const seed = Buffer.alloc(32);
+  seed.write("tile-item", 0, "utf8");
   seed.writeInt32LE(x, 24);
   seed.writeInt32LE(y, 28);
   return seed;
@@ -346,23 +360,46 @@ export class PlayerWorldProvisioner {
     return tileFarm;
   }
 
-  async ensureTileItem(player: PlayerState, point: GridPoint) {
+  async ensureTileItem(
+    player: PlayerState,
+    point: GridPoint,
+    options: { createIfMissing?: boolean } = {}
+  ) {
     const key = tileTerrainKey(point);
+    const existing = player.tileItems.find((tile) => tile.key === key);
+
+    if (existing) {
+      await this.ensureComponentDelegated(
+        player,
+        {
+          label: `Tile Item ${key}`,
+          programId: PROGRAMS.tileItem,
+        },
+        existing
+      );
+      return existing;
+    }
+
     const sharedTileItem = await this.readSharedTileItem(point);
 
-    if (!sharedTileItem) {
+    if (!sharedTileItem && !options.createIfMissing) {
       throw new Error(`No item is provisioned on tile ${key}.`);
     }
 
+    const tileItem =
+      sharedTileItem ?? (await this.createTileItem(player, point));
+    player.tileItems.push(tileItem);
+    writeStoredPlayer(this.options.payer, player);
     await this.ensureComponentDelegated(
       player,
       {
         label: `Tile Item ${key}`,
         programId: PROGRAMS.tileItem,
       },
-      sharedTileItem
+      tileItem
     );
-    return sharedTileItem;
+    writeStoredPlayer(this.options.payer, player);
+    return tileItem;
   }
 
   private async hasStoredComponents(player: PlayerState) {
@@ -505,13 +542,17 @@ export class PlayerWorldProvisioner {
       | "energyComponentPda"
       | "activeActionComponentPda"
       | "inventoryComponentPda"
+      | "playerOwnerComponentPda"
     >;
+    let shouldGrantStarterInventory = false;
+    let shouldInitializePlayerOwner = false;
 
     for (const component of playerComponents) {
       const result = await InitializeComponent({
         payer: this.options.payer,
         entity: entityResult.entityPda,
         componentId: component.programId,
+        authority: this.options.payer,
       });
 
       if (!result.componentPda) {
@@ -527,24 +568,38 @@ export class PlayerWorldProvisioner {
       if (!componentInfo) {
         await this.options.sendBoltResult(result);
         if (component.programId.equals(PROGRAMS.inventory)) {
-          await this.options.sendBoltResult(
-            await ApplySystem({
-              authority: this.options.payer,
-              systemId: PROGRAMS.grantStarterInventory,
-              world: worldPda,
-              entities: [
-                {
-                  entity: entityResult.entityPda,
-                  components: [{ componentId: PROGRAMS.inventory }],
-                },
-              ],
-              args: STARTER_INVENTORY_ARGS,
-            })
-          );
+          shouldGrantStarterInventory = true;
+        }
+        if (component.programId.equals(PROGRAMS.playerOwner)) {
+          shouldInitializePlayerOwner = true;
         }
       }
 
       components[component.key] = result.componentPda;
+    }
+
+    if (shouldInitializePlayerOwner) {
+      await this.initializePlayerOwner(worldPda, entityResult.entityPda);
+    }
+
+    if (shouldGrantStarterInventory) {
+      await this.options.sendBoltResult(
+        await ApplySystem({
+          authority: this.options.payer,
+          systemId: PROGRAMS.grantStarterInventory,
+          world: worldPda,
+          entities: [
+            {
+              entity: entityResult.entityPda,
+              components: [
+                { componentId: PROGRAMS.playerOwner },
+                { componentId: PROGRAMS.inventory },
+              ],
+            },
+          ],
+          args: STARTER_INVENTORY_ARGS,
+        })
+      );
     }
 
     return {
@@ -557,9 +612,11 @@ export class PlayerWorldProvisioner {
       energyDelegated: false,
       activeActionDelegated: false,
       inventoryDelegated: false,
+      playerOwnerDelegated: false,
       terrainTypes: [],
       tileTerrains: [],
       tileFarms: [],
+      tileItems: [],
     };
   }
 
@@ -593,6 +650,7 @@ export class PlayerWorldProvisioner {
       | "energyComponentPda"
       | "activeActionComponentPda"
       | "inventoryComponentPda"
+      | "playerOwnerComponentPda"
     >;
     const delegationStates = {} as Pick<
       PlayerState,
@@ -600,6 +658,7 @@ export class PlayerWorldProvisioner {
       | "energyDelegated"
       | "activeActionDelegated"
       | "inventoryDelegated"
+      | "playerOwnerDelegated"
     >;
 
     for (const component of playerComponents) {
@@ -607,6 +666,7 @@ export class PlayerWorldProvisioner {
         payer: this.options.payer,
         entity: entityResult.entityPda,
         componentId: component.programId,
+        authority: this.options.payer,
       });
 
       if (!result.componentPda) {
@@ -647,7 +707,28 @@ export class PlayerWorldProvisioner {
       terrainTypes: preservedState?.terrainTypes ?? [],
       tileTerrains: preservedState?.tileTerrains ?? [],
       tileFarms,
+      tileItems: preservedState?.tileItems ?? [],
     };
+  }
+
+  private async initializePlayerOwner(worldPda: PublicKey, entityPda: PublicKey) {
+    const { ApplySystem } = await loadBoltSdk();
+    await this.options.sendBoltResult(
+      await ApplySystem({
+        authority: this.options.payer,
+        systemId: PROGRAMS.initializePlayerOwner,
+        world: worldPda,
+        entities: [
+          {
+            entity: entityPda,
+            components: [{ componentId: PROGRAMS.playerOwner }],
+          },
+        ],
+        args: {
+          player_mint: Array.from(this.options.playerMint.toBytes()),
+        },
+      })
+    );
   }
 
   private async readExistingTileFarms(
@@ -707,6 +788,7 @@ export class PlayerWorldProvisioner {
           payer: this.options.payer,
           entity: entityResult.entityPda,
           componentId: PROGRAMS.tileFarm,
+          authority: this.options.payer,
         });
 
         if (!componentResult.componentPda) {
@@ -954,10 +1036,66 @@ export class PlayerWorldProvisioner {
       payer: this.options.payer,
       entity: entityResult.entityPda,
       componentId: PROGRAMS.tileFarm,
+      authority: this.options.payer,
     });
 
     if (!componentResult.componentPda) {
       throw new Error("Tile farm component PDA missing after initialization.");
+    }
+
+    const [baseComponentInfo, erComponentInfo] = await Promise.all([
+      this.options.baseConnection.getAccountInfo(componentResult.componentPda),
+      this.options.erConnection.getAccountInfo(componentResult.componentPda),
+    ]);
+
+    if (!baseComponentInfo && !erComponentInfo) {
+      await this.options.sendBoltResult(componentResult);
+    }
+
+    return {
+      key,
+      entityPda: entityResult.entityPda,
+      componentPda: componentResult.componentPda,
+      delegated: false,
+    };
+  }
+
+  private async createTileItem(
+    player: PlayerState,
+    point: GridPoint
+  ): Promise<TileItemComponentState> {
+    const key = tileTerrainKey(point);
+
+    this.options.setStatus(`Creating item state for tile ${key}...`);
+    await this.options.installBaseProvider();
+    const { AddEntity, InitializeComponent } = await loadBoltSdk();
+    const entityResult = await AddEntity({
+      payer: this.options.payer,
+      world: player.worldPda,
+      seed: tileItemEntitySeed(point),
+      connection: this.options.baseConnection,
+    });
+
+    if (!entityResult.entityPda) {
+      throw new Error("Tile item entity PDA missing after initialization.");
+    }
+
+    const entityInfo = await this.options.baseConnection.getAccountInfo(
+      entityResult.entityPda
+    );
+
+    if (!entityInfo) {
+      await this.options.sendBoltResult(entityResult);
+    }
+
+    const componentResult = await InitializeComponent({
+      payer: this.options.payer,
+      entity: entityResult.entityPda,
+      componentId: PROGRAMS.tileItem,
+    });
+
+    if (!componentResult.componentPda) {
+      throw new Error("Tile item component PDA missing after initialization.");
     }
 
     const [baseComponentInfo, erComponentInfo] = await Promise.all([

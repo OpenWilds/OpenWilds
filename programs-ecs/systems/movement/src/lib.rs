@@ -1,6 +1,7 @@
 use active_action::ActiveAction;
 use bolt_lang::*;
 use energy::Energy;
+use player_owner::PlayerOwner;
 use position::Position;
 use serde::Deserialize;
 
@@ -21,6 +22,19 @@ pub mod movement {
             MovementError::TargetOutOfBounds
         );
 
+        let authority = ctx.accounts.authority.key();
+        require!(
+            is_player_authority(
+                &ctx.accounts.player_owner,
+                authority,
+                &[
+                    ctx.accounts.position.bolt_metadata.authority,
+                    ctx.accounts.energy.bolt_metadata.authority,
+                    ctx.accounts.active_action.bolt_metadata.authority,
+                ],
+            ),
+            MovementError::InvalidPlayerAuthority
+        );
         let now = Clock::get()?.unix_timestamp;
         let active_action = &mut ctx.accounts.active_action;
 
@@ -57,6 +71,7 @@ pub mod movement {
 
     #[system_input]
     pub struct Components {
+        pub player_owner: PlayerOwner,
         pub position: Position,
         pub energy: Energy,
         pub active_action: ActiveAction,
@@ -67,6 +82,17 @@ pub mod movement {
 struct MoveTarget {
     x: i64,
     y: i64,
+}
+
+fn is_player_authority(
+    player_owner: &PlayerOwner,
+    signer: Pubkey,
+    component_authorities: &[Pubkey],
+) -> bool {
+    player_owner.owner == signer
+        && component_authorities
+            .iter()
+            .all(|component_authority| *component_authority == signer)
 }
 
 #[error_code]
@@ -81,4 +107,6 @@ pub enum MovementError {
     NotEnoughEnergy,
     #[msg("Another action is still in progress.")]
     ActionInProgress,
+    #[msg("Player movement components must belong to the transaction authority.")]
+    InvalidPlayerAuthority,
 }

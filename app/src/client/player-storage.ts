@@ -34,7 +34,8 @@ export const readStoredPlayer = (
       !positionComponentPda ||
       !state.energyComponentPda ||
       !state.activeActionComponentPda ||
-      !state.inventoryComponentPda
+      !state.inventoryComponentPda ||
+      !state.playerOwnerComponentPda
     ) {
       return null;
     }
@@ -48,10 +49,12 @@ export const readStoredPlayer = (
       energyComponentPda: new PublicKey(state.energyComponentPda),
       activeActionComponentPda: new PublicKey(state.activeActionComponentPda),
       inventoryComponentPda: new PublicKey(state.inventoryComponentPda),
+      playerOwnerComponentPda: new PublicKey(state.playerOwnerComponentPda),
       positionDelegated: Boolean(state.positionDelegated),
       energyDelegated: Boolean(state.energyDelegated),
       activeActionDelegated: Boolean(state.activeActionDelegated),
       inventoryDelegated: Boolean(state.inventoryDelegated),
+      playerOwnerDelegated: Boolean(state.playerOwnerDelegated),
       terrainTypes: (state.terrainTypes ?? []).map((terrainType) => ({
         terrainTypeId: terrainType.terrainTypeId,
         entityPda: new PublicKey(terrainType.entityPda),
@@ -69,6 +72,12 @@ export const readStoredPlayer = (
         entityPda: new PublicKey(tileFarm.entityPda),
         componentPda: new PublicKey(tileFarm.componentPda),
         delegated: Boolean(tileFarm.delegated),
+      })),
+      tileItems: (state.tileItems ?? []).map((tileItem) => ({
+        key: tileItem.key,
+        entityPda: new PublicKey(tileItem.entityPda),
+        componentPda: new PublicKey(tileItem.componentPda),
+        delegated: Boolean(tileItem.delegated),
       })),
     };
   } catch {
@@ -88,10 +97,12 @@ export const writeStoredPlayer = (wallet: PublicKey, state: PlayerState) => {
     energyComponentPda: state.energyComponentPda.toBase58(),
     activeActionComponentPda: state.activeActionComponentPda.toBase58(),
     inventoryComponentPda: state.inventoryComponentPda.toBase58(),
+    playerOwnerComponentPda: state.playerOwnerComponentPda.toBase58(),
     positionDelegated: state.positionDelegated,
     energyDelegated: state.energyDelegated,
     activeActionDelegated: state.activeActionDelegated,
     inventoryDelegated: state.inventoryDelegated,
+    playerOwnerDelegated: state.playerOwnerDelegated,
     terrainTypes: state.terrainTypes.map((terrainType) => ({
       terrainTypeId: terrainType.terrainTypeId,
       entityPda: terrainType.entityPda.toBase58(),
@@ -109,6 +120,12 @@ export const writeStoredPlayer = (wallet: PublicKey, state: PlayerState) => {
       entityPda: tileFarm.entityPda.toBase58(),
       componentPda: tileFarm.componentPda.toBase58(),
       delegated: tileFarm.delegated,
+    })),
+    tileItems: state.tileItems.map((tileItem) => ({
+      key: tileItem.key,
+      entityPda: tileItem.entityPda.toBase58(),
+      componentPda: tileItem.componentPda.toBase58(),
+      delegated: tileItem.delegated,
     })),
   };
 

@@ -1,6 +1,7 @@
 use active_action::ActiveAction;
 use bolt_lang::*;
 use energy::Energy;
+use player_owner::PlayerOwner;
 use position::Position;
 use serde::Deserialize;
 use terrain_type::{TerrainType, FEATURE_FARMABLE};
@@ -20,6 +21,20 @@ pub mod till_tile {
         let tile_terrain = load_tile_terrain(&ctx)?;
         let terrain_type = load_terrain_type(&ctx)?;
         let now = Clock::get()?.unix_timestamp;
+        let authority = ctx.accounts.authority.key();
+        require!(
+            is_player_authority(
+                &ctx.accounts.player_owner,
+                authority,
+                &[
+                    ctx.accounts.position.bolt_metadata.authority,
+                    ctx.accounts.energy.bolt_metadata.authority,
+                    ctx.accounts.active_action.bolt_metadata.authority,
+                    ctx.accounts.tile_farm.bolt_metadata.authority,
+                ],
+            ),
+            TillTileError::InvalidPlayerAuthority
+        );
         let active_action = &mut ctx.accounts.active_action;
 
         active_action.clear_if_done(now);
@@ -75,6 +90,7 @@ pub mod till_tile {
 
     #[system_input]
     pub struct Components {
+        pub player_owner: PlayerOwner,
         pub position: Position,
         pub energy: Energy,
         pub active_action: ActiveAction,
@@ -116,6 +132,17 @@ fn is_reachable_tile(position: &Position, target_x: i64, target_y: i64) -> bool 
     position.x.abs_diff(target_x) <= 1 && position.y.abs_diff(target_y) <= 1
 }
 
+fn is_player_authority(
+    player_owner: &PlayerOwner,
+    signer: Pubkey,
+    component_authorities: &[Pubkey],
+) -> bool {
+    player_owner.owner == signer
+        && component_authorities
+            .iter()
+            .all(|component_authority| *component_authority == signer)
+}
+
 #[error_code]
 pub enum TillTileError {
     #[msg("Tile action expected JSON args shaped like {{ \"x\": number, \"y\": number }}.")]
@@ -142,4 +169,6 @@ pub enum TillTileError {
     InvalidTileTerrainAccount,
     #[msg("Terrain type validation account is invalid.")]
     InvalidTerrainTypeAccount,
+    #[msg("Player farming components must belong to the transaction authority.")]
+    InvalidPlayerAuthority,
 }

@@ -6,15 +6,15 @@ use position::Position;
 use serde::Deserialize;
 use tile_item::TileItem;
 
-declare_id!("3UEFZZDhmaMh1mBZYvxZxk2PZ2Zb4niHg4wpg2iYiW8J");
+declare_id!("ENLdCrebMYYvRQFaMCNJAn3DCzEZSJ8JXpwVBFX9R7NH");
 
-const GRAB_SECONDS: i64 = 1;
+const DROP_SECONDS: i64 = 1;
 
 #[system]
-pub mod grab_tile {
+pub mod drop_tile {
     pub fn execute(ctx: Context<Components>, args: Vec<u8>) -> Result<Components> {
-        let target: TileTarget =
-            serde_json::from_slice(&args).map_err(|_| error!(GrabTileError::InvalidTileArgs))?;
+        let drop: DropTarget =
+            serde_json::from_slice(&args).map_err(|_| error!(DropTileError::InvalidDropArgs))?;
         let action_now = Clock::get()?.unix_timestamp;
         let authority = ctx.accounts.authority.key();
         require!(
@@ -27,32 +27,49 @@ pub mod grab_tile {
                     ctx.accounts.inventory.bolt_metadata.authority,
                 ],
             ),
-            GrabTileError::InvalidPlayerAuthority
+            DropTileError::InvalidPlayerAuthority
         );
         let active_action = &mut ctx.accounts.active_action;
 
         active_action.clear_if_done(action_now);
         require!(
             !active_action.is_active(action_now),
-            GrabTileError::ActionInProgress
+            DropTileError::ActionInProgress
         );
         require!(
-            is_reachable_tile(&ctx.accounts.position, target.x, target.y),
-            GrabTileError::PlayerNotOnTile
+            is_reachable_tile(&ctx.accounts.position, drop.x, drop.y),
+            DropTileError::PlayerNotOnTile
+        );
+        require!(
+            drop.item_id != 0 && drop.quantity != 0,
+            DropTileError::InvalidItem
         );
 
         let tile_item = &mut ctx.accounts.tile_item;
-        require!(
-            tile_item.x == target.x && tile_item.y == target.y,
-            GrabTileError::TileMismatch
-        );
-        require!(tile_item.has_item(), GrabTileError::NoItem);
+
+        if tile_item.has_item() {
+            require!(
+                tile_item.x == drop.x && tile_item.y == drop.y,
+                DropTileError::TileMismatch
+            );
+            require!(
+                tile_item.item_id == drop.item_id,
+                DropTileError::DifferentItemOnTile
+            );
+        } else {
+            tile_item.x = drop.x;
+            tile_item.y = drop.y;
+            tile_item.item_id = drop.item_id;
+        }
 
         ctx.accounts
             .inventory
-            .add_item(tile_item.item_id, tile_item.quantity)?;
-        tile_item.clear_item();
-        active_action.start(active_action::ACTION_GRAB, action_now, GRAB_SECONDS);
+            .remove_item(drop.item_id, drop.quantity)?;
+        tile_item.quantity = tile_item
+            .quantity
+            .checked_add(drop.quantity)
+            .ok_or(error!(DropTileError::QuantityOverflow))?;
+        active_action.start(active_action::ACTION_DROP, action_now, DROP_SECONDS);
 
         Ok(ctx.accounts)
     }
@@ -68,9 +85,11 @@ pub mod grab_tile {
 }
 
 #[derive(Deserialize)]
-struct TileTarget {
+struct DropTarget {
     x: i64,
     y: i64,
+    item_id: u16,
+    quantity: u16,
 }
 
 fn is_reachable_tile(position: &Position, target_x: i64, target_y: i64) -> bool {
@@ -89,17 +108,21 @@ fn is_player_authority(
 }
 
 #[error_code]
-pub enum GrabTileError {
-    #[msg("Grabbing expected JSON args shaped like {{ \"x\": number, \"y\": number }}.")]
-    InvalidTileArgs,
+pub enum DropTileError {
+    #[msg("Dropping expected JSON args shaped like {{ \"x\": number, \"y\": number, \"item_id\": number, \"quantity\": number }}.")]
+    InvalidDropArgs,
     #[msg("Another action is still in progress.")]
     ActionInProgress,
     #[msg("Player must be standing on or next to the tile.")]
     PlayerNotOnTile,
     #[msg("Tile item component does not match the target tile.")]
     TileMismatch,
-    #[msg("Tile has no item to grab.")]
-    NoItem,
+    #[msg("Dropped item id and quantity must be non-zero.")]
+    InvalidItem,
+    #[msg("Tile already contains a different item.")]
+    DifferentItemOnTile,
+    #[msg("Tile item quantity overflowed.")]
+    QuantityOverflow,
     #[msg("Player inventory/action components must belong to the transaction authority.")]
     InvalidPlayerAuthority,
 }

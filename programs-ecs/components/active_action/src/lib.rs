@@ -11,6 +11,7 @@ pub const ACTION_PLANT: u8 = 5;
 pub const ACTION_HARVEST: u8 = 6;
 pub const ACTION_CHOP: u8 = 7;
 pub const ACTION_GRAB: u8 = 8;
+pub const ACTION_DROP: u8 = 9;
 
 #[component(delegate)]
 #[derive(Default)]

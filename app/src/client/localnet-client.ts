@@ -130,7 +130,7 @@ type GameWorldConfig = {
 const ACTION_IDLE = 0;
 const ACTION_MOVE = 1;
 const ACTION_SLEEP = 2;
-const FARM_ACTIONS = new Set([3, 4, 5, 6, 7, 8]);
+const FARM_ACTIONS = new Set([3, 4, 5, 6, 7, 8, 9]);
 const STARTER_INVENTORY_ARGS = {
   turnip_seeds: 6,
   wheat_seeds: 4,
@@ -205,6 +205,8 @@ export class LocalnetClient {
         "energy",
         "activeAction",
         "inventory",
+        "playerOwner",
+        "initializePlayerOwner",
         "worldAuthority",
         "initializeWorldAuthority",
         "worldTerrainRegistry",
@@ -269,6 +271,7 @@ export class LocalnetClient {
             {
               entity: player.entityPda,
               components: [
+                { componentId: PROGRAMS.playerOwner },
                 { componentId: PROGRAMS.position },
                 { componentId: PROGRAMS.energy },
                 { componentId: PROGRAMS.activeAction },
@@ -314,6 +317,8 @@ export class LocalnetClient {
         "energy",
         "activeAction",
         "inventory",
+        "playerOwner",
+        "initializePlayerOwner",
         "worldAuthority",
         "initializeWorldAuthority",
         "worldTerrainRegistry",
@@ -351,6 +356,7 @@ export class LocalnetClient {
             {
               entity: player.entityPda,
               components: [
+                { componentId: PROGRAMS.playerOwner },
                 { componentId: PROGRAMS.energy },
                 { componentId: PROGRAMS.activeAction },
               ],
@@ -393,7 +399,8 @@ export class LocalnetClient {
   async performFarmAction(
     mode: FarmActionMode,
     point: GridPoint,
-    selectedItemId?: number | null
+    selectedItemId?: number | null,
+    selectedQuantity?: number | null
   ): Promise<FarmActionResult | null> {
     if (mode === "move") {
       const player = await this.movePlayer(point);
@@ -417,6 +424,10 @@ export class LocalnetClient {
 
     if (mode === "grab") {
       return this.performGrabAction(point);
+    }
+
+    if (mode === "drop") {
+      return this.performDropAction(point, selectedItemId, selectedQuantity);
     }
 
     try {
@@ -542,6 +553,8 @@ export class LocalnetClient {
         "position",
         "activeAction",
         "inventory",
+        "playerOwner",
+        "initializePlayerOwner",
         "tileItem",
         "grabTile",
       ]);
@@ -587,6 +600,7 @@ export class LocalnetClient {
             {
               entity: player.entityPda,
               components: [
+                { componentId: PROGRAMS.playerOwner },
                 { componentId: PROGRAMS.position },
                 { componentId: PROGRAMS.activeAction },
               ],
@@ -631,6 +645,118 @@ export class LocalnetClient {
       );
       this.hud.setProgramStatus(
         message ? `Grab failed: ${message}` : "Grab failed."
+      );
+      return null;
+    }
+  }
+
+  private async performDropAction(
+    point: GridPoint,
+    selectedItemId?: number | null,
+    selectedQuantity?: number | null
+  ): Promise<FarmActionResult | null> {
+    if (!selectedItemId) {
+      this.hud.setProgramStatus("Select an inventory item before dropping.");
+      return null;
+    }
+
+    const quantity = Math.max(1, Math.floor(selectedQuantity ?? 1));
+
+    try {
+      await this.installAnchorProvider(this.baseConnection);
+      await this.requireDeployedPrograms([
+        "position",
+        "activeAction",
+        "inventory",
+        "playerOwner",
+        "initializePlayerOwner",
+        "tileItem",
+        "dropTile",
+      ]);
+
+      const player = await this.ensureOnchainPlayer();
+      const tileItem = await this.createPlayerWorldProvisioner().ensureTileItem(
+        player,
+        point,
+        { createIfMissing: true }
+      );
+
+      await this.installAnchorProvider(this.erConnection);
+      const actionState = await this.fetchPlayerActionStateOnEr(player);
+
+      if (this.isActionActive(actionState.activeAction)) {
+        this.hud.setProgramStatus(
+          `${this.describeAction(actionState.activeAction)} in progress.`
+        );
+        this.renderActionBusy(actionState.activeAction);
+        this.emitPlayerActionState(actionState);
+        return null;
+      }
+
+      const { ApplySystem } = await loadBoltSdk();
+
+      this.hud.setProgramStatus(
+        `Dropping ${quantity} item(s) at ${point.x}, ${point.y}...`
+      );
+      await this.sendBoltResult(
+        await ApplySystem({
+          authority: this.wallet.publicKey,
+          systemId: PROGRAMS.dropTile,
+          world: player.worldPda,
+          entities: [
+            {
+              entity: player.entityPda,
+              components: [
+                { componentId: PROGRAMS.playerOwner },
+                { componentId: PROGRAMS.position },
+                { componentId: PROGRAMS.activeAction },
+              ],
+            },
+            {
+              entity: tileItem.entityPda,
+              components: [{ componentId: PROGRAMS.tileItem }],
+            },
+            {
+              entity: player.entityPda,
+              components: [{ componentId: PROGRAMS.inventory }],
+            },
+          ],
+          args: {
+            x: point.x,
+            y: point.y,
+            item_id: selectedItemId,
+            quantity,
+          },
+        }),
+        this.erConnection,
+        { skipPreflight: true }
+      );
+
+      const confirmedState = await this.fetchPlayerActionStateOnEr(player);
+      const confirmedItem = await this.fetchTileItemState(
+        tileItem.componentPda,
+        point
+      );
+
+      this.hud.setProgramStatus("Drop confirmed.");
+      this.renderActionBusy(confirmedState.activeAction);
+      this.emitPlayerActionState(confirmedState);
+      await this.syncInventory(player);
+      await this.syncTileItems();
+      await this.syncVisiblePlayers();
+
+      return {
+        player: confirmedState,
+        item: confirmedItem,
+      };
+    } catch (error) {
+      const message = await describeOnchainError(
+        "drop action failed",
+        error,
+        this.erConnection
+      );
+      this.hud.setProgramStatus(
+        message ? `Drop failed: ${message}` : "Drop failed."
       );
       return null;
     }
@@ -1011,6 +1137,7 @@ export class LocalnetClient {
     farmType: { componentPda: PublicKey }
   ) {
     const playerComponents = [
+      { componentId: PROGRAMS.playerOwner },
       { componentId: PROGRAMS.position },
       { componentId: PROGRAMS.energy },
       { componentId: PROGRAMS.activeAction },
@@ -1299,7 +1426,10 @@ export class LocalnetClient {
         entities: [
           {
             entity: player.entityPda,
-            components: [{ componentId: PROGRAMS.inventory }],
+            components: [
+              { componentId: PROGRAMS.playerOwner },
+              { componentId: PROGRAMS.inventory },
+            ],
           },
         ],
         args: STARTER_INVENTORY_ARGS,
@@ -1321,6 +1451,8 @@ export class LocalnetClient {
         "energy",
         "activeAction",
         "inventory",
+        "playerOwner",
+        "initializePlayerOwner",
         "worldAuthority",
         "initializeWorldAuthority",
         "worldTerrainRegistry",
@@ -1446,10 +1578,26 @@ export class LocalnetClient {
     }
 
     const config = await this.loadGameWorldConfig();
-    const entries = config.tileItems ?? [];
+    const entries = new Map<
+      string,
+      { x: number; y: number; componentPda: string }
+    >();
+
+    for (const entry of config.tileItems ?? []) {
+      entries.set(getWorldItemKey(entry), entry);
+    }
+
+    for (const entry of this.playerState?.tileItems ?? []) {
+      const point = this.parseTileKey(entry.key);
+      entries.set(entry.key, {
+        ...point,
+        componentPda: entry.componentPda.toBase58(),
+      });
+    }
+
     const items = (
       await Promise.all(
-        entries.map((entry) =>
+        [...entries.values()].map((entry) =>
           this.fetchTileItemState(new PublicKey(entry.componentPda), entry)
         )
       )

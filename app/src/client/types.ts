@@ -21,6 +21,7 @@ export type StoredTileTerrainState = {
 };
 
 export type StoredTileFarmState = StoredTileTerrainState;
+export type StoredTileItemState = StoredTileTerrainState;
 
 export type StoredPlayerState = {
   wallet: string;
@@ -33,13 +34,16 @@ export type StoredPlayerState = {
   energyComponentPda?: string;
   activeActionComponentPda?: string;
   inventoryComponentPda?: string;
+  playerOwnerComponentPda?: string;
   positionDelegated?: boolean;
   energyDelegated?: boolean;
   activeActionDelegated?: boolean;
   inventoryDelegated?: boolean;
+  playerOwnerDelegated?: boolean;
   terrainTypes?: StoredTerrainTypeState[];
   tileTerrains?: StoredTileTerrainState[];
   tileFarms?: StoredTileFarmState[];
+  tileItems?: StoredTileItemState[];
 };
 
 export type TerrainTypeState = {
@@ -57,6 +61,7 @@ export type TileTerrainState = {
 };
 
 export type TileFarmState = TileTerrainState;
+export type TileItemComponentState = TileTerrainState;
 
 export type PlayerState = {
   playerMint: PublicKey;
@@ -67,13 +72,16 @@ export type PlayerState = {
   energyComponentPda: PublicKey;
   activeActionComponentPda: PublicKey;
   inventoryComponentPda: PublicKey;
+  playerOwnerComponentPda: PublicKey;
   positionDelegated: boolean;
   energyDelegated: boolean;
   activeActionDelegated: boolean;
   inventoryDelegated: boolean;
+  playerOwnerDelegated: boolean;
   terrainTypes: TerrainTypeState[];
   tileTerrains: TileTerrainState[];
   tileFarms: TileFarmState[];
+  tileItems: TileItemComponentState[];
 };
 
 export type BoltResult = {
@@ -134,6 +142,7 @@ export type BoltSdk = {
     entity: PublicKey;
     componentId: PublicKey;
     seed?: string;
+    authority?: PublicKey;
   }) => Promise<BoltResult>;
   InitializeNewWorld: (args: {
     payer: PublicKey;

@@ -86,6 +86,9 @@ export const createGridScene = (client: GameClient) =>
         },
         (itemId) => {
           this.gridInput.selectedItemId = itemId;
+        },
+        (quantity) => {
+          this.gridInput.selectedQuantity = quantity;
         }
       );
       createHoverEntity(this.world, this);
@@ -319,7 +322,8 @@ export const createGridScene = (client: GameClient) =>
         const result = await client.performFarmAction(
           mode,
           point,
-          this.gridInput.selectedItemId
+          this.gridInput.selectedItemId,
+          this.gridInput.selectedQuantity
         );
 
         if (!result) {

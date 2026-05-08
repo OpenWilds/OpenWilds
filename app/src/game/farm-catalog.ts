@@ -28,6 +28,7 @@ const TOOL_BUTTONS: Array<{ mode: FarmActionMode; label: string }> = [
   { mode: "harvest", label: "Harvest" },
   { mode: "chop", label: "Axe" },
   { mode: "grab", label: "Grab" },
+  { mode: "drop", label: "Drop" },
 ];
 
 type InventoryRow = {
@@ -39,7 +40,8 @@ type InventoryRow = {
 export const createFarmCatalog = (
   scene: Phaser.Scene,
   onModeChange?: (mode: FarmActionMode) => void,
-  onItemSelect?: (itemId: number | null) => void
+  onItemSelect?: (itemId: number | null) => void,
+  onQuantityChange?: (quantity: number) => void
 ) => {
   const panel = scene.add.graphics();
 
@@ -112,6 +114,16 @@ export const createFarmCatalog = (
       wordWrap: { width: PANEL_WIDTH - 44 },
     })
     .setDepth(5);
+  const dropQuantityText = scene.add
+    .text(PANEL_X + 120, INVENTORY_Y + 10, "Drop x1", {
+      color: "#17211e",
+      fixedWidth: 58,
+      fontFamily: "Inter, sans-serif",
+      fontSize: "9px",
+      fontStyle: "700",
+      align: "center",
+    })
+    .setDepth(6);
 
   const inventoryTexts = new Map<number, Phaser.GameObjects.Text>();
   const inventoryRows: InventoryRow[] = [];
@@ -122,6 +134,8 @@ export const createFarmCatalog = (
   }> = [];
   let selectedMode: FarmActionMode = "move";
   let selectedItemId: number | null = null;
+  let selectedItemQuantity = 0;
+  let selectedDropQuantity = 1;
   let hiddenInventoryRows = 0;
 
   const destroyInventoryRows = () => {
@@ -134,6 +148,12 @@ export const createFarmCatalog = (
   };
 
   const refreshSelectedItem = () => {
+    selectedDropQuantity = Math.max(
+      1,
+      Math.min(selectedDropQuantity, Math.max(1, selectedItemQuantity))
+    );
+    dropQuantityText.setText(`Drop x${selectedDropQuantity}`);
+    onQuantityChange?.(selectedDropQuantity);
     selectedItemText.setText(
       selectedItemId
         ? `Selected: ${getFarmItemLabel(selectedItemId)}${
@@ -170,6 +190,14 @@ export const createFarmCatalog = (
         5
       );
     }
+  };
+
+  const changeDropQuantity = (delta: number) => {
+    selectedDropQuantity = Math.max(
+      1,
+      Math.min(selectedDropQuantity + delta, Math.max(1, selectedItemQuantity))
+    );
+    refreshSelectedItem();
   };
 
   const refreshToolButtons = () => {
@@ -239,6 +267,57 @@ export const createFarmCatalog = (
   });
   refreshToolButtons();
 
+  [
+    { label: "-", delta: -1, x: PANEL_X + 180 },
+    { label: "+", delta: 1, x: PANEL_X + 196 },
+  ].forEach((control) => {
+    const background = scene.add.graphics().setDepth(8);
+    const label = scene.add
+      .text(control.x, INVENTORY_Y + 9, control.label, {
+        color: "#17211e",
+        fixedWidth: 12,
+        fontFamily: "Inter, sans-serif",
+        fontSize: "10px",
+        fontStyle: "700",
+        align: "center",
+      })
+      .setDepth(9);
+
+    background.fillStyle(0xf7f1e5, 1);
+    background.fillRoundedRect(control.x - 2, INVENTORY_Y + 8, 14, 14, 4);
+    background.lineStyle(1, 0xc7d8c4, 1);
+    background.strokeRoundedRect(control.x - 2, INVENTORY_Y + 8, 14, 14, 4);
+    background
+      .setInteractive(
+        new Phaser.Geom.Rectangle(control.x - 2, INVENTORY_Y + 8, 14, 14),
+        Phaser.Geom.Rectangle.Contains
+      )
+      .on(
+        "pointerdown",
+        (
+          _pointer: Phaser.Input.Pointer,
+          _localX: number,
+          _localY: number,
+          event: Phaser.Types.Input.EventData
+        ) => {
+          event.stopPropagation();
+          changeDropQuantity(control.delta);
+        }
+      );
+    label.on(
+      "pointerdown",
+      (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData
+      ) => {
+        event.stopPropagation();
+        changeDropQuantity(control.delta);
+      }
+    );
+  });
+
   const createInventoryRow = (slot: InventorySlotState, index: number) => {
     const rowY = INVENTORY_Y + 31 + index * (INVENTORY_ROW_HEIGHT + 1);
     const background = scene.add.graphics().setDepth(5);
@@ -279,6 +358,8 @@ export const createFarmCatalog = (
         ) => {
           event.stopPropagation();
           selectedItemId = selectedItemId === slot.itemId ? null : slot.itemId;
+          selectedItemQuantity =
+            selectedItemId === slot.itemId ? slot.quantity : 0;
           refreshSelectedItem();
           onItemSelect?.(selectedItemId);
         }
@@ -293,6 +374,8 @@ export const createFarmCatalog = (
       ) => {
         event.stopPropagation();
         selectedItemId = selectedItemId === slot.itemId ? null : slot.itemId;
+        selectedItemQuantity =
+          selectedItemId === slot.itemId ? slot.quantity : 0;
         refreshSelectedItem();
         onItemSelect?.(selectedItemId);
       }
@@ -374,8 +457,13 @@ export const createFarmCatalog = (
         !inventory.slots.some((slot) => slot.itemId === selectedItemId)
       ) {
         selectedItemId = null;
+        selectedItemQuantity = 0;
         onItemSelect?.(selectedItemId);
       }
+
+      selectedItemQuantity =
+        inventory.slots.find((slot) => slot.itemId === selectedItemId)
+          ?.quantity ?? 0;
 
       destroyInventoryRows();
       inventorySummaryText.setVisible(inventory.slots.length === 0);

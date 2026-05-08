@@ -7,6 +7,7 @@ export type GridInput = {
   requestedFarmAction: GridPoint | null;
   farmActionMode: FarmActionMode;
   selectedItemId: number | null;
+  selectedQuantity: number;
 };
 
 export type MoveState = {
@@ -44,6 +45,7 @@ export const installGridResources = (
     requestedFarmAction: null,
     farmActionMode: "move",
     selectedItemId: null,
+    selectedQuantity: 1,
   });
   world.setResource<GridResources["move"]>("move", {
     pending: false,

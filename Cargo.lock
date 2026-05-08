@@ -661,6 +661,7 @@ dependencies = [
  "energy",
  "farm_type",
  "inventory",
+ "player_owner",
  "position",
  "serde",
  "serde_json",
@@ -865,6 +866,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "drop_tile"
+version = "0.2.4"
+dependencies = [
+ "active_action",
+ "bolt-lang",
+ "inventory",
+ "player_owner",
+ "position",
+ "serde",
+ "serde_json",
+ "tile_item",
+]
+
+[[package]]
 name = "energy"
 version = "0.2.4"
 dependencies = [
@@ -1037,6 +1052,7 @@ dependencies = [
  "active_action",
  "bolt-lang",
  "inventory",
+ "player_owner",
  "position",
  "serde",
  "serde_json",
@@ -1049,6 +1065,7 @@ version = "0.2.4"
 dependencies = [
  "bolt-lang",
  "inventory",
+ "player_owner",
  "serde",
  "serde_json",
 ]
@@ -1062,6 +1079,7 @@ dependencies = [
  "energy",
  "farm_type",
  "inventory",
+ "player_owner",
  "position",
  "serde",
  "serde_json",
@@ -1115,6 +1133,16 @@ checksum = "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9"
 dependencies = [
  "equivalent",
  "hashbrown 0.17.0",
+]
+
+[[package]]
+name = "initialize_player_owner"
+version = "0.2.4"
+dependencies = [
+ "bolt-lang",
+ "player_owner",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1256,6 +1284,7 @@ dependencies = [
  "active_action",
  "bolt-lang",
  "energy",
+ "player_owner",
  "position",
  "serde",
  "serde_json",
@@ -1357,12 +1386,20 @@ dependencies = [
  "energy",
  "farm_type",
  "inventory",
+ "player_owner",
  "position",
  "serde",
  "serde_json",
  "terrain_type",
  "tile_farm",
  "tile_terrain",
+]
+
+[[package]]
+name = "player_owner"
+version = "0.2.4"
+dependencies = [
+ "bolt-lang",
 ]
 
 [[package]]
@@ -1710,6 +1747,7 @@ dependencies = [
  "active_action",
  "bolt-lang",
  "energy",
+ "player_owner",
 ]
 
 [[package]]
@@ -2649,6 +2687,7 @@ dependencies = [
  "active_action",
  "bolt-lang",
  "energy",
+ "player_owner",
  "position",
  "serde",
  "serde_json",
@@ -2847,6 +2886,7 @@ dependencies = [
  "bolt-lang",
  "energy",
  "farm_type",
+ "player_owner",
  "position",
  "serde",
  "serde_json",
