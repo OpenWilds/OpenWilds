@@ -5,7 +5,7 @@ use player_owner::PlayerOwner;
 use position::Position;
 use serde::Deserialize;
 
-declare_id!("ByJN7XLbzZ6HHXDRGsTmb8nzYJaiU3jSrQjoGAtswzyw");
+declare_id!("HqHfwh69PtpM1mvBzHXbqNMLxD2kkygikMbmqYVPFqvv");
 
 const TRADE_RANGE: u64 = 1;
 
@@ -55,9 +55,7 @@ pub mod accept_trade {
         let instruction_sysvar_info = ctx
             .remaining_accounts
             .iter()
-            .find(|account| {
-                account.key() == bolt_lang::solana_program::sysvar::instructions::id()
-            })
+            .find(|account| account.key() == bolt_lang::solana_program::sysvar::instructions::id())
             .ok_or(error!(AcceptTradeError::MissingValidationAccount))?;
 
         require_keys_eq!(
@@ -79,8 +77,15 @@ pub mod accept_trade {
             trade_offer.status == TradeStatus::Accepted,
             AcceptTradeError::TradeOfferNotAccepted
         );
-        require!(trade_offer.expires_at > now, AcceptTradeError::TradeOfferExpired);
-        require_keys_eq!(trade_offer.buyer, buyer, AcceptTradeError::InvalidTradeBuyer);
+        require!(
+            trade_offer.expires_at > now,
+            AcceptTradeError::TradeOfferExpired
+        );
+        require_keys_eq!(
+            trade_offer.buyer,
+            buyer,
+            AcceptTradeError::InvalidTradeBuyer
+        );
         require_keys_eq!(
             trade_offer.seller,
             ctx.accounts.seller_owner.owner,
@@ -111,9 +116,7 @@ pub mod accept_trade {
             AcceptTradeError::PlayersOutOfRange
         );
         require!(
-            ctx.accounts
-                .seller_inventory
-                .quantity(trade_offer.item_id)
+            ctx.accounts.seller_inventory.quantity(trade_offer.item_id)
                 >= trade_offer.item_quantity,
             AcceptTradeError::SellerMissingItems
         );
@@ -181,10 +184,9 @@ fn require_finalize_instruction(
     trade_offer: Pubkey,
     trade_acceptance: Pubkey,
 ) -> Result<()> {
-    let current_index =
-        bolt_lang::solana_program::sysvar::instructions::load_current_index_checked(
-            instruction_sysvar,
-        )? as usize;
+    let current_index = bolt_lang::solana_program::sysvar::instructions::load_current_index_checked(
+        instruction_sysvar,
+    )? as usize;
     let finalize_discriminator = [176, 17, 211, 160, 82, 107, 250, 93];
     let mut index = current_index + 1;
 
@@ -201,7 +203,10 @@ fn require_finalize_instruction(
         if instruction.program_id == open_wilds::ID
             && instruction.data.len() >= 8
             && instruction.data[..8] == finalize_discriminator
-            && instruction.accounts.iter().any(|meta| meta.pubkey == trade_offer)
+            && instruction
+                .accounts
+                .iter()
+                .any(|meta| meta.pubkey == trade_offer)
             && instruction
                 .accounts
                 .iter()

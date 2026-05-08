@@ -1,5 +1,6 @@
 import {
   Connection,
+  Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
   SYSVAR_INSTRUCTIONS_PUBKEY,
@@ -29,6 +30,7 @@ import {
   AIRDROP_SOL,
   CHAIN_GENESIS_STORAGE_KEY,
   EPHEMERAL_ROLLUP_RPC_URL,
+  EPHEMERAL_ROLLUP_VALIDATOR,
   LOCALNET_RPC_URL,
   PROGRAMS,
 } from "./config";
@@ -44,7 +46,7 @@ import {
   getPlayerColorStyle,
   listPlayerNftsInCollection,
   listOwnedPlayerNfts,
-  mintLocalPlayerNft,
+  mintPlayerNftOnchain,
   readActivePlayerNft,
   setActivePlayerNft,
   type PlayerColorId,
@@ -209,6 +211,7 @@ export class LocalnetClient {
   private lastGoldBalanceState: GoldBalanceState = { amount: 0n };
   private lastTradeOffers: TradeOfferState[] = [];
   private lastTradeOffersKey: string | null = null;
+  private lastRelevantTradeOffersKey: string | null = null;
   private lastFarmTileStates: FarmTileState[] = [];
   private lastFarmTileStateKey: string | null = null;
   private lastTileItemStates: TileItemState[] = [];
@@ -227,7 +230,7 @@ export class LocalnetClient {
 
     await Promise.all([this.refreshNetwork(), this.refreshBalance()]);
     await this.clearStaleLocalPlayersForChainReset();
-    this.refreshPlayerNftHud();
+    await this.refreshPlayerNftHud();
     this.startPlayerStateSync();
     await this.syncPlayerState({ announceLoaded: true });
     await this.ensureSelectedPlayerReady();
@@ -243,6 +246,7 @@ export class LocalnetClient {
         "inventory",
         "playerOwner",
         "initializePlayerOwner",
+        "syncPlayerOwner",
         "worldAuthority",
         "initializeWorldAuthority",
         "worldTerrainRegistry",
@@ -355,6 +359,7 @@ export class LocalnetClient {
         "inventory",
         "playerOwner",
         "initializePlayerOwner",
+        "syncPlayerOwner",
         "worldAuthority",
         "initializeWorldAuthority",
         "worldTerrainRegistry",
@@ -591,6 +596,7 @@ export class LocalnetClient {
         "inventory",
         "playerOwner",
         "initializePlayerOwner",
+        "syncPlayerOwner",
         "tileItem",
         "grabTile",
       ]);
@@ -706,6 +712,7 @@ export class LocalnetClient {
         "inventory",
         "playerOwner",
         "initializePlayerOwner",
+        "syncPlayerOwner",
         "tileItem",
         "dropTile",
       ]);
@@ -870,9 +877,9 @@ export class LocalnetClient {
 
     try {
       buyer = await this.ensureOnchainPlayer();
-      const sellerNft = listPlayerNftsInCollection().find(
-        (player) => player.mint.toBase58() === args.sellerMint
-      );
+      const sellerNft = (
+        await listPlayerNftsInCollection(this.baseConnection)
+      ).find((player) => player.mint.toBase58() === args.sellerMint);
 
       if (!sellerNft) {
         throw new Error("Selected seller is not visible to this browser.");
@@ -1003,15 +1010,44 @@ export class LocalnetClient {
         offer.acceptance ??
         getTradeAcceptancePda(new PublicKey(offer.offer)).toBase58();
       const acceptance = new PublicKey(acceptanceAddress);
-      const goldMint = getGoldMintPda();
       const buyerPlayerMint = new PublicKey(offer.buyerPlayerMint);
       const sellerPlayerMint = new PublicKey(offer.sellerPlayerMint);
+      const sellerEntity = new PublicKey(offer.sellerEntity);
       const sellerPlayerOwner = await this.deriveComponentPda(
-        new PublicKey(offer.sellerEntity),
+        sellerEntity,
         PROGRAMS.playerOwner
+      );
+      const sellerPosition = await this.deriveComponentPda(
+        sellerEntity,
+        PROGRAMS.position
+      );
+      const sellerInventory = await this.deriveComponentPda(
+        sellerEntity,
+        PROGRAMS.inventory
       );
       const { ApplySystem } = await loadBoltSdk();
 
+      await this.prepareTradeComponentAccountsOnBase([
+        {
+          account: sellerPlayerOwner,
+          programId: PROGRAMS.playerOwner,
+          label: "Seller Player Owner",
+        },
+        {
+          account: sellerPosition,
+          programId: PROGRAMS.position,
+          label: "Seller Position",
+        },
+        {
+          account: sellerInventory,
+          programId: PROGRAMS.inventory,
+          label: "Seller Inventory",
+        },
+      ]);
+      await Promise.all([
+        this.ensurePlayerGoldAccount(buyerPlayerMint),
+        this.ensurePlayerGoldAccount(sellerPlayerMint),
+      ]);
       await this.installAnchorProvider(this.baseConnection);
       this.hud.setProgramStatus("Finalizing atomic trade...");
       const acceptTrade = await ApplySystem({
@@ -1054,21 +1090,7 @@ export class LocalnetClient {
           trade_acceptance: [...acceptance.toBytes()],
         },
       });
-      const transaction = new Transaction()
-        .add(
-          createAssociatedTokenAccountIdempotentInstruction(
-            this.wallet.publicKey,
-            getPlayerGoldAuthorityPda(buyerPlayerMint),
-            goldMint
-          )
-        )
-        .add(
-          createAssociatedTokenAccountIdempotentInstruction(
-            this.wallet.publicKey,
-            getPlayerGoldAuthorityPda(sellerPlayerMint),
-            goldMint
-          )
-        );
+      const transaction = new Transaction();
 
       if (acceptTrade.transaction) {
         transaction.add(...acceptTrade.transaction.instructions);
@@ -1155,7 +1177,7 @@ export class LocalnetClient {
       const mint = (event.target as HTMLSelectElement).value;
 
       if (mint) {
-        this.selectPlayerNft(new PublicKey(mint));
+        void this.selectPlayerNft(new PublicKey(mint));
       }
     });
 
@@ -1172,6 +1194,7 @@ export class LocalnetClient {
       this.lastGoldBalanceState = { amount: 0n };
       this.lastTradeOffers = [];
       this.lastTradeOffersKey = null;
+      this.lastRelevantTradeOffersKey = null;
       this.lastFarmTileStates = [];
       this.lastFarmTileStateKey = null;
       this.lastTileItemStates = [];
@@ -1184,7 +1207,7 @@ export class LocalnetClient {
         endsAt: 0,
       });
       this.hud.renderWallet(this.wallet.publicKey);
-      this.refreshPlayerNftHud();
+      void this.refreshPlayerNftHud();
       this.emitGoldBalance(this.lastGoldBalanceState);
       this.emitTradeOffers([]);
       this.hud.setProgramStatus("Burner reset. Checking balance...");
@@ -1259,6 +1282,7 @@ export class LocalnetClient {
       this.lastGoldBalanceState = { amount: 0n };
       this.lastTradeOffers = [];
       this.lastTradeOffersKey = null;
+      this.lastRelevantTradeOffersKey = null;
       this.lastFarmTileStates = [];
       this.lastFarmTileStateKey = null;
       this.lastTileItemStates = [];
@@ -1354,7 +1378,9 @@ export class LocalnetClient {
 
     const visiblePlayers: VisiblePlayerState[] = [];
 
-    for (const playerNft of listPlayerNftsInCollection()) {
+    for (const playerNft of await listPlayerNftsInCollection(
+      this.baseConnection
+    )) {
       const isActive =
         this.activePlayerNft?.mint.equals(playerNft.mint) ?? false;
 
@@ -1418,6 +1444,24 @@ export class LocalnetClient {
     });
   }
 
+  private async ensurePlayerGoldAccount(playerMint: PublicKey) {
+    const goldAccount = getPlayerGoldAccount(playerMint);
+    const account = await this.baseConnection.getAccountInfo(goldAccount);
+
+    if (account) {
+      return;
+    }
+
+    this.hud.setProgramStatus("Preparing player Gold account...");
+    await this.sendBoltResult({
+      instruction: createAssociatedTokenAccountIdempotentInstruction(
+        this.wallet.publicKey,
+        getPlayerGoldAuthorityPda(playerMint),
+        getGoldMintPda()
+      ),
+    });
+  }
+
   private startTradeOfferSync() {
     if (this.tradeOfferSyncTimer !== null) {
       return;
@@ -1461,7 +1505,7 @@ export class LocalnetClient {
         }
       }
 
-      const activeOffers = offers
+      const relevantOffers = offers
         .map((account) => {
           const decoded = this.decodeTradeOffer(account.account.data);
 
@@ -1488,10 +1532,25 @@ export class LocalnetClient {
           } satisfies TradeOfferState;
         })
         .filter((offer): offer is TradeOfferState => Boolean(offer))
-        .filter((offer) => offer.status !== "finalized")
         .sort((left, right) => Number(right.offerId) - Number(left.offerId));
+      const relevantStateKey = this.getTradeOffersStateKey(relevantOffers);
 
-      this.emitTradeOffers(activeOffers);
+      if (
+        relevantStateKey !== this.lastRelevantTradeOffersKey &&
+        relevantOffers.some((offer) => offer.status === "finalized")
+      ) {
+        void this.syncGoldBalance();
+
+        if (this.playerState) {
+          void this.syncInventory(this.playerState);
+        }
+      }
+
+      this.lastRelevantTradeOffersKey = relevantStateKey;
+
+      this.emitTradeOffers(
+        relevantOffers.filter((offer) => offer.status !== "finalized")
+      );
     } catch (error) {
       void logOnchainError(
         "trade offer sync failed",
@@ -1959,6 +2018,24 @@ export class LocalnetClient {
         label: "Inventory",
       },
     ];
+
+    await this.prepareTradeComponentAccountsOnBase(components);
+
+    for (const component of components) {
+      player[component.delegatedKey] = false;
+    }
+
+    this.playerState = player;
+    writeStoredPlayer(this.wallet.publicKey, player);
+  }
+
+  private async prepareTradeComponentAccountsOnBase(
+    components: Array<{
+      account: PublicKey;
+      programId: PublicKey;
+      label: string;
+    }>
+  ) {
     const { createUndelegateInstruction } = await loadBoltSdk();
 
     await this.installAnchorProvider(this.erConnection);
@@ -1969,7 +2046,6 @@ export class LocalnetClient {
       );
 
       if (baseAccount?.owner.equals(component.programId)) {
-        player[component.delegatedKey] = false;
         continue;
       }
 
@@ -1993,11 +2069,11 @@ export class LocalnetClient {
         this.erConnection,
         { skipPreflight: true }
       );
-      player[component.delegatedKey] = false;
+      await this.waitForAccountOwnerOnBase(
+        component.account,
+        component.programId
+      );
     }
-
-    this.playerState = player;
-    writeStoredPlayer(this.wallet.publicKey, player);
   }
 
   private async preparePlayerOwnerForBaseRead(
@@ -2085,6 +2161,81 @@ export class LocalnetClient {
     writeStoredPlayer(this.wallet.publicKey, player);
   }
 
+  private async syncActivePlayerOwner(player: PlayerState) {
+    if (!this.activePlayerNft?.mint.equals(player.playerMint)) {
+      return;
+    }
+
+    const ownerState = await this.fetchPlayerOwnerComponent(player);
+
+    if (ownerState?.owner.equals(this.wallet.publicKey)) {
+      return;
+    }
+
+    const baseAccount = await this.baseConnection.getAccountInfo(
+      player.playerOwnerComponentPda
+    );
+
+    if (!baseAccount?.owner.equals(PROGRAMS.playerOwner)) {
+      this.hud.setProgramStatus(
+        "Player NFT is owned by this wallet, but Player Owner is still delegated. Commit it before reclaiming control after a transfer."
+      );
+      return;
+    }
+
+    const { ApplySystem } = await loadBoltSdk();
+    await this.installAnchorProvider(this.baseConnection);
+    this.hud.setProgramStatus("Syncing player ownership from NFT...");
+    await this.sendBoltResult(
+      await ApplySystem({
+        authority: this.wallet.publicKey,
+        systemId: PROGRAMS.syncPlayerOwner,
+        world: player.worldPda,
+        entities: [
+          {
+            entity: player.entityPda,
+            components: [{ componentId: PROGRAMS.playerOwner }],
+          },
+        ],
+        extraAccounts: [
+          {
+            pubkey: this.activePlayerNft.tokenAccount,
+            isSigner: false,
+            isWritable: false,
+          },
+        ],
+        args: {
+          player_mint: Array.from(player.playerMint.toBytes()),
+          token_account: Array.from(
+            this.activePlayerNft.tokenAccount.toBytes()
+          ),
+        },
+      }),
+      this.baseConnection
+    );
+
+    player.playerOwnerDelegated = false;
+    this.playerState = player;
+    writeStoredPlayer(this.wallet.publicKey, player);
+  }
+
+  private async fetchPlayerOwnerComponent(player: PlayerState) {
+    const account =
+      (await this.baseConnection.getAccountInfo(
+        player.playerOwnerComponentPda
+      )) ??
+      (await this.erConnection.getAccountInfo(player.playerOwnerComponentPda));
+
+    if (!account || account.data.byteLength < 72) {
+      return null;
+    }
+
+    return {
+      owner: new PublicKey(account.data.slice(8, 40)),
+      playerMint: new PublicKey(account.data.slice(40, 72)),
+    };
+  }
+
   private async ensureOnchainPlayer() {
     if (!this.activePlayerNft) {
       throw new Error("Mint or select a player NFT before playing.");
@@ -2092,6 +2243,7 @@ export class LocalnetClient {
 
     this.playerState = await this.createPlayerWorldProvisioner().ensurePlayer();
     this.startPlayerStateSync();
+    await this.syncActivePlayerOwner(this.playerState);
     await this.ensureStarterInventory(this.playerState);
     await this.ensureStarterGold(this.playerState);
     await this.syncInventory(this.playerState);
@@ -2215,6 +2367,7 @@ export class LocalnetClient {
         "inventory",
         "playerOwner",
         "initializePlayerOwner",
+        "syncPlayerOwner",
         "worldAuthority",
         "initializeWorldAuthority",
         "worldTerrainRegistry",
@@ -2420,7 +2573,9 @@ export class LocalnetClient {
   }
 
   private async discoverKnownPlayerTileFarms() {
-    for (const playerNft of listPlayerNftsInCollection()) {
+    for (const playerNft of await listPlayerNftsInCollection(
+      this.baseConnection
+    )) {
       try {
         const player =
           this.activePlayerNft?.mint.equals(playerNft.mint) &&
@@ -2721,7 +2876,22 @@ export class LocalnetClient {
   }
 
   private emitTradeOffers(offers: TradeOfferState[]) {
-    const stateKey = offers
+    const stateKey = this.getTradeOffersStateKey(offers);
+
+    if (stateKey === this.lastTradeOffersKey) {
+      return;
+    }
+
+    this.lastTradeOffers = offers;
+    this.lastTradeOffersKey = stateKey;
+
+    for (const listener of this.tradeOfferListeners) {
+      listener(offers);
+    }
+  }
+
+  private getTradeOffersStateKey(offers: TradeOfferState[]) {
+    return offers
       .map((offer) =>
         [
           offer.offer,
@@ -2735,17 +2905,6 @@ export class LocalnetClient {
         ].join(":")
       )
       .join("|");
-
-    if (stateKey === this.lastTradeOffersKey) {
-      return;
-    }
-
-    this.lastTradeOffers = offers;
-    this.lastTradeOffersKey = stateKey;
-
-    for (const listener of this.tradeOfferListeners) {
-      listener(offers);
-    }
   }
 
   private emitFarmTiles(tiles: FarmTileState[]) {
@@ -2776,9 +2935,15 @@ export class LocalnetClient {
     };
   }
 
-  private refreshPlayerNftHud() {
-    const players = listOwnedPlayerNfts(this.wallet.publicKey);
-    this.activePlayerNft = readActivePlayerNft(this.wallet.publicKey);
+  private async refreshPlayerNftHud() {
+    const players = await listOwnedPlayerNfts(
+      this.baseConnection,
+      this.wallet.publicKey
+    );
+    this.activePlayerNft = await readActivePlayerNft(
+      this.baseConnection,
+      this.wallet.publicKey
+    );
     this.hud.renderPlayerNfts(players, this.activePlayerNft);
 
     if (this.activePlayerNft) {
@@ -2792,19 +2957,33 @@ export class LocalnetClient {
     try {
       const color =
         (this.hud.elements.playerColorSelect?.value as PlayerColorId) ?? "rose";
-      const player = mintLocalPlayerNft(this.wallet.publicKey, color);
+      const { player, transaction, mint } = await mintPlayerNftOnchain(
+        this.baseConnection,
+        this.wallet.publicKey,
+        color
+      );
+
+      await this.sendSignedTransaction(transaction, this.baseConnection, [
+        mint,
+      ]);
+      await setActivePlayerNft(
+        this.baseConnection,
+        this.wallet.publicKey,
+        player.mint
+      );
       this.playerState = null;
       this.lastPlayerActionStateKey = null;
       this.lastInventoryState = null;
       this.lastInventoryStateKey = null;
       this.lastTradeOffers = [];
       this.lastTradeOffersKey = null;
+      this.lastRelevantTradeOffersKey = null;
       this.lastFarmTileStates = [];
       this.lastFarmTileStateKey = null;
       this.lastTileItemStates = [];
       this.lastTileItemStateKey = null;
       this.knownPlayerTileFarms.clear();
-      this.refreshPlayerNftHud();
+      await this.refreshPlayerNftHud();
       this.emitTradeOffers([]);
       this.hud.setProgramStatus(
         `Minted ${player.metadata.name} with ${
@@ -2818,8 +2997,8 @@ export class LocalnetClient {
     }
   }
 
-  private selectPlayerNft(mint: PublicKey) {
-    setActivePlayerNft(this.wallet.publicKey, mint);
+  private async selectPlayerNft(mint: PublicKey) {
+    await setActivePlayerNft(this.baseConnection, this.wallet.publicKey, mint);
     clearStoredPlayer();
     this.playerState = null;
     this.lastPlayerActionStateKey = null;
@@ -2827,12 +3006,13 @@ export class LocalnetClient {
     this.lastInventoryState = null;
     this.lastTradeOffers = [];
     this.lastTradeOffersKey = null;
+    this.lastRelevantTradeOffersKey = null;
     this.lastFarmTileStateKey = null;
     this.lastFarmTileStates = [];
     this.lastTileItemStateKey = null;
     this.lastTileItemStates = [];
     this.knownPlayerTileFarms.clear();
-    this.refreshPlayerNftHud();
+    await this.refreshPlayerNftHud();
     this.emitTradeOffers([]);
     this.hud.setProgramStatus(`Selected player ${shortAddress(mint)}.`);
     void this.ensureSelectedPlayerReady();
@@ -2944,6 +3124,26 @@ export class LocalnetClient {
     );
 
     return signature;
+  }
+
+  private async sendSignedTransaction(
+    transaction: Transaction,
+    connection = this.baseConnection,
+    signers: Keypair[] = []
+  ) {
+    transaction.feePayer ??= this.wallet.publicKey;
+
+    if (!transaction.recentBlockhash) {
+      const latestBlockhash = await connection.getLatestBlockhash();
+      transaction.recentBlockhash = latestBlockhash.blockhash;
+    }
+
+    transaction.partialSign(this.wallet, ...signers);
+
+    return sendAndConfirmRawTransaction(connection, transaction.serialize(), {
+      commitment: "confirmed",
+      preflightCommitment: "confirmed",
+    });
   }
 
   private async installAnchorProvider(connection: Connection) {

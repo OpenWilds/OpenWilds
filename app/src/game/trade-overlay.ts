@@ -258,7 +258,25 @@ export const createTradeOverlay = (
         true,
         () => void run(() => callbacks.cancelOffer(offer.offer))
       );
+      return;
     }
+
+    const statusLabel =
+      offer.direction === "incoming" && offer.status === "accepted"
+        ? "Buyer finalizes"
+        : offer.status;
+    const status = scene.add
+      .text(PANEL_X + 548, y + 7, statusLabel, {
+        color: "#4b6259",
+        fixedWidth: 76,
+        fontFamily: "Inter, sans-serif",
+        fontSize: "9px",
+        fontStyle: "700",
+        align: "center",
+        wordWrap: { width: 76 },
+      })
+      .setDepth(DEPTH + 1);
+    dynamic.push(status);
   };
 
   const render = () => {

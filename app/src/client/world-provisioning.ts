@@ -369,25 +369,39 @@ export class PlayerWorldProvisioner {
     const existing = player.tileItems.find((tile) => tile.key === key);
 
     if (existing) {
-      await this.ensureComponentDelegated(
-        player,
-        {
-          label: `Tile Item ${key}`,
-          programId: PROGRAMS.tileItem,
-        },
-        existing
-      );
-      return existing;
+      const usableExisting = await this.readUsableExistingTileItem(existing);
+
+      if (!usableExisting) {
+        player.tileItems = player.tileItems.filter((tile) => tile.key !== key);
+        writeStoredPlayer(this.options.payer, player);
+      } else {
+        Object.assign(existing, usableExisting);
+        writeStoredPlayer(this.options.payer, player);
+        await this.ensureComponentDelegated(
+          player,
+          {
+            label: `Tile Item ${key}`,
+            programId: PROGRAMS.tileItem,
+          },
+          existing
+        );
+        return existing;
+      }
     }
 
     const sharedTileItem = await this.readSharedTileItem(point);
+    const activeTileItem = sharedTileItem
+      ? null
+      : await this.readActiveTileItem(player, point);
 
-    if (!sharedTileItem && !options.createIfMissing) {
+    if (!sharedTileItem && !activeTileItem && !options.createIfMissing) {
       throw new Error(`No item is provisioned on tile ${key}.`);
     }
 
     const tileItem =
-      sharedTileItem ?? (await this.createTileItem(player, point));
+      sharedTileItem ??
+      activeTileItem ??
+      (await this.createTileItem(player, point));
     player.tileItems.push(tileItem);
     writeStoredPlayer(this.options.payer, player);
     await this.ensureComponentDelegated(
@@ -400,6 +414,37 @@ export class PlayerWorldProvisioner {
     );
     writeStoredPlayer(this.options.payer, player);
     return tileItem;
+  }
+
+  private async readUsableExistingTileItem(existing: TileItemComponentState) {
+    const [erAccount, baseAccount] = await Promise.all([
+      this.options.erConnection.getAccountInfo(existing.componentPda),
+      this.options.baseConnection.getAccountInfo(existing.componentPda),
+    ]);
+
+    if (erAccount && this.isTileItemAccountActive(erAccount.data)) {
+      return {
+        ...existing,
+        delegated: true,
+      };
+    }
+
+    if (!baseAccount || !this.isTileItemAccountActive(baseAccount.data)) {
+      return null;
+    }
+
+    const entityInfo = await this.options.baseConnection.getAccountInfo(
+      existing.entityPda
+    );
+
+    if (!entityInfo) {
+      return null;
+    }
+
+    return {
+      ...existing,
+      delegated: await this.isComponentDelegated(existing.componentPda),
+    };
   }
 
   async discoverActiveTileItems(worldPda: PublicKey) {
@@ -483,6 +528,29 @@ export class PlayerWorldProvisioner {
       delegated: await this.isComponentDelegated(
         new PublicKey(item.componentPda)
       ),
+    };
+  }
+
+  private async readActiveTileItem(player: PlayerState, point: GridPoint) {
+    const candidate = await this.deriveTileItemCandidate(
+      player.worldPda,
+      point
+    );
+    const [erAccount, baseAccount] = await Promise.all([
+      this.options.erConnection.getAccountInfo(candidate.componentPda),
+      this.options.baseConnection.getAccountInfo(candidate.componentPda),
+    ]);
+    const account = erAccount ?? baseAccount;
+
+    if (!account || !this.isTileItemAccountActive(account.data)) {
+      return null;
+    }
+
+    return {
+      ...candidate,
+      delegated:
+        Boolean(erAccount) ||
+        (await this.isComponentDelegated(candidate.componentPda)),
     };
   }
 
@@ -865,6 +933,37 @@ export class PlayerWorldProvisioner {
     return candidates;
   }
 
+  private async deriveTileItemCandidate(worldPda: PublicKey, point: GridPoint) {
+    const { AddEntity, InitializeComponent } = await loadBoltSdk();
+    const entityResult = await AddEntity({
+      payer: this.options.payer,
+      world: worldPda,
+      seed: tileItemEntitySeed(point),
+      connection: this.options.baseConnection,
+    });
+
+    if (!entityResult.entityPda) {
+      throw new Error("Tile item entity PDA missing during lookup.");
+    }
+
+    const componentResult = await InitializeComponent({
+      payer: this.options.payer,
+      entity: entityResult.entityPda,
+      componentId: PROGRAMS.tileItem,
+    });
+
+    if (!componentResult.componentPda) {
+      throw new Error("Tile item component PDA missing during lookup.");
+    }
+
+    return {
+      key: tileTerrainKey(point),
+      entityPda: entityResult.entityPda,
+      componentPda: componentResult.componentPda,
+      delegated: false,
+    };
+  }
+
   private async getMultipleAccountsInfo(
     connection: Connection,
     accounts: PublicKey[]
@@ -1204,6 +1303,14 @@ export class PlayerWorldProvisioner {
 
     const account = componentState?.componentPda ?? player[component.key!];
     const entity = componentState?.entityPda ?? player.entityPda;
+
+    if (
+      componentState?.delegated &&
+      (await this.isComponentVisibleOnEr(account))
+    ) {
+      writeStoredPlayer(this.options.payer, player);
+      return;
+    }
 
     if (await this.isComponentDelegated(account)) {
       await this.waitForComponentOnEr(account, component.label);

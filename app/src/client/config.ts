@@ -34,6 +34,9 @@ export const PROGRAMS = {
   tileTerrain: new PublicKey("5hCo8uVeWtjqmeFQAovyLFuW1vZ4wS3kKP7ms7SUyyqk"),
   movement: new PublicKey("pVHBNGmKR8BtfokRF1gsS8t766ukFdqn6cV1hY9tMP5"),
   sleep: new PublicKey("AHpcKdhujpiTq8oGbxbCknEfmQQwya6cmvywFL89iZUs"),
+  syncPlayerOwner: new PublicKey(
+    "4rkkMbGqa5D7E3CW7wCiLMdpV96wGQcFRZLZiqMgX1ia"
+  ),
   registerTerrainType: new PublicKey(
     "B9qCeXFe5431no3DTZQdZjexyG1cCep1yHjZrxm5c2AM"
   ),

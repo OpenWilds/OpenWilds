@@ -5,7 +5,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-accept_trade = "ByJN7XLbzZ6HHXDRGsTmb8nzYJaiU3jSrQjoGAtswzyw"
+accept_trade = "HqHfwh69PtpM1mvBzHXbqNMLxD2kkygikMbmqYVPFqvv"
 active_action = "g9Y3zHKWC9kJ9CYLQuDkZP7qVwhh6yu2swhxrXn7sVn"
 chop_tile = "GctbHkUcDA9AHkDeLtJ1P1sE1oSLoncDGMBYiYPzMAgs"
 define_farm_type = "F14xPRR4xx6S8sufyU9MDfdCeCEp6XAFDGTKDfPzfD4y"
@@ -29,6 +29,7 @@ plant_tile = "8g6H4M8cKkieF65YkUDqyJ4AqEFytFUnGEQzrvGc3wkq"
 position = "7ebGfNj5knjG33XBSUdfYAYtXsner8rQzLYSFuURSicZ"
 register_terrain_type = "B9qCeXFe5431no3DTZQdZjexyG1cCep1yHjZrxm5c2AM"
 sleep = "AHpcKdhujpiTq8oGbxbCknEfmQQwya6cmvywFL89iZUs"
+sync_player_owner = "4rkkMbGqa5D7E3CW7wCiLMdpV96wGQcFRZLZiqMgX1ia"
 terrain_type = "G6qkktc5oWkPHFmhk8x3UwzZ5WuQLE5En7PGteko6mhK"
 tile_farm = "HtQi1ESxw8jY5383gaTwtv8vwJbSKfZcFuRb3vPq86KU"
 tile_item = "6RLX336UuzR9yU4FCrLcTc1SE62YyPc57L8pqjk3xdwP"

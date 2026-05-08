@@ -3290,6 +3290,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "sync_player_owner"
+version = "0.2.4"
+dependencies = [
+ "bolt-lang",
+ "player_owner",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "terrain_type"
 version = "0.2.4"
 dependencies = [

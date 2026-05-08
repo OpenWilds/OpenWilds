@@ -9,6 +9,7 @@ pub const GOLD_CONFIG_SEED: &[u8] = b"gold-config";
 pub const GOLD_MINT_SEED: &[u8] = b"gold-mint";
 pub const GOLD_MINT_AUTHORITY_SEED: &[u8] = b"gold-mint-authority";
 pub const PLAYER_GOLD_AUTHORITY_SEED: &[u8] = b"player-gold-authority";
+pub const PLAYER_NFT_REGISTRATION_SEED: &[u8] = b"player-nft";
 pub const STARTER_GOLD_CLAIM_SEED: &[u8] = b"starter-gold-claim-v2";
 pub const TRADE_OFFER_SEED: &[u8] = b"trade-offer";
 pub const TRADE_ACCEPTANCE_SEED: &[u8] = b"trade-acceptance";
@@ -28,7 +29,10 @@ pub mod open_wilds {
         starter_amount: u64,
         decimals: u8,
     ) -> Result<()> {
-        require!(decimals == DEFAULT_GOLD_DECIMALS, OpenWildsError::InvalidGoldDecimals);
+        require!(
+            decimals == DEFAULT_GOLD_DECIMALS,
+            OpenWildsError::InvalidGoldDecimals
+        );
         require!(starter_amount > 0, OpenWildsError::InvalidStarterGoldAmount);
 
         let config = &mut ctx.accounts.gold_config;
@@ -84,6 +88,47 @@ pub mod open_wilds {
         Ok(())
     }
 
+    pub fn register_player_nft(
+        ctx: Context<RegisterPlayerNft>,
+        color_id: [u8; 16],
+        name: [u8; 32],
+        symbol: [u8; 10],
+    ) -> Result<()> {
+        require!(
+            ctx.accounts.player_mint.decimals == 0,
+            OpenWildsError::InvalidPlayerNft
+        );
+        require!(
+            ctx.accounts.player_mint.supply == 1,
+            OpenWildsError::InvalidPlayerNft
+        );
+        require_keys_eq!(
+            ctx.accounts.owner_token_account.owner,
+            ctx.accounts.owner.key(),
+            OpenWildsError::InvalidPlayerOwner
+        );
+        require_keys_eq!(
+            ctx.accounts.owner_token_account.mint,
+            ctx.accounts.player_mint.key(),
+            OpenWildsError::InvalidPlayerMint
+        );
+        require!(
+            ctx.accounts.owner_token_account.amount == 1,
+            OpenWildsError::InvalidPlayerNft
+        );
+
+        let registration = &mut ctx.accounts.player_nft_registration;
+        registration.player_mint = ctx.accounts.player_mint.key();
+        registration.creator = ctx.accounts.owner.key();
+        registration.created_at = Clock::get()?.unix_timestamp;
+        registration.color_id = color_id;
+        registration.name = name;
+        registration.symbol = symbol;
+        registration.bump = ctx.bumps.player_nft_registration;
+
+        Ok(())
+    }
+
     pub fn create_trade_offer(
         ctx: Context<CreateTradeOffer>,
         offer_id: u64,
@@ -131,7 +176,10 @@ pub mod open_wilds {
         let now = Clock::get()?.unix_timestamp;
         let offer = &mut ctx.accounts.trade_offer;
 
-        require!(offer.status == TradeStatus::Open, OpenWildsError::TradeOfferNotOpen);
+        require!(
+            offer.status == TradeStatus::Open,
+            OpenWildsError::TradeOfferNotOpen
+        );
         require!(offer.expires_at > now, OpenWildsError::TradeOfferExpired);
         require_keys_eq!(
             offer.seller,
@@ -329,6 +377,23 @@ pub struct ClaimStarterGold<'info> {
 }
 
 #[derive(Accounts)]
+pub struct RegisterPlayerNft<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    pub player_mint: Account<'info, Mint>,
+    pub owner_token_account: Account<'info, TokenAccount>,
+    #[account(
+        init,
+        payer = owner,
+        space = PlayerNftRegistration::SPACE,
+        seeds = [PLAYER_NFT_REGISTRATION_SEED, player_mint.key().as_ref()],
+        bump
+    )]
+    pub player_nft_registration: Account<'info, PlayerNftRegistration>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
 #[instruction(offer_id: u64)]
 pub struct CreateTradeOffer<'info> {
     #[account(mut)]
@@ -436,6 +501,21 @@ impl StarterGoldClaim {
 }
 
 #[account]
+pub struct PlayerNftRegistration {
+    pub player_mint: Pubkey,
+    pub creator: Pubkey,
+    pub created_at: i64,
+    pub color_id: [u8; 16],
+    pub name: [u8; 32],
+    pub symbol: [u8; 10],
+    pub bump: u8,
+}
+
+impl PlayerNftRegistration {
+    pub const SPACE: usize = 8 + 32 + 32 + 8 + 16 + 32 + 10 + 1;
+}
+
+#[account]
 pub struct TradeOffer {
     pub offer_id: u64,
     pub buyer: Pubkey,
@@ -506,4 +586,6 @@ pub enum OpenWildsError {
     InvalidTradeSeller,
     #[msg("Trade acceptance does not match the offer.")]
     InvalidTradeAcceptance,
+    #[msg("Player NFT must be a one-of-one SPL token owned by the signer.")]
+    InvalidPlayerNft,
 }

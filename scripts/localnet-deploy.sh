@@ -14,6 +14,7 @@ NO_DNA=1 anchor deploy --provider.cluster "${RPC_URL}"
 
 echo "Deployed programs:"
 NO_DNA=1 solana program show Dv88ch6oXorTqWcZxw5C8VPH5jiWagDJgWd8fvBmXzc6 --url "${RPC_URL}"
+NO_DNA=1 solana program show 4rkkMbGqa5D7E3CW7wCiLMdpV96wGQcFRZLZiqMgX1ia --url "${RPC_URL}"
 NO_DNA=1 solana program show 7ebGfNj5knjG33XBSUdfYAYtXsner8rQzLYSFuURSicZ --url "${RPC_URL}"
 NO_DNA=1 solana program show EXfYuzbCqe3VoUrG37gvkhxMmCMBKfvj5DRodsjmG6Pg --url "${RPC_URL}"
 NO_DNA=1 solana program show g9Y3zHKWC9kJ9CYLQuDkZP7qVwhh6yu2swhxrXn7sVn --url "${RPC_URL}"
