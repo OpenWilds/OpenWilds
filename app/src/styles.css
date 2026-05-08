@@ -96,11 +96,17 @@ h1 {
 
 #wallet-address,
 #network-status,
-#program-status {
+#program-status,
+#game-time-status {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+#game-time-status {
+  color: #ffe0a3;
+  font-weight: 800;
 }
 
 #wallet-balance {

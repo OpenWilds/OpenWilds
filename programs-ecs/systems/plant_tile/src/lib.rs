@@ -6,7 +6,7 @@ use inventory::Inventory;
 use position::Position;
 use serde::Deserialize;
 use terrain_type::{TerrainType, FEATURE_FARMABLE};
-use tile_farm::TileFarm;
+use tile_farm::{game_time_from_unix, TileFarm};
 use tile_terrain::TileTerrain;
 
 declare_id!("8g6H4M8cKkieF65YkUDqyJ4AqEFytFUnGEQzrvGc3wkq");
@@ -22,12 +22,13 @@ pub mod plant_tile {
         let tile_terrain = load_tile_terrain(&ctx)?;
         let terrain_type = load_terrain_type(&ctx)?;
         let farm_type = load_farm_type(&ctx)?;
-        let now = Clock::get()?.unix_timestamp;
+        let action_now = Clock::get()?.unix_timestamp;
+        let now = game_time_from_unix(action_now);
         let active_action = &mut ctx.accounts.active_action;
 
-        active_action.clear_if_done(now);
+        active_action.clear_if_done(action_now);
         require!(
-            !active_action.is_active(now),
+            !active_action.is_active(action_now),
             PlantTileError::ActionInProgress
         );
         require!(
@@ -89,7 +90,7 @@ pub mod plant_tile {
         tile_farm.harvest_count = 0;
 
         energy.current -= PLANT_ENERGY_COST;
-        active_action.start(active_action::ACTION_PLANT, now, PLANT_SECONDS);
+        active_action.start(active_action::ACTION_PLANT, action_now, PLANT_SECONDS);
 
         Ok(ctx.accounts)
     }

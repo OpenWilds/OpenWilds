@@ -3,12 +3,14 @@ import { PROGRAMS } from "./config";
 import { shortAddress } from "./format";
 import type { PlayerNft } from "./player-nft";
 import { PLAYER_COLORS, getPlayerColorStyle } from "./player-nft";
+import { formatGameTime } from "../game/game-time";
 
 export type HudElements = {
   networkStatus: HTMLElement | null;
   walletAddress: HTMLElement | null;
   walletBalance: HTMLElement | null;
   programStatus: HTMLElement | null;
+  gameTimeStatus: HTMLElement | null;
   playerNftSelect: HTMLSelectElement | null;
   playerColorSelect: HTMLSelectElement | null;
   mintPlayerButton: HTMLButtonElement | null;
@@ -23,6 +25,7 @@ export const getHudElements = (): HudElements => ({
   walletAddress: document.getElementById("wallet-address"),
   walletBalance: document.getElementById("wallet-balance"),
   programStatus: document.getElementById("program-status"),
+  gameTimeStatus: document.getElementById("game-time-status"),
   playerNftSelect: document.getElementById(
     "player-nft-select"
   ) as HTMLSelectElement,
@@ -41,8 +44,12 @@ export const getHudElements = (): HudElements => ({
 export class HudController {
   private sleepAvailable = true;
   private actionBusy = false;
+  private gameTimeInterval: number | null = null;
 
-  constructor(readonly elements: HudElements) {}
+  constructor(readonly elements: HudElements) {
+    this.renderGameTime();
+    this.gameTimeInterval = window.setInterval(() => this.renderGameTime(), 1000);
+  }
 
   renderWallet(walletAddress: PublicKey) {
     if (this.elements.walletAddress) {
@@ -147,6 +154,12 @@ export class HudController {
   setProgramStatus(status: string) {
     if (this.elements.programStatus) {
       this.elements.programStatus.textContent = status;
+    }
+  }
+
+  renderGameTime() {
+    if (this.elements.gameTimeStatus) {
+      this.elements.gameTimeStatus.textContent = formatGameTime();
     }
   }
 

@@ -127,6 +127,14 @@ const playerComponents: PlayerComponentDefinition[] = [
 
 const tileTerrainKey = ({ x, y }: GridPoint) => `${x},${y}`;
 const playerEntitySeed = (playerMint: PublicKey) => playerMint.toBytes();
+const tileFarmEntitySeed = (playerMint: PublicKey, { x, y }: GridPoint) => {
+  const seed = Buffer.alloc(32);
+  seed.set(playerMint.toBytes().slice(0, 20), 0);
+  seed.write("farm", 20, "utf8");
+  seed.writeInt32LE(x, 24);
+  seed.writeInt32LE(y, 28);
+  return seed;
+};
 const STARTER_INVENTORY_ARGS = {
   turnip_seeds: 6,
   wheat_seeds: 4,
@@ -281,6 +289,23 @@ export class PlayerWorldProvisioner {
     const existing = player.tileFarms.find((tile) => tile.key === key);
 
     if (existing) {
+      const tileFarm = await this.createTileFarm(player, point);
+      if (!existing.componentPda.equals(tileFarm.componentPda)) {
+        const existingIndex = player.tileFarms.findIndex((tile) => tile.key === key);
+        player.tileFarms[existingIndex] = tileFarm;
+        writeStoredPlayer(this.options.payer, player);
+        await this.ensureComponentDelegated(
+          player,
+          {
+            label: `Tile Farm ${key}`,
+            programId: PROGRAMS.tileFarm,
+          },
+          tileFarm
+        );
+        writeStoredPlayer(this.options.payer, player);
+        return tileFarm;
+      }
+
       await this.ensureComponentDelegated(
         player,
         {
@@ -725,12 +750,20 @@ export class PlayerWorldProvisioner {
     const entityResult = await AddEntity({
       payer: this.options.payer,
       world: player.worldPda,
+      seed: tileFarmEntitySeed(this.options.playerMint, point),
       connection: this.options.baseConnection,
     });
-    await this.options.sendBoltResult(entityResult);
 
     if (!entityResult.entityPda) {
       throw new Error("Tile farm entity PDA missing after initialization.");
+    }
+
+    const entityInfo = await this.options.baseConnection.getAccountInfo(
+      entityResult.entityPda
+    );
+
+    if (!entityInfo) {
+      await this.options.sendBoltResult(entityResult);
     }
 
     const componentResult = await InitializeComponent({
@@ -738,10 +771,18 @@ export class PlayerWorldProvisioner {
       entity: entityResult.entityPda,
       componentId: PROGRAMS.tileFarm,
     });
-    await this.options.sendBoltResult(componentResult);
 
     if (!componentResult.componentPda) {
       throw new Error("Tile farm component PDA missing after initialization.");
+    }
+
+    const [baseComponentInfo, erComponentInfo] = await Promise.all([
+      this.options.baseConnection.getAccountInfo(componentResult.componentPda),
+      this.options.erConnection.getAccountInfo(componentResult.componentPda),
+    ]);
+
+    if (!baseComponentInfo && !erComponentInfo) {
+      await this.options.sendBoltResult(componentResult);
     }
 
     return {

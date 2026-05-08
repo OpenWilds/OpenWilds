@@ -5,7 +5,7 @@ use farm_type::FarmType;
 use inventory::Inventory;
 use position::Position;
 use serde::Deserialize;
-use tile_farm::TileFarm;
+use tile_farm::{game_time_from_unix, TileFarm};
 
 declare_id!("BGdMrM8tY4myjV3iddnPH4mKpZ8LoaABjY1eoyuqfknp");
 
@@ -18,12 +18,13 @@ pub mod harvest_tile {
         let target: TileTarget =
             serde_json::from_slice(&args).map_err(|_| error!(HarvestTileError::InvalidTileArgs))?;
         let farm_type = load_farm_type(&ctx)?;
-        let now = Clock::get()?.unix_timestamp;
+        let action_now = Clock::get()?.unix_timestamp;
+        let now = game_time_from_unix(action_now);
         let active_action = &mut ctx.accounts.active_action;
 
-        active_action.clear_if_done(now);
+        active_action.clear_if_done(action_now);
         require!(
-            !active_action.is_active(now),
+            !active_action.is_active(action_now),
             HarvestTileError::ActionInProgress
         );
         require!(
@@ -74,7 +75,7 @@ pub mod harvest_tile {
         }
 
         energy.current -= HARVEST_ENERGY_COST;
-        active_action.start(active_action::ACTION_HARVEST, now, HARVEST_SECONDS);
+        active_action.start(active_action::ACTION_HARVEST, action_now, HARVEST_SECONDS);
 
         Ok(ctx.accounts)
     }

@@ -4,6 +4,16 @@ declare_id!("HtQi1ESxw8jY5383gaTwtv8vwJbSKfZcFuRb3vPq86KU");
 
 pub const SOIL_UNTILLED: u8 = 0;
 pub const SOIL_TILLED: u8 = 1;
+pub const GAME_SECONDS_PER_DAY: i64 = 24 * 60 * 60;
+pub const REAL_SECONDS_PER_GAME_DAY: i64 = 5 * 60;
+pub const WORLD_EPOCH_UNIX_SECONDS: i64 = 1_735_689_600;
+
+pub fn game_time_from_unix(unix_timestamp: i64) -> i64 {
+    unix_timestamp
+        .saturating_sub(WORLD_EPOCH_UNIX_SECONDS)
+        .saturating_mul(GAME_SECONDS_PER_DAY)
+        / REAL_SECONDS_PER_GAME_DAY
+}
 
 #[component(delegate)]
 #[derive(Default)]

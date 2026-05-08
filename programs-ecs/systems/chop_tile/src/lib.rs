@@ -5,7 +5,7 @@ use farm_type::{FarmType, FARM_KIND_TREE};
 use inventory::Inventory;
 use position::Position;
 use serde::Deserialize;
-use tile_farm::TileFarm;
+use tile_farm::{game_time_from_unix, TileFarm};
 
 declare_id!("GctbHkUcDA9AHkDeLtJ1P1sE1oSLoncDGMBYiYPzMAgs");
 
@@ -18,12 +18,13 @@ pub mod chop_tile {
         let target: TileTarget =
             serde_json::from_slice(&args).map_err(|_| error!(ChopTileError::InvalidTileArgs))?;
         let farm_type = load_farm_type(&ctx)?;
-        let now = Clock::get()?.unix_timestamp;
+        let action_now = Clock::get()?.unix_timestamp;
+        let now = game_time_from_unix(action_now);
         let active_action = &mut ctx.accounts.active_action;
 
-        active_action.clear_if_done(now);
+        active_action.clear_if_done(action_now);
         require!(
-            !active_action.is_active(now),
+            !active_action.is_active(action_now),
             ChopTileError::ActionInProgress
         );
         require!(
@@ -63,7 +64,7 @@ pub mod chop_tile {
             .add_item(farm_type.chop_item_id, farm_type.chop_yield)?;
         tile_farm.clear_plant();
         energy.current -= CHOP_ENERGY_COST;
-        active_action.start(active_action::ACTION_CHOP, now, CHOP_SECONDS);
+        active_action.start(active_action::ACTION_CHOP, action_now, CHOP_SECONDS);
 
         Ok(ctx.accounts)
     }

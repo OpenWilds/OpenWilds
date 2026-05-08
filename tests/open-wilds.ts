@@ -359,7 +359,7 @@ describe("open-wilds", () => {
   });
 
   it("Restores energy after sleeping", async () => {
-    await new Promise((resolve) => setTimeout(resolve, 2100));
+    await new Promise((resolve) => setTimeout(resolve, 15000));
 
     const sleepSystem = await ApplySystem({
       authority: provider.wallet.publicKey,
@@ -386,7 +386,7 @@ describe("open-wilds", () => {
   });
 
   it("Tills the current tile using terrain as readonly validation accounts", async () => {
-    await new Promise((resolve) => setTimeout(resolve, 5100));
+    await new Promise((resolve) => setTimeout(resolve, 15000));
 
     const addTileFarmEntity = await AddEntity({
       payer: provider.wallet.publicKey,
@@ -526,7 +526,7 @@ describe("open-wilds", () => {
     });
     await provider.sendAndConfirm(defineFarmType.transaction);
 
-    await new Promise((resolve) => setTimeout(resolve, 2100));
+    await new Promise((resolve) => setTimeout(resolve, 20000));
 
     const plantTile = await ApplySystem({
       authority: provider.wallet.publicKey,
@@ -581,7 +581,7 @@ describe("open-wilds", () => {
     expect(inventory.itemIds[0]).to.equal(0);
     expect(inventory.quantities[0]).to.equal(0);
 
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await new Promise((resolve) => setTimeout(resolve, 10000));
 
     const waterTile = await ApplySystem({
       authority: provider.wallet.publicKey,
@@ -617,7 +617,7 @@ describe("open-wilds", () => {
     );
     expect(tileFarm.wateredUntil.toNumber()).to.be.greaterThan(0);
 
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await new Promise((resolve) => setTimeout(resolve, 20000));
 
     const harvestTile = await ApplySystem({
       authority: provider.wallet.publicKey,
@@ -711,7 +711,7 @@ describe("open-wilds", () => {
     });
     await provider.sendAndConfirm(defineTreeFarmType.transaction);
 
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await new Promise((resolve) => setTimeout(resolve, 20000));
 
     const plantTree = await ApplySystem({
       authority: provider.wallet.publicKey,
@@ -756,7 +756,7 @@ describe("open-wilds", () => {
     });
     await provider.sendAndConfirm(plantTree.transaction);
 
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await new Promise((resolve) => setTimeout(resolve, 20000));
 
     const chopTile = await ApplySystem({
       authority: provider.wallet.publicKey,

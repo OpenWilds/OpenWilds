@@ -4,13 +4,13 @@ use energy::Energy;
 use farm_type::FarmType;
 use position::Position;
 use serde::Deserialize;
-use tile_farm::TileFarm;
+use tile_farm::{game_time_from_unix, TileFarm};
 
 declare_id!("Cp5YRnmvnbRPsCucPAGVh6Sorbd5wjDma8sGKYAuveuu");
 
 const WATER_ENERGY_COST: u64 = 1;
 const WATER_SECONDS: i64 = 1;
-const DEFAULT_WATER_DURATION_SECONDS: i64 = 12 * 60 * 60;
+const DEFAULT_WATER_DURATION_SECONDS: i64 = 24 * 60 * 60;
 const MAX_WATER_DURATION_SECONDS: i64 = 24 * 60 * 60;
 
 #[system]
@@ -19,12 +19,13 @@ pub mod water_tile {
         let target: TileTarget =
             serde_json::from_slice(&args).map_err(|_| error!(WaterTileError::InvalidTileArgs))?;
         let farm_type = load_farm_type(&ctx)?;
-        let now = Clock::get()?.unix_timestamp;
+        let action_now = Clock::get()?.unix_timestamp;
+        let now = game_time_from_unix(action_now);
         let active_action = &mut ctx.accounts.active_action;
 
-        active_action.clear_if_done(now);
+        active_action.clear_if_done(action_now);
         require!(
-            !active_action.is_active(now),
+            !active_action.is_active(action_now),
             WaterTileError::ActionInProgress
         );
         require!(
@@ -66,7 +67,7 @@ pub mod water_tile {
         tile_farm.watered_until = tile_farm.watered_until.max(now + duration);
 
         energy.current -= WATER_ENERGY_COST;
-        active_action.start(active_action::ACTION_WATER, now, WATER_SECONDS);
+        active_action.start(active_action::ACTION_WATER, action_now, WATER_SECONDS);
 
         Ok(ctx.accounts)
     }
