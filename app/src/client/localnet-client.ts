@@ -43,7 +43,12 @@ import {
   type PlayerColorId,
   type PlayerNft,
 } from "./player-nft";
-import type { BoltResult, PlayerState, TileFarmState, TileTerrainState } from "./types";
+import type {
+  BoltResult,
+  PlayerState,
+  TileFarmState,
+  TileTerrainState,
+} from "./types";
 import { HudController, type HudElements } from "./hud";
 import { installAnchorProvider, loadBoltSdk } from "./sdk";
 import {
@@ -153,6 +158,9 @@ export class LocalnetClient {
   private readonly inventoryListeners = new Set<
     (inventory: InventoryState) => void
   >();
+  private readonly farmTileListeners = new Set<
+    (tiles: FarmTileState[]) => void
+  >();
   private playerState: PlayerState | null = null;
   private activePlayerNft: PlayerNft | null = null;
   private actionUnlockTimer: number | null = null;
@@ -161,6 +169,8 @@ export class LocalnetClient {
   private lastPlayerActionStateKey: string | null = null;
   private lastInventoryState: InventoryState | null = null;
   private lastInventoryStateKey: string | null = null;
+  private lastFarmTileStates: FarmTileState[] = [];
+  private lastFarmTileStateKey: string | null = null;
 
   constructor(hudElements: HudElements) {
     this.hud = new HudController(hudElements);
@@ -412,10 +422,11 @@ export class LocalnetClient {
       ]);
 
       const player = await this.ensureOnchainPlayer();
-      const tileTerrain = await this.createPlayerWorldProvisioner().ensureTileTerrain(
-        player,
-        point
-      );
+      const tileTerrain =
+        await this.createPlayerWorldProvisioner().ensureTileTerrain(
+          player,
+          point
+        );
       const tileFarm = await this.createPlayerWorldProvisioner().ensureTileFarm(
         player,
         point
@@ -460,7 +471,9 @@ export class LocalnetClient {
           ? { x: point.x, y: point.y, farm_type_id: farmType.farmTypeId }
           : { x: point.x, y: point.y };
 
-      this.hud.setProgramStatus(`${this.describeFarmMode(mode)} ${point.x}, ${point.y}...`);
+      this.hud.setProgramStatus(
+        `${this.describeFarmMode(mode)} ${point.x}, ${point.y}...`
+      );
       await this.sendBoltResult(
         await ApplySystem({
           authority: this.wallet.publicKey,
@@ -475,12 +488,16 @@ export class LocalnetClient {
       );
 
       const confirmedState = await this.fetchPlayerActionStateOnEr(player);
-      const confirmedTile = await this.fetchFarmTileState(tileFarm.componentPda, point);
+      const confirmedTile = await this.fetchFarmTileState(
+        tileFarm.componentPda,
+        point
+      );
 
       this.hud.setProgramStatus(`${this.describeFarmMode(mode)} confirmed.`);
       this.renderActionBusy(confirmedState.activeAction);
       this.emitPlayerActionState(confirmedState);
       await this.syncInventory(player);
+      await this.syncFarmTiles(player);
       await this.syncVisiblePlayers();
 
       return {
@@ -540,6 +557,18 @@ export class LocalnetClient {
     };
   }
 
+  subscribeFarmTiles(listener: (tiles: FarmTileState[]) => void) {
+    this.farmTileListeners.add(listener);
+
+    if (this.lastFarmTileStates.length > 0) {
+      listener(this.lastFarmTileStates);
+    }
+
+    return () => {
+      this.farmTileListeners.delete(listener);
+    };
+  }
+
   private bindControls() {
     this.hud.elements.airdropButton?.addEventListener("click", () => {
       void this.airdrop();
@@ -573,6 +602,8 @@ export class LocalnetClient {
       this.playerState = null;
       this.activePlayerNft = null;
       this.lastPlayerActionStateKey = null;
+      this.lastFarmTileStates = [];
+      this.lastFarmTileStateKey = null;
       this.renderActionBusy({
         action: ACTION_IDLE,
         kind: "idle",
@@ -664,6 +695,7 @@ export class LocalnetClient {
 
       if (stateKey === this.lastPlayerActionStateKey) {
         await this.syncInventory(player);
+        await this.syncFarmTiles(player);
         await this.syncVisiblePlayers();
         return;
       }
@@ -671,6 +703,7 @@ export class LocalnetClient {
       this.renderActionBusy(actionState.activeAction);
       this.emitPlayerActionState(actionState);
       await this.syncInventory(player);
+      await this.syncFarmTiles(player);
       await this.syncVisiblePlayers();
 
       if (options.announceLoaded) {
@@ -721,9 +754,7 @@ export class LocalnetClient {
         });
       } catch (error) {
         console.debug(
-          `[Open Wilds] skipped visible player ${shortAddress(
-            playerNft.mint
-          )}`,
+          `[Open Wilds] skipped visible player ${shortAddress(playerNft.mint)}`,
           error
         );
       }
@@ -756,16 +787,15 @@ export class LocalnetClient {
     });
 
     if (!response.ok) {
-      throw new Error("Game world manifest is missing. Run localnet provision.");
+      throw new Error(
+        "Game world manifest is missing. Run localnet provision."
+      );
     }
 
     return (await response.json()) as GameWorldConfig;
   }
 
-  private findTerrainTypeEntry(
-    config: GameWorldConfig,
-    terrainTypeId: number
-  ) {
+  private findTerrainTypeEntry(config: GameWorldConfig, terrainTypeId: number) {
     const entry = config.terrainTypes.find(
       (terrain) => terrain.terrainTypeId === terrainTypeId
     );
@@ -1229,6 +1259,29 @@ export class LocalnetClient {
     this.emitInventory(inventory);
   }
 
+  private async syncFarmTiles(player: PlayerState) {
+    if (this.farmTileListeners.size === 0 || player.tileFarms.length === 0) {
+      return;
+    }
+
+    const tiles = await Promise.all(
+      player.tileFarms.map((tileFarm) =>
+        this.fetchFarmTileState(
+          tileFarm.componentPda,
+          this.parseTileKey(tileFarm.key)
+        )
+      )
+    );
+    const activeTiles = tiles.filter((tile) => this.isFarmTileActive(tile));
+    const stateKey = this.getFarmTileStateKey(activeTiles);
+
+    if (stateKey === this.lastFarmTileStateKey) {
+      return;
+    }
+
+    this.emitFarmTiles(activeTiles);
+  }
+
   private decodePosition(data: Uint8Array): GridPoint {
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
 
@@ -1408,6 +1461,15 @@ export class LocalnetClient {
     }
   }
 
+  private emitFarmTiles(tiles: FarmTileState[]) {
+    this.lastFarmTileStates = tiles;
+    this.lastFarmTileStateKey = this.getFarmTileStateKey(tiles);
+
+    for (const listener of this.farmTileListeners) {
+      listener(tiles);
+    }
+  }
+
   private getPlayerAppearance(player: PlayerNft): PlayerAppearance {
     const style = getPlayerColorStyle(player.color);
 
@@ -1437,6 +1499,8 @@ export class LocalnetClient {
       const player = mintLocalPlayerNft(this.wallet.publicKey, color);
       this.playerState = null;
       this.lastPlayerActionStateKey = null;
+      this.lastFarmTileStates = [];
+      this.lastFarmTileStateKey = null;
       this.refreshPlayerNftHud();
       this.hud.setProgramStatus(
         `Minted ${player.metadata.name} with ${
@@ -1457,6 +1521,8 @@ export class LocalnetClient {
     this.lastPlayerActionStateKey = null;
     this.lastInventoryStateKey = null;
     this.lastInventoryState = null;
+    this.lastFarmTileStateKey = null;
+    this.lastFarmTileStates = [];
     this.refreshPlayerNftHud();
     this.hud.setProgramStatus(`Selected player ${shortAddress(mint)}.`);
     void this.ensureSelectedPlayerReady();
@@ -1480,6 +1546,40 @@ export class LocalnetClient {
     return inventory.slots
       .map((slot) => `${slot.itemId}:${slot.quantity}`)
       .join("|");
+  }
+
+  private getFarmTileStateKey(tiles: FarmTileState[]) {
+    return tiles
+      .map((tile) =>
+        [
+          tile.x,
+          tile.y,
+          tile.soilState,
+          tile.farmTypeId,
+          tile.growthSeconds,
+          tile.wateredUntil,
+        ].join(":")
+      )
+      .sort()
+      .join("|");
+  }
+
+  private isFarmTileActive(tile: FarmTileState) {
+    return (
+      tile.soilState === "tilled" ||
+      tile.farmTypeId !== 0 ||
+      tile.growthSeconds !== 0 ||
+      tile.wateredUntil !== 0
+    );
+  }
+
+  private parseTileKey(key: string): GridPoint {
+    const [x, y] = key.split(",").map(Number);
+
+    return {
+      x: Number.isFinite(x) ? x : 0,
+      y: Number.isFinite(y) ? y : 0,
+    };
   }
 
   private async sendBoltResult(

@@ -8,12 +8,7 @@ export type EnergyState = {
   max: number;
 };
 
-export type ActiveActionKind =
-  | "idle"
-  | "move"
-  | "sleep"
-  | "farm"
-  | "unknown";
+export type ActiveActionKind = "idle" | "move" | "sleep" | "farm" | "unknown";
 
 export type ActiveActionState = {
   action: number;
@@ -96,5 +91,10 @@ export type GameClient = {
   subscribeVisiblePlayers?: (
     listener: (players: VisiblePlayerState[]) => void
   ) => () => void;
-  subscribeInventory?: (listener: (inventory: InventoryState) => void) => () => void;
+  subscribeInventory?: (
+    listener: (inventory: InventoryState) => void
+  ) => () => void;
+  subscribeFarmTiles?: (
+    listener: (tiles: FarmTileState[]) => void
+  ) => () => void;
 };

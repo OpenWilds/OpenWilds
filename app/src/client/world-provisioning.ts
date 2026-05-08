@@ -98,6 +98,7 @@ type GameWorldConfig = {
   }>;
 };
 
+const GRID_SIZE = 20;
 const playerComponents: PlayerComponentDefinition[] = [
   {
     key: "positionComponentPda",
@@ -166,7 +167,7 @@ export class PlayerWorldProvisioner {
     );
     const sharedWorldPda = await this.loadSharedWorldPda();
     const seededPlayer = sharedWorldPda
-      ? await this.readSeededPlayer(sharedWorldPda)
+      ? await this.readSeededPlayer(sharedWorldPda, storedPlayer)
       : null;
 
     if (seededPlayer) {
@@ -216,7 +217,10 @@ export class PlayerWorldProvisioner {
     );
 
     if (sharedWorldPda) {
-      const seededPlayer = await this.readSeededPlayer(sharedWorldPda);
+      const seededPlayer = await this.readSeededPlayer(
+        sharedWorldPda,
+        storedPlayer
+      );
 
       if (seededPlayer) {
         writeStoredPlayer(this.options.payer, seededPlayer);
@@ -291,7 +295,9 @@ export class PlayerWorldProvisioner {
     if (existing) {
       const tileFarm = await this.createTileFarm(player, point);
       if (!existing.componentPda.equals(tileFarm.componentPda)) {
-        const existingIndex = player.tileFarms.findIndex((tile) => tile.key === key);
+        const existingIndex = player.tileFarms.findIndex(
+          (tile) => tile.key === key
+        );
         player.tileFarms[existingIndex] = tileFarm;
         writeStoredPlayer(this.options.payer, player);
         await this.ensureComponentDelegated(
@@ -375,7 +381,9 @@ export class PlayerWorldProvisioner {
       key: tileTerrainKey(point),
       entityPda: new PublicKey(tile.entityPda),
       componentPda: new PublicKey(tile.componentPda),
-      delegated: await this.isComponentDelegated(new PublicKey(tile.componentPda)),
+      delegated: await this.isComponentDelegated(
+        new PublicKey(tile.componentPda)
+      ),
     };
   }
 
@@ -508,7 +516,10 @@ export class PlayerWorldProvisioner {
     };
   }
 
-  private async readSeededPlayer(worldPda: PublicKey) {
+  private async readSeededPlayer(
+    worldPda: PublicKey,
+    storedPlayer: PlayerState | null = null
+  ) {
     const { AddEntity, InitializeComponent } = await loadBoltSdk();
     const entityResult = await AddEntity({
       payer: this.options.payer,
@@ -569,6 +580,16 @@ export class PlayerWorldProvisioner {
         await this.isComponentDelegated(result.componentPda);
     }
 
+    const preservedState =
+      storedPlayer?.worldPda.equals(worldPda) &&
+      storedPlayer.playerMint.equals(this.options.playerMint)
+        ? storedPlayer
+        : null;
+    const tileFarms = await this.readExistingTileFarms(
+      worldPda,
+      preservedState?.tileFarms ?? []
+    );
+
     return {
       playerMint: this.options.playerMint,
       playerColor: this.options.playerColor,
@@ -576,10 +597,124 @@ export class PlayerWorldProvisioner {
       entityPda: entityResult.entityPda,
       ...components,
       ...delegationStates,
-      terrainTypes: [],
-      tileTerrains: [],
-      tileFarms: [],
+      terrainTypes: preservedState?.terrainTypes ?? [],
+      tileTerrains: preservedState?.tileTerrains ?? [],
+      tileFarms,
     };
+  }
+
+  private async readExistingTileFarms(
+    worldPda: PublicKey,
+    knownTileFarms: TileFarmState[]
+  ) {
+    const knownByKey = new Map(
+      knownTileFarms.map((tileFarm) => [tileFarm.key, tileFarm])
+    );
+    const candidates = await this.deriveTileFarmCandidates(worldPda);
+    const componentPdas = candidates.map((candidate) => candidate.componentPda);
+    const [erAccounts, baseAccounts] = await Promise.all([
+      this.getMultipleAccountsInfo(this.options.erConnection, componentPdas),
+      this.getMultipleAccountsInfo(this.options.baseConnection, componentPdas),
+    ]);
+    const tileFarms = new Map<string, TileFarmState>();
+
+    for (const knownTileFarm of knownTileFarms) {
+      tileFarms.set(knownTileFarm.key, knownTileFarm);
+    }
+
+    candidates.forEach((candidate, index) => {
+      const account = erAccounts[index] ?? baseAccounts[index];
+
+      if (!account || !this.isTileFarmAccountActive(account.data)) {
+        return;
+      }
+
+      tileFarms.set(candidate.key, {
+        ...candidate,
+        delegated: knownByKey.get(candidate.key)?.delegated ?? false,
+      });
+    });
+
+    return [...tileFarms.values()];
+  }
+
+  private async deriveTileFarmCandidates(worldPda: PublicKey) {
+    const { AddEntity, InitializeComponent } = await loadBoltSdk();
+    const candidates: TileFarmState[] = [];
+
+    for (let y = 0; y < GRID_SIZE; y += 1) {
+      for (let x = 0; x < GRID_SIZE; x += 1) {
+        const point = { x, y };
+        const entityResult = await AddEntity({
+          payer: this.options.payer,
+          world: worldPda,
+          seed: tileFarmEntitySeed(this.options.playerMint, point),
+          connection: this.options.baseConnection,
+        });
+
+        if (!entityResult.entityPda) {
+          continue;
+        }
+
+        const componentResult = await InitializeComponent({
+          payer: this.options.payer,
+          entity: entityResult.entityPda,
+          componentId: PROGRAMS.tileFarm,
+        });
+
+        if (!componentResult.componentPda) {
+          continue;
+        }
+
+        candidates.push({
+          key: tileTerrainKey(point),
+          entityPda: entityResult.entityPda,
+          componentPda: componentResult.componentPda,
+          delegated: false,
+        });
+      }
+    }
+
+    return candidates;
+  }
+
+  private async getMultipleAccountsInfo(
+    connection: Connection,
+    accounts: PublicKey[]
+  ) {
+    const accountInfos = [];
+
+    for (let index = 0; index < accounts.length; index += 100) {
+      accountInfos.push(
+        ...(await connection.getMultipleAccountsInfo(
+          accounts.slice(index, index + 100)
+        ))
+      );
+    }
+
+    return accountInfos;
+  }
+
+  private isTileFarmAccountActive(data: Uint8Array) {
+    if (data.byteLength < 57) {
+      return false;
+    }
+
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+
+    return (
+      view.getUint8(24) !== 0 ||
+      view.getUint16(25, true) !== 0 ||
+      view.getUint32(35, true) !== 0 ||
+      this.readI64(view, 47) !== 0
+    );
+  }
+
+  private readI64(view: DataView, offset: number) {
+    const low = view.getUint32(offset, true);
+    const high = view.getInt32(offset + 4, true);
+
+    return high * 0x100000000 + low;
   }
 
   private async ensureTerrainTypes(player: PlayerState) {
@@ -677,7 +812,9 @@ export class PlayerWorldProvisioner {
     const worldAuthority = worldConfig?.worldAuthority;
 
     if (!worldAuthority) {
-      throw new Error("World authority is missing from the game world manifest.");
+      throw new Error(
+        "World authority is missing from the game world manifest."
+      );
     }
 
     this.options.setStatus(`Creating terrain for tile ${key}...`);

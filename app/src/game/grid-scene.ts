@@ -30,10 +30,14 @@ export const createGridScene = (client: GameClient) =>
     private unsubscribePlayerAppearance: (() => void) | null = null;
     private unsubscribeVisiblePlayers: (() => void) | null = null;
     private unsubscribeInventory: (() => void) | null = null;
+    private unsubscribeFarmTiles: (() => void) | null = null;
     private farmCatalog: ReturnType<typeof createFarmCatalog> | null = null;
     private activePlayerEntity: number | null = null;
     private farmActionPending = false;
-    private readonly farmTileGraphics = new Map<string, Phaser.GameObjects.Graphics>();
+    private readonly farmTileGraphics = new Map<
+      string,
+      Phaser.GameObjects.Graphics
+    >();
     private readonly remotePlayerEntities = new Map<string, number>();
     private readonly remotePlayerStateKeys = new Map<string, string>();
 
@@ -76,6 +80,8 @@ export const createGridScene = (client: GameClient) =>
         this.unsubscribeVisiblePlayers = null;
         this.unsubscribeInventory?.();
         this.unsubscribeInventory = null;
+        this.unsubscribeFarmTiles?.();
+        this.unsubscribeFarmTiles = null;
       });
     }
 
@@ -125,6 +131,9 @@ export const createGridScene = (client: GameClient) =>
         client.subscribeInventory?.((inventory) =>
           this.applyInventory(inventory)
         ) ?? null;
+      this.unsubscribeFarmTiles =
+        client.subscribeFarmTiles?.((tiles) => this.applyFarmTiles(tiles)) ??
+        null;
     }
 
     private applyPlayerActionState(player: number, state: PlayerActionState) {
@@ -185,7 +194,27 @@ export const createGridScene = (client: GameClient) =>
       this.farmCatalog?.updateInventory(inventory);
     }
 
-    private async performFarmAction(mode: FarmActionMode, point: { x: number; y: number }) {
+    private applyFarmTiles(tiles: FarmTileState[]) {
+      const visibleTiles = new Set<string>();
+
+      for (const tile of tiles) {
+        const key = `${tile.x},${tile.y}`;
+        visibleTiles.add(key);
+        this.drawFarmTile(tile);
+      }
+
+      for (const [key, graphics] of this.farmTileGraphics) {
+        if (!visibleTiles.has(key)) {
+          graphics.clear();
+          this.farmTileGraphics.delete(key);
+        }
+      }
+    }
+
+    private async performFarmAction(
+      mode: FarmActionMode,
+      point: { x: number; y: number }
+    ) {
       if (this.farmActionPending || !client.performFarmAction) {
         return;
       }
@@ -203,7 +232,11 @@ export const createGridScene = (client: GameClient) =>
         }
 
         if (this.activePlayerEntity !== null) {
-          beginActionTransition(this.world, this.activePlayerEntity, result.player);
+          beginActionTransition(
+            this.world,
+            this.activePlayerEntity,
+            result.player
+          );
         }
 
         this.drawFarmTile(result.tile);
@@ -225,24 +258,51 @@ export const createGridScene = (client: GameClient) =>
 
       if (tile.soilState === "tilled") {
         graphics.fillStyle(0x9d7650, 0.86);
-        graphics.fillRoundedRect(left + 4, top + 6, CELL_SIZE - 8, CELL_SIZE - 10, 5);
+        graphics.fillRoundedRect(
+          left + 4,
+          top + 6,
+          CELL_SIZE - 8,
+          CELL_SIZE - 10,
+          5
+        );
         graphics.lineStyle(1, 0x6f5135, 0.55);
-        graphics.lineBetween(left + 8, top + 14, left + CELL_SIZE - 8, top + 12);
-        graphics.lineBetween(left + 8, top + 22, left + CELL_SIZE - 8, top + 20);
+        graphics.lineBetween(
+          left + 8,
+          top + 14,
+          left + CELL_SIZE - 8,
+          top + 12
+        );
+        graphics.lineBetween(
+          left + 8,
+          top + 22,
+          left + CELL_SIZE - 8,
+          top + 20
+        );
       }
 
       if (tile.wateredUntil > Date.now() / 1000) {
         graphics.fillStyle(0x5fb7d8, 0.24);
-        graphics.fillRoundedRect(left + 5, top + 7, CELL_SIZE - 10, CELL_SIZE - 12, 5);
+        graphics.fillRoundedRect(
+          left + 5,
+          top + 7,
+          CELL_SIZE - 10,
+          CELL_SIZE - 12,
+          5
+        );
       }
 
-      const farm = FARM_TYPES.find((candidate) => candidate.farmTypeId === tile.farmTypeId);
+      const farm = FARM_TYPES.find(
+        (candidate) => candidate.farmTypeId === tile.farmTypeId
+      );
 
       if (!farm) {
         return;
       }
 
-      const progress = Math.min(1, tile.growthSeconds / farm.requiredGrowthSeconds);
+      const progress = Math.min(
+        1,
+        tile.growthSeconds / farm.requiredGrowthSeconds
+      );
       const centerX = left + CELL_SIZE / 2;
       const centerY = top + CELL_SIZE / 2;
 
@@ -259,7 +319,12 @@ export const createGridScene = (client: GameClient) =>
 
       const height = 7 + Math.round(progress * 11);
       graphics.lineStyle(2, farm.accentColor, 1);
-      graphics.lineBetween(centerX, centerY + 10, centerX, centerY + 10 - height);
+      graphics.lineBetween(
+        centerX,
+        centerY + 10,
+        centerX,
+        centerY + 10 - height
+      );
       graphics.fillStyle(farm.color, 1);
       graphics.fillCircle(centerX, centerY + 8 - height, 4 + progress * 3);
     }
