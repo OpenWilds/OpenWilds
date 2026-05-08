@@ -112,7 +112,7 @@ export type BoltSdk = {
       isSigner: boolean;
       isWritable: boolean;
     }>;
-    args?: GridPoint | Record<string, number>;
+    args?: GridPoint | Record<string, number | number[]>;
   }) => Promise<BoltResult>;
   DelegateComponent: (args: {
     payer: PublicKey;

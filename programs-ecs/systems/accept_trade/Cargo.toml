@@ -1,0 +1,29 @@
+[package]
+name = "accept_trade"
+version = "0.2.4"
+description = "Open Wilds atomic Gold-for-item trade acceptance system"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "accept_trade"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+idl-build = ["bolt-lang/idl-build"]
+anchor-debug = ["bolt-lang/anchor-debug"]
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+bolt-lang.workspace = true
+inventory = { version = "0.2.4", path = "../../components/inventory", features = ["cpi"] }
+open-wilds = { version = "0.2.4", path = "../../../programs/open-wilds", features = ["cpi"] }
+player_owner = { path = "../../components/player_owner", features = ["cpi"] }
+position = { version = "0.2.4", path = "../../components/position", features = ["cpi"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

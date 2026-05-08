@@ -32,6 +32,30 @@ export type InventoryState = {
   slots: InventorySlotState[];
 };
 
+export type GoldBalanceState = {
+  amount: bigint;
+};
+
+export type TradeOfferStatus = "open" | "accepted" | "finalized";
+
+export type TradeOfferState = {
+  offer: string;
+  acceptance?: string;
+  direction: "incoming" | "outgoing";
+  offerId: string;
+  buyer: string;
+  seller: string;
+  buyerPlayerMint: string;
+  sellerPlayerMint: string;
+  buyerEntity: string;
+  sellerEntity: string;
+  itemId: number;
+  itemQuantity: number;
+  goldAmount: bigint;
+  expiresAt: number;
+  status: TradeOfferStatus;
+};
+
 export type FarmActionMode =
   | "move"
   | "till"
@@ -72,6 +96,11 @@ export type PlayerAppearance = {
 
 export type VisiblePlayerState = {
   mint: string;
+  owner: string;
+  entity: string;
+  playerOwnerComponent: string;
+  positionComponent: string;
+  inventoryComponent: string;
   isActive: boolean;
   appearance: PlayerAppearance;
   state: PlayerActionState;
@@ -107,10 +136,25 @@ export type GameClient = {
   subscribeInventory?: (
     listener: (inventory: InventoryState) => void
   ) => () => void;
+  subscribeGoldBalance?: (
+    listener: (balance: GoldBalanceState) => void
+  ) => () => void;
+  subscribeTradeOffers?: (
+    listener: (offers: TradeOfferState[]) => void
+  ) => () => void;
   subscribeFarmTiles?: (
     listener: (tiles: FarmTileState[]) => void
   ) => () => void;
   subscribeTileItems?: (
     listener: (items: TileItemState[]) => void
   ) => () => void;
+  createTradeOffer?: (args: {
+    sellerMint: string;
+    itemId: number;
+    itemQuantity: number;
+    goldAmount: number;
+  }) => Promise<void>;
+  acceptTradeOffer?: (offer: string) => Promise<void>;
+  cancelTradeOffer?: (offer: string) => Promise<void>;
+  finalizeTradeOffer?: (offer: string) => Promise<void>;
 };

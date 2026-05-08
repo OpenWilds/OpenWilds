@@ -148,3 +148,8 @@ export const mintLocalPlayerNft = (
 export const clearActivePlayerNft = () => {
   window.localStorage.removeItem(ACTIVE_PLAYER_NFT_STORAGE_KEY);
 };
+
+export const clearPlayerNfts = () => {
+  window.localStorage.removeItem(PLAYER_NFT_STORAGE_KEY);
+  clearActivePlayerNft();
+};

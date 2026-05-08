@@ -12,9 +12,11 @@ export const PLAYER_STORAGE_KEY = "open-wilds.localnet.player";
 export const PLAYER_NFT_STORAGE_KEY = "open-wilds.localnet.player-nfts";
 export const ACTIVE_PLAYER_NFT_STORAGE_KEY =
   "open-wilds.localnet.active-player-nft";
+export const CHAIN_GENESIS_STORAGE_KEY = "open-wilds.localnet.genesis-hash";
 export const AIRDROP_SOL = 5;
 
 export const PROGRAMS = {
+  acceptTrade: new PublicKey("HqHfwh69PtpM1mvBzHXbqNMLxD2kkygikMbmqYVPFqvv"),
   openWilds: new PublicKey("Dv88ch6oXorTqWcZxw5C8VPH5jiWagDJgWd8fvBmXzc6"),
   position: new PublicKey("7ebGfNj5knjG33XBSUdfYAYtXsner8rQzLYSFuURSicZ"),
   energy: new PublicKey("EXfYuzbCqe3VoUrG37gvkhxMmCMBKfvj5DRodsjmG6Pg"),

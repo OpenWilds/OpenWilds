@@ -5,6 +5,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
+accept_trade = "ByJN7XLbzZ6HHXDRGsTmb8nzYJaiU3jSrQjoGAtswzyw"
 active_action = "g9Y3zHKWC9kJ9CYLQuDkZP7qVwhh6yu2swhxrXn7sVn"
 chop_tile = "GctbHkUcDA9AHkDeLtJ1P1sE1oSLoncDGMBYiYPzMAgs"
 define_farm_type = "F14xPRR4xx6S8sufyU9MDfdCeCEp6XAFDGTKDfPzfD4y"

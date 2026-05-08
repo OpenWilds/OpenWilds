@@ -11,6 +11,7 @@ import { GAME_HEIGHT, GAME_WIDTH } from "./grid-constants";
 import { CELL_SIZE, GRID_ORIGIN_X, GRID_ORIGIN_Y } from "./grid-constants";
 import { pointerToGrid } from "./grid-math";
 import { installGridResources, type GridInput } from "./resources";
+import { createTradeOverlay } from "./trade-overlay";
 import { beginActionTransition } from "./systems/action-transition";
 import { gridSystems } from "./systems/index";
 import { Components, type RectComponent } from "./components/index";
@@ -47,9 +48,12 @@ export const createGridScene = (client: GameClient) =>
     private unsubscribePlayerAppearance: (() => void) | null = null;
     private unsubscribeVisiblePlayers: (() => void) | null = null;
     private unsubscribeInventory: (() => void) | null = null;
+    private unsubscribeGoldBalance: (() => void) | null = null;
+    private unsubscribeTradeOffers: (() => void) | null = null;
     private unsubscribeFarmTiles: (() => void) | null = null;
     private unsubscribeTileItems: (() => void) | null = null;
     private farmCatalog: ReturnType<typeof createFarmCatalog> | null = null;
+    private tradeOverlay: ReturnType<typeof createTradeOverlay> | null = null;
     private activePlayerEntity: number | null = null;
     private farmActionPending = false;
     private farmTileRenderElapsedMs = 0;
@@ -89,8 +93,21 @@ export const createGridScene = (client: GameClient) =>
         },
         (quantity) => {
           this.gridInput.selectedQuantity = quantity;
+          this.tradeOverlay?.syncSelectedQuantity(quantity);
         }
       );
+      this.tradeOverlay = createTradeOverlay(this, {
+        getSelectedItemId: () => this.gridInput.selectedItemId,
+        getSelectedQuantity: () => this.gridInput.selectedQuantity ?? 1,
+        createOffer: (args) =>
+          client.createTradeOffer?.(args) ?? Promise.resolve(),
+        acceptOffer: (offer) =>
+          client.acceptTradeOffer?.(offer) ?? Promise.resolve(),
+        cancelOffer: (offer) =>
+          client.cancelTradeOffer?.(offer) ?? Promise.resolve(),
+        finalizeOffer: (offer) =>
+          client.finalizeTradeOffer?.(offer) ?? Promise.resolve(),
+      });
       createHoverEntity(this.world, this);
       const player = createPlayerEntity(this.world, this, { x: 10, y: 10 });
       this.activePlayerEntity = player;
@@ -111,6 +128,10 @@ export const createGridScene = (client: GameClient) =>
         this.unsubscribeVisiblePlayers = null;
         this.unsubscribeInventory?.();
         this.unsubscribeInventory = null;
+        this.unsubscribeGoldBalance?.();
+        this.unsubscribeGoldBalance = null;
+        this.unsubscribeTradeOffers?.();
+        this.unsubscribeTradeOffers = null;
         this.unsubscribeFarmTiles?.();
         this.unsubscribeFarmTiles = null;
         this.unsubscribeTileItems?.();
@@ -177,6 +198,14 @@ export const createGridScene = (client: GameClient) =>
         client.subscribeInventory?.((inventory) =>
           this.applyInventory(inventory)
         ) ?? null;
+      this.unsubscribeGoldBalance =
+        client.subscribeGoldBalance?.((balance) =>
+          this.tradeOverlay?.updateGoldBalance(balance)
+        ) ?? null;
+      this.unsubscribeTradeOffers =
+        client.subscribeTradeOffers?.((offers) =>
+          this.tradeOverlay?.updateTradeOffers(offers)
+        ) ?? null;
       this.unsubscribeFarmTiles =
         client.subscribeFarmTiles?.((tiles) => this.applyFarmTiles(tiles)) ??
         null;
@@ -187,6 +216,7 @@ export const createGridScene = (client: GameClient) =>
 
     private applyPlayerActionState(player: number, state: PlayerActionState) {
       beginActionTransition(this.world, player, state);
+      this.tradeOverlay?.updateLocalPosition(state.position);
     }
 
     private applyPlayerAppearance(
@@ -205,6 +235,8 @@ export const createGridScene = (client: GameClient) =>
 
     private applyVisiblePlayers(players: VisiblePlayerState[]) {
       const visibleRemoteMints = new Set<string>();
+
+      this.tradeOverlay?.updateVisiblePlayers(players);
 
       for (const player of players) {
         if (player.isActive) {
@@ -780,7 +812,20 @@ export const createGridScene = (client: GameClient) =>
       );
       this.world
         .requireComponent<RectComponent>(entity, Components.rectangle)
-        .object.setAlpha(0.72);
+        .object.setAlpha(0.72)
+        .setInteractive({ useHandCursor: true })
+        .on(
+          "pointerdown",
+          (
+            _pointer: Phaser.Input.Pointer,
+            _localX: number,
+            _localY: number,
+            event: Phaser.Types.Input.EventData
+          ) => {
+            event.stopPropagation();
+            this.tradeOverlay?.selectSeller(player.mint);
+          }
+        );
       this.remotePlayerEntities.set(player.mint, entity);
       return entity;
     }

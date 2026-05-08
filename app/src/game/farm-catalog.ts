@@ -510,5 +510,8 @@ export const createFarmCatalog = (
     getSelectedMode() {
       return selectedMode;
     },
+    getSelectedQuantity() {
+      return selectedDropQuantity;
+    },
   };
 };

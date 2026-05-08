@@ -12,12 +12,14 @@ name = "open_wilds"
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
-cpi = ["no-entrypoint"]
+cpi = ["anchor-spl/idl-build", "no-entrypoint"]
 default = []
-idl-build = ["bolt-lang/idl-build"]
+idl-build = ["anchor-spl/idl-build", "bolt-lang/idl-build"]
 anchor-debug = ["bolt-lang/anchor-debug"]
 custom-heap = []
 custom-panic = []
 
 [dependencies]
+anchor-spl = "0.32.1"
 bolt-lang.workspace = true
+player_owner = { path = "../../programs-ecs/components/player_owner", features = ["cpi"] }
