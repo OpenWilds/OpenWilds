@@ -3,7 +3,9 @@ import { createBoard } from "./board";
 import { createHoverEntity, createPlayerEntity } from "./entities/index";
 import { World } from "./ecs";
 import { createFarmCatalog } from "./farm-catalog";
-import { FARM_TYPES, FarmKind } from "./farm";
+import { FARM_TYPES, FarmFeature, FarmKind } from "./farm";
+import { projectFarmGrowth } from "./farm-growth";
+import { GAME_SECONDS_PER_DAY, getGameTimeSeconds } from "./game-time";
 import { GAME_HEIGHT, GAME_WIDTH } from "./grid-constants";
 import { CELL_SIZE, GRID_ORIGIN_X, GRID_ORIGIN_Y } from "./grid-constants";
 import { pointerToGrid } from "./grid-math";
@@ -23,6 +25,19 @@ import type {
 
 export { GAME_HEIGHT, GAME_WIDTH };
 
+type PlantInfoPanel = {
+  background: Phaser.GameObjects.Graphics;
+  title: Phaser.GameObjects.Text;
+  body: Phaser.GameObjects.Text;
+  barTrack: Phaser.GameObjects.Graphics;
+  barFill: Phaser.GameObjects.Graphics;
+  highlight: Phaser.GameObjects.Graphics;
+};
+
+const PLANT_INFO_WIDTH = 190;
+const PLANT_INFO_HEIGHT = 112;
+const PLANT_INFO_DEPTH = 20;
+
 export const createGridScene = (client: GameClient) =>
   class GridScene extends Phaser.Scene {
     private world!: World;
@@ -34,6 +49,10 @@ export const createGridScene = (client: GameClient) =>
     private farmCatalog: ReturnType<typeof createFarmCatalog> | null = null;
     private activePlayerEntity: number | null = null;
     private farmActionPending = false;
+    private farmTileRenderElapsedMs = 0;
+    private selectedFarmTileKey: string | null = null;
+    private plantInfoPanel: PlantInfoPanel | null = null;
+    private readonly farmTiles = new Map<string, FarmTileState>();
     private readonly farmTileGraphics = new Map<
       string,
       Phaser.GameObjects.Graphics
@@ -87,19 +106,32 @@ export const createGridScene = (client: GameClient) =>
 
     update(_time: number, delta: number) {
       this.world.update(delta);
+      this.farmTileRenderElapsedMs += delta;
+
+      if (this.farmTileRenderElapsedMs >= 500 && this.farmTiles.size > 0) {
+        this.farmTileRenderElapsedMs = 0;
+        this.redrawFarmTiles();
+      }
     }
 
     private bindPointerInput() {
       this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
-        this.gridInput.hoverPoint = pointerToGrid(pointer);
+        const point = pointerToGrid(pointer);
+        this.gridInput.hoverPoint = point;
+        this.inspectHoveredFarmTile(point);
       });
 
       this.input.on("pointerout", () => {
         this.gridInput.hoverPoint = null;
+        this.hidePlantInfo();
       });
 
       this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
         const point = pointerToGrid(pointer);
+
+        if (!point) {
+          return;
+        }
 
         if (this.gridInput.farmActionMode === "move") {
           this.gridInput.requestedMove = point;
@@ -196,10 +228,12 @@ export const createGridScene = (client: GameClient) =>
 
     private applyFarmTiles(tiles: FarmTileState[]) {
       const visibleTiles = new Set<string>();
+      this.farmTiles.clear();
 
       for (const tile of tiles) {
-        const key = `${tile.x},${tile.y}`;
+        const key = this.getTileKey(tile);
         visibleTiles.add(key);
+        this.farmTiles.set(key, tile);
         this.drawFarmTile(tile);
       }
 
@@ -209,6 +243,25 @@ export const createGridScene = (client: GameClient) =>
           this.farmTileGraphics.delete(key);
         }
       }
+
+      if (
+        this.selectedFarmTileKey &&
+        !this.farmTiles.has(this.selectedFarmTileKey)
+      ) {
+        this.hidePlantInfo();
+      }
+
+      this.inspectHoveredFarmTile(this.gridInput.hoverPoint);
+    }
+
+    private redrawFarmTiles() {
+      const nowGameSeconds = getGameTimeSeconds();
+
+      for (const tile of this.farmTiles.values()) {
+        this.drawFarmTile(tile, nowGameSeconds);
+      }
+
+      this.refreshPlantInfo(nowGameSeconds);
     }
 
     private async performFarmAction(
@@ -239,14 +292,19 @@ export const createGridScene = (client: GameClient) =>
           );
         }
 
+        this.farmTiles.set(this.getTileKey(result.tile), result.tile);
         this.drawFarmTile(result.tile);
+        this.refreshPlantInfo();
       } finally {
         this.farmActionPending = false;
       }
     }
 
-    private drawFarmTile(tile: FarmTileState) {
-      const key = `${tile.x},${tile.y}`;
+    private drawFarmTile(
+      tile: FarmTileState,
+      nowGameSeconds = getGameTimeSeconds()
+    ) {
+      const key = this.getTileKey(tile);
       const graphics =
         this.farmTileGraphics.get(key) ?? this.add.graphics().setDepth(3);
 
@@ -280,7 +338,7 @@ export const createGridScene = (client: GameClient) =>
         );
       }
 
-      if (tile.wateredUntil > Date.now() / 1000) {
+      if (tile.wateredUntil > nowGameSeconds) {
         graphics.fillStyle(0x5fb7d8, 0.24);
         graphics.fillRoundedRect(
           left + 5,
@@ -299,25 +357,37 @@ export const createGridScene = (client: GameClient) =>
         return;
       }
 
-      const progress = Math.min(
-        1,
-        tile.growthSeconds / farm.requiredGrowthSeconds
-      );
+      const growth = projectFarmGrowth(tile, farm, nowGameSeconds);
       const centerX = left + CELL_SIZE / 2;
       const centerY = top + CELL_SIZE / 2;
+      const stageScale =
+        farm.stageThresholdSeconds.length <= 1
+          ? growth.progress
+          : growth.stageIndex / (farm.stageThresholdSeconds.length - 1);
+      const visualProgress = Math.max(growth.progress, stageScale);
 
       if (farm.kind === FarmKind.tree) {
-        const canopy = 6 + Math.round(progress * 8);
+        const canopy = 5 + Math.round(visualProgress * 10);
+        const trunkHeight = 8 + Math.round(visualProgress * 7);
         graphics.fillStyle(0x7a5130, 1);
-        graphics.fillRoundedRect(centerX - 3, centerY + 4, 6, 12, 2);
+        graphics.fillRoundedRect(
+          centerX - 3,
+          centerY + 10 - trunkHeight,
+          6,
+          trunkHeight + 4,
+          2
+        );
         graphics.fillStyle(farm.color, 0.95);
         graphics.fillCircle(centerX, centerY, canopy);
-        graphics.fillStyle(farm.accentColor, 1);
-        graphics.fillCircle(centerX + 4, centerY - 2, 2);
+        if (growth.harvestReady) {
+          graphics.fillStyle(farm.accentColor, 1);
+          graphics.fillCircle(centerX + 4, centerY - 2, 2);
+          graphics.fillCircle(centerX - 3, centerY + 2, 1.8);
+        }
         return;
       }
 
-      const height = 7 + Math.round(progress * 11);
+      const height = 5 + growth.stageIndex * 4;
       graphics.lineStyle(2, farm.accentColor, 1);
       graphics.lineBetween(
         centerX,
@@ -325,8 +395,252 @@ export const createGridScene = (client: GameClient) =>
         centerX,
         centerY + 10 - height
       );
+      if (growth.stageIndex >= 1) {
+        graphics.lineBetween(centerX, centerY + 6, centerX - 6, centerY + 1);
+      }
+      if (growth.stageIndex >= 2) {
+        graphics.lineBetween(centerX, centerY + 4, centerX + 6, centerY - 2);
+      }
       graphics.fillStyle(farm.color, 1);
-      graphics.fillCircle(centerX, centerY + 8 - height, 4 + progress * 3);
+      graphics.fillCircle(
+        centerX,
+        centerY + 8 - height,
+        3 + growth.stageIndex * 1.5
+      );
+      if (growth.harvestReady) {
+        graphics.fillStyle(farm.accentColor, 1);
+        graphics.fillCircle(centerX + 2, centerY + 7 - height, 2);
+      }
+    }
+
+    private showPlantInfo(tile: FarmTileState) {
+      this.selectedFarmTileKey = this.getTileKey(tile);
+      this.refreshPlantInfo();
+    }
+
+    private inspectHoveredFarmTile(point: { x: number; y: number } | null) {
+      if (!point) {
+        this.hidePlantInfo();
+        return;
+      }
+
+      const tile = this.farmTiles.get(this.getTileKey(point));
+
+      if (tile?.farmTypeId) {
+        this.showPlantInfo(tile);
+        return;
+      }
+
+      this.hidePlantInfo();
+    }
+
+    private refreshPlantInfo(nowGameSeconds = getGameTimeSeconds()) {
+      if (!this.selectedFarmTileKey) {
+        return;
+      }
+
+      const tile = this.farmTiles.get(this.selectedFarmTileKey);
+      const farm = tile
+        ? FARM_TYPES.find(
+            (candidate) => candidate.farmTypeId === tile.farmTypeId
+          )
+        : null;
+
+      if (!tile || !farm) {
+        this.hidePlantInfo();
+        return;
+      }
+
+      const growth = projectFarmGrowth(tile, farm, nowGameSeconds);
+      const panel = this.ensurePlantInfoPanel();
+      const stageCount = farm.stageThresholdSeconds.length;
+      const stageLabel = `Stage ${growth.stageIndex + 1}/${stageCount}`;
+      const status = growth.harvestReady
+        ? "Ready"
+        : tile.wateredUntil > nowGameSeconds
+        ? "Growing"
+        : farm.flags & FarmFeature.needsWater
+        ? "Needs water"
+        : "Growing";
+      const remainingSeconds = Math.max(
+        0,
+        farm.requiredGrowthSeconds - growth.growthSeconds
+      );
+      const plantedAt = this.formatGameTimestamp(tile.plantedAt);
+
+      this.positionPlantInfoPanel(tile, panel);
+      panel.title.setText(`${farm.label} (${tile.x}, ${tile.y})`);
+      panel.body.setText(
+        [
+          `${stageLabel} · ${Math.round(growth.progress * 100)}% · ${status}`,
+          growth.harvestReady
+            ? "Harvest is available"
+            : `Growth ${this.formatGameDuration(
+                growth.growthSeconds
+              )} / ${this.formatGameDuration(farm.requiredGrowthSeconds)}`,
+          growth.harvestReady
+            ? "Fully grown"
+            : `Remaining ${this.formatGameDuration(remainingSeconds)}`,
+          `Planted ${plantedAt}`,
+        ].join("\n")
+      );
+      this.drawPlantInfoBar(panel, growth.progress);
+    }
+
+    private ensurePlantInfoPanel() {
+      if (this.plantInfoPanel) {
+        return this.plantInfoPanel;
+      }
+
+      const highlight = this.add.graphics().setDepth(PLANT_INFO_DEPTH - 1);
+      const background = this.add.graphics().setDepth(PLANT_INFO_DEPTH);
+      const barTrack = this.add.graphics().setDepth(PLANT_INFO_DEPTH + 1);
+      const barFill = this.add.graphics().setDepth(PLANT_INFO_DEPTH + 2);
+      const title = this.add
+        .text(0, 0, "", {
+          color: "#17211e",
+          fixedWidth: PLANT_INFO_WIDTH - 22,
+          fontFamily: "Inter, sans-serif",
+          fontSize: "13px",
+          fontStyle: "700",
+          wordWrap: { width: PLANT_INFO_WIDTH - 22 },
+        })
+        .setDepth(PLANT_INFO_DEPTH + 3);
+      const body = this.add
+        .text(0, 0, "", {
+          color: "#344a42",
+          fixedWidth: PLANT_INFO_WIDTH - 22,
+          fontFamily: "Inter, sans-serif",
+          fontSize: "10px",
+          lineSpacing: 3,
+          wordWrap: { width: PLANT_INFO_WIDTH - 22 },
+        })
+        .setDepth(PLANT_INFO_DEPTH + 3);
+
+      this.plantInfoPanel = {
+        background,
+        title,
+        body,
+        barTrack,
+        barFill,
+        highlight,
+      };
+      return this.plantInfoPanel;
+    }
+
+    private positionPlantInfoPanel(tile: FarmTileState, panel: PlantInfoPanel) {
+      const tileLeft = GRID_ORIGIN_X + tile.x * CELL_SIZE;
+      const tileTop = GRID_ORIGIN_Y + tile.y * CELL_SIZE;
+      const x = Math.min(
+        GAME_WIDTH - PLANT_INFO_WIDTH - 18,
+        Math.max(18, tileLeft + CELL_SIZE + 8)
+      );
+      const y = Math.min(
+        GAME_HEIGHT - PLANT_INFO_HEIGHT - 18,
+        Math.max(48, tileTop - 18)
+      );
+
+      panel.highlight.clear();
+      panel.highlight.lineStyle(2, 0xffe0a3, 1);
+      panel.highlight.strokeRoundedRect(
+        tileLeft + 3,
+        tileTop + 3,
+        CELL_SIZE - 6,
+        CELL_SIZE - 6,
+        6
+      );
+
+      panel.background.clear();
+      panel.background.fillStyle(0xf7f1e5, 0.98);
+      panel.background.fillRoundedRect(
+        x,
+        y,
+        PLANT_INFO_WIDTH,
+        PLANT_INFO_HEIGHT,
+        8
+      );
+      panel.background.lineStyle(1, 0xa26924, 0.9);
+      panel.background.strokeRoundedRect(
+        x,
+        y,
+        PLANT_INFO_WIDTH,
+        PLANT_INFO_HEIGHT,
+        8
+      );
+      panel.title.setPosition(x + 11, y + 10);
+      panel.body.setPosition(x + 11, y + 34);
+    }
+
+    private drawPlantInfoBar(panel: PlantInfoPanel, progress: number) {
+      const x = panel.body.x;
+      const y = panel.body.y + 60;
+      const width = PLANT_INFO_WIDTH - 22;
+
+      panel.barTrack.clear();
+      panel.barTrack.fillStyle(0xd3c9b3, 1);
+      panel.barTrack.fillRoundedRect(x, y, width, 8, 4);
+      panel.barFill.clear();
+      panel.barFill.fillStyle(0x8fbe67, 1);
+      panel.barFill.fillRoundedRect(
+        x,
+        y,
+        Math.max(4, width * Math.min(1, Math.max(0, progress))),
+        8,
+        4
+      );
+    }
+
+    private hidePlantInfo() {
+      this.selectedFarmTileKey = null;
+
+      if (!this.plantInfoPanel) {
+        return;
+      }
+
+      this.plantInfoPanel.background.clear();
+      this.plantInfoPanel.barTrack.clear();
+      this.plantInfoPanel.barFill.clear();
+      this.plantInfoPanel.highlight.clear();
+      this.plantInfoPanel.title.setText("");
+      this.plantInfoPanel.body.setText("");
+    }
+
+    private formatGameTimestamp(gameSeconds: number) {
+      if (gameSeconds <= 0) {
+        return "unknown";
+      }
+
+      const day = Math.floor(gameSeconds / GAME_SECONDS_PER_DAY) + 1;
+      const secondsInDay = gameSeconds % GAME_SECONDS_PER_DAY;
+      const hour = Math.floor(secondsInDay / (60 * 60));
+      const minute = Math.floor((secondsInDay % (60 * 60)) / 60);
+
+      return `Day ${day} ${hour.toString().padStart(2, "0")}:${minute
+        .toString()
+        .padStart(2, "0")}`;
+    }
+
+    private formatGameDuration(seconds: number) {
+      const clampedSeconds = Math.max(0, Math.floor(seconds));
+      const days = Math.floor(clampedSeconds / GAME_SECONDS_PER_DAY);
+      const hours = Math.floor(
+        (clampedSeconds % GAME_SECONDS_PER_DAY) / (60 * 60)
+      );
+      const minutes = Math.floor((clampedSeconds % (60 * 60)) / 60);
+
+      if (days > 0) {
+        return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+      }
+
+      if (hours > 0) {
+        return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+      }
+
+      return `${minutes}m`;
+    }
+
+    private getTileKey(point: { x: number; y: number }) {
+      return `${point.x},${point.y}`;
     }
 
     private createRemotePlayerEntity(player: VisiblePlayerState) {

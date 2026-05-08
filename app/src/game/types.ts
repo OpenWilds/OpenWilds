@@ -43,8 +43,12 @@ export type FarmActionMode =
 export type FarmTileState = GridPoint & {
   soilState: "untilled" | "tilled";
   farmTypeId: number;
+  plantedAt: number;
   growthSeconds: number;
+  growthUpdatedAt: number;
   wateredUntil: number;
+  lastHarvestedAt: number;
+  harvestCount: number;
 };
 
 export type FarmActionResult = {

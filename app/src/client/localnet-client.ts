@@ -396,8 +396,12 @@ export class LocalnetClient {
               ...point,
               soilState: "untilled",
               farmTypeId: 0,
+              plantedAt: 0,
               growthSeconds: 0,
+              growthUpdatedAt: 0,
               wateredUntil: 0,
+              lastHarvestedAt: 0,
+              harvestCount: 0,
             },
           }
         : null;
@@ -940,13 +944,17 @@ export class LocalnetClient {
       (await this.erConnection.getAccountInfo(tileFarmPda)) ??
       (await this.baseConnection.getAccountInfo(tileFarmPda));
 
-    if (!account || account.data.byteLength < 57) {
+    if (!account || account.data.byteLength < 67) {
       return {
         ...fallbackPoint,
         soilState: "untilled",
         farmTypeId: 0,
+        plantedAt: 0,
         growthSeconds: 0,
+        growthUpdatedAt: 0,
         wateredUntil: 0,
+        lastHarvestedAt: 0,
+        harvestCount: 0,
       };
     }
 
@@ -964,8 +972,12 @@ export class LocalnetClient {
       y: y || fallbackPoint.y,
       soilState: view.getUint8(24) === 1 ? "tilled" : "untilled",
       farmTypeId,
+      plantedAt: this.readI64(view, 27),
       growthSeconds: view.getUint32(35, true),
+      growthUpdatedAt: this.readI64(view, 39),
       wateredUntil: this.readI64(view, 47),
+      lastHarvestedAt: this.readI64(view, 55),
+      harvestCount: view.getUint32(63, true),
     };
   }
 
@@ -1556,8 +1568,12 @@ export class LocalnetClient {
           tile.y,
           tile.soilState,
           tile.farmTypeId,
+          tile.plantedAt,
           tile.growthSeconds,
+          tile.growthUpdatedAt,
           tile.wateredUntil,
+          tile.lastHarvestedAt,
+          tile.harvestCount,
         ].join(":")
       )
       .sort()
@@ -1568,7 +1584,11 @@ export class LocalnetClient {
     return (
       tile.soilState === "tilled" ||
       tile.farmTypeId !== 0 ||
+      tile.plantedAt !== 0 ||
       tile.growthSeconds !== 0 ||
+      tile.growthUpdatedAt !== 0 ||
+      tile.lastHarvestedAt !== 0 ||
+      tile.harvestCount !== 0 ||
       tile.wateredUntil !== 0
     );
   }

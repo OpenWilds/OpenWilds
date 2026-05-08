@@ -9,19 +9,24 @@ export type GameTimeState = {
 };
 
 export const getGameTime = (nowMs = Date.now()): GameTimeState => {
-  const elapsedRealSeconds = Math.max(
-    0,
-    Math.floor(nowMs / 1000) - WORLD_EPOCH_UNIX_SECONDS
-  );
-  const elapsedGameSeconds = Math.floor(
-    (elapsedRealSeconds * GAME_SECONDS_PER_DAY) / REAL_SECONDS_PER_GAME_DAY
-  );
+  const elapsedGameSeconds = getGameTimeSeconds(nowMs);
   const day = Math.floor(elapsedGameSeconds / GAME_SECONDS_PER_DAY) + 1;
   const secondsInDay = elapsedGameSeconds % GAME_SECONDS_PER_DAY;
   const hour = Math.floor(secondsInDay / (60 * 60));
   const minute = Math.floor((secondsInDay % (60 * 60)) / 60);
 
   return { day, hour, minute };
+};
+
+export const getGameTimeSeconds = (nowMs = Date.now()) => {
+  const elapsedRealSeconds = Math.max(
+    0,
+    Math.floor(nowMs / 1000) - WORLD_EPOCH_UNIX_SECONDS
+  );
+
+  return Math.floor(
+    (elapsedRealSeconds * GAME_SECONDS_PER_DAY) / REAL_SECONDS_PER_GAME_DAY
+  );
 };
 
 export const formatGameTime = (time = getGameTime()) =>
