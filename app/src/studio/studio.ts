@@ -16,6 +16,14 @@ import {
   type StudioSceneState,
 } from "./studio-scene";
 import {
+  dataUrlToPngBlob,
+  isConvexStudioConfigured,
+  listStudioTerrainAssets,
+  registerGeneratedTerrainAsset,
+  registerSourceTexture,
+  saveStudioMapToConvex,
+} from "./convex-studio";
+import {
   buildTerrainTexturePrompt,
   generateTerrainAsset,
   normalizeTerrainId,
@@ -133,6 +141,7 @@ export const bootStudio = (app: HTMLElement) => {
             <div class="studio-command-grid">
               <button id="studio-export-button" type="button">Export JSON</button>
               <button id="studio-import-button" type="button">Import JSON</button>
+              <button id="studio-save-cloud-button" type="button">Save Cloud</button>
             </div>
           </section>
 
@@ -154,6 +163,14 @@ export const bootStudio = (app: HTMLElement) => {
   let scene: StudioScene | null = null;
   let generatedTerrains: TerrainVisualAsset[] = [];
   const sceneState: { current: StudioSceneState | null } = { current: null };
+  const setGeneratedTerrains = (assets: TerrainVisualAsset[]) => {
+    generatedTerrains = assets;
+    renderTerrainPalette(app, [...terrainAssets, ...generatedTerrains]);
+    bindTerrainPalette(app, { getScene: () => scene });
+    if (sceneState.current) {
+      syncStudioControls(app, sceneState.current);
+    }
+  };
   const syncControls = (state: StudioSceneState) => {
     sceneState.current = state;
     syncStudioControls(app, state);
@@ -162,20 +179,20 @@ export const bootStudio = (app: HTMLElement) => {
   scene = new StudioScene({
     terrainAssets,
     onStateChange: syncControls,
+    onReady: () => {
+      void hydrateStudioFromConvex(app, {
+        getScene: () => scene,
+        getGeneratedTerrains: () => generatedTerrains,
+        setGeneratedTerrains,
+      });
+    },
   });
 
   bindStudioControls(app, {
     getScene: () => scene,
     getState: () => sceneState.current,
     getGeneratedTerrains: () => generatedTerrains,
-    setGeneratedTerrains: (assets) => {
-      generatedTerrains = assets;
-      renderTerrainPalette(app, [...terrainAssets, ...generatedTerrains]);
-      bindTerrainPalette(app, { getScene: () => scene });
-      if (sceneState.current) {
-        syncStudioControls(app, sceneState.current);
-      }
-    },
+    setGeneratedTerrains,
     requestImport: () => importInput?.click(),
   });
 
@@ -263,6 +280,46 @@ type StudioControlBindings = {
   requestImport: () => void;
 };
 
+type StudioTerrainBinding = Pick<
+  StudioControlBindings,
+  "getScene" | "getGeneratedTerrains" | "setGeneratedTerrains"
+>;
+
+const hydrateStudioFromConvex = async (
+  app: HTMLElement,
+  bindings: StudioTerrainBinding
+) => {
+  if (!isConvexStudioConfigured()) {
+    updateGeneratorStatus(
+      app,
+      "Convex is not configured. Set VITE_CONVEX_URL to save shared terrain."
+    );
+    return;
+  }
+
+  try {
+    updateGeneratorStatus(app, "Loading terrain library from Convex...");
+    const assets = await listStudioTerrainAssets();
+    const nextTerrains = upsertManyTerrainAssets(
+      bindings.getGeneratedTerrains(),
+      assets
+    );
+
+    bindings.setGeneratedTerrains(nextTerrains);
+    for (const asset of assets) {
+      bindings.getScene()?.addTerrainAsset(asset, false);
+    }
+    updateGeneratorStatus(app, `Loaded ${assets.length} Convex terrain assets`);
+  } catch (error) {
+    updateGeneratorStatus(
+      app,
+      error instanceof Error
+        ? error.message
+        : "Could not load Convex terrain library."
+    );
+  }
+};
+
 const bindStudioControls = (
   app: HTMLElement,
   bindings: StudioControlBindings
@@ -340,6 +397,30 @@ const bindStudioControls = (
     ?.addEventListener("click", () => bindings.requestImport());
 
   app
+    .querySelector<HTMLButtonElement>("#studio-save-cloud-button")
+    ?.addEventListener("click", async () => {
+      const scene = bindings.getScene();
+
+      if (!scene) {
+        return;
+      }
+
+      try {
+        const map = scene.getExport();
+        await saveStudioMapToConvex(
+          `Open Wilds ${map.width}x${map.height}`,
+          map
+        );
+        updateGeneratorStatus(app, "Saved map to Convex");
+      } catch (error) {
+        updateGeneratorStatus(
+          app,
+          error instanceof Error ? error.message : "Could not save map."
+        );
+      }
+    });
+
+  app
     .querySelector<HTMLButtonElement>("#studio-copy-prompt-button")
     ?.addEventListener("click", async () => {
       try {
@@ -367,20 +448,37 @@ const bindStudioControls = (
       }
 
       try {
-        updateGeneratorStatus(app, "Building autotile terrain...");
+        updateGeneratorStatus(app, "Uploading source texture to Convex...");
         const form = readTerrainGeneratorForm(app);
+        const sourceTextureId = await registerSourceTexture({
+          ...form,
+          file: source,
+        });
+
+        updateGeneratorStatus(app, "Building autotile terrain...");
         const asset = await generateTerrainAsset({
           ...form,
           sourceTexture: source,
         });
+        updateGeneratorStatus(app, "Uploading generated terrain to Convex...");
+        await registerGeneratedTerrainAsset({
+          ...form,
+          sourceTextureId,
+          atlasBlob: await dataUrlToPngBlob(asset.atlasUrl),
+          centerVariantsBlob: await dataUrlToPngBlob(asset.centerVariantsUrl),
+        });
+
+        const convexAssets = await listStudioTerrainAssets();
+        const storedAsset =
+          convexAssets.find((terrain) => terrain.id === asset.id) ?? asset;
         const nextTerrains = upsertTerrainAsset(
           bindings.getGeneratedTerrains(),
-          asset
+          storedAsset
         );
 
         bindings.setGeneratedTerrains(nextTerrains);
-        bindings.getScene()?.addTerrainAsset(asset);
-        updateGeneratorStatus(app, `Built ${asset.label}`);
+        bindings.getScene()?.addTerrainAsset(storedAsset);
+        updateGeneratorStatus(app, `Saved ${storedAsset.label} to Convex`);
       } catch (error) {
         updateGeneratorStatus(
           app,

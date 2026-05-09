@@ -8,3 +8,5 @@ test-ledger
 .yarn
 app/dist
 app/public/game-world.localnet.json
+
+.env.local

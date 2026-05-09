@@ -59,6 +59,7 @@ export type StudioMapExport = {
 type StudioSceneOptions = {
   terrainAssets?: TerrainVisualAsset[];
   onStateChange?: (state: StudioSceneState) => void;
+  onReady?: () => void;
 };
 
 type StudioLayer = TerrainGridLayer & {
@@ -134,6 +135,7 @@ export class StudioScene extends Phaser.Scene {
     this.registerInput();
     this.updateCameraBounds();
     this.updateStatus();
+    this.options.onReady?.();
   }
 
   update() {
