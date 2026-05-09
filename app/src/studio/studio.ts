@@ -17,11 +17,14 @@ import {
 } from "./studio-scene";
 import {
   dataUrlToPngBlob,
+  generateSourceTexture,
   isConvexStudioConfigured,
+  listStudioSourceTextures,
   listStudioTerrainAssets,
   registerGeneratedTerrainAsset,
   registerSourceTexture,
   saveStudioMapToConvex,
+  type StudioSourceTexture,
 } from "./convex-studio";
 import {
   buildTerrainTexturePrompt,
@@ -61,8 +64,8 @@ export const bootStudio = (app: HTMLElement) => {
             </div>
           </section>
 
-          <section class="studio-panel__section">
-            <h2>Terrain Workshop</h2>
+          <section class="studio-panel__section studio-panel__section--texture-lab">
+            <h2>Texture Lab</h2>
             <div class="studio-generator-fields">
               <label>
                 Name
@@ -89,11 +92,32 @@ export const bootStudio = (app: HTMLElement) => {
                 <input id="studio-terrain-source" type="file" accept="image/png,image/jpeg,image/webp" />
               </label>
             </div>
+            <div class="studio-texture-preview" id="studio-texture-preview" hidden>
+              <img id="studio-texture-preview-image" alt="Generated terrain source texture preview" />
+            </div>
+            <div class="studio-source-textures" id="studio-source-textures" hidden>
+              <p>Recent Textures</p>
+              <div id="studio-source-texture-list" class="studio-source-texture-list"></div>
+            </div>
             <div class="studio-command-grid">
-              <button id="studio-generate-terrain-button" type="button">Build Terrain</button>
+              <button id="studio-generate-texture-button" type="button">Generate Texture</button>
               <button id="studio-copy-prompt-button" type="button">Copy Prompt</button>
             </div>
-            <p class="studio-note">Use the prompt to make a square seamless texture, then load that PNG here. The studio turns it into a 47-tile autotile set.</p>
+            <div
+              id="studio-generator-status"
+              class="studio-generator-status"
+              data-state="idle"
+              aria-live="polite"
+            >
+              Ready to generate a source texture.
+            </div>
+            <p class="studio-note">Generate a seamless square source texture and approve the preview before turning it into terrain.</p>
+          </section>
+
+          <section class="studio-panel__section">
+            <h2>Terrain Builder</h2>
+            <button id="studio-generate-terrain-button" class="studio-command" type="button">Build Terrain From Texture</button>
+            <p class="studio-note">Builds the 47-tile autotile set from the generated texture preview or the selected source PNG, then saves it to Convex.</p>
           </section>
 
           <section class="studio-panel__section">
@@ -162,6 +186,8 @@ export const bootStudio = (app: HTMLElement) => {
   const terrainAssets = getInitialTerrainAssets();
   let scene: StudioScene | null = null;
   let generatedTerrains: TerrainVisualAsset[] = [];
+  let generatedSourceTexture: StudioSourceTexture | null = null;
+  let sourceTextures: StudioSourceTexture[] = [];
   const sceneState: { current: StudioSceneState | null } = { current: null };
   const setGeneratedTerrains = (assets: TerrainVisualAsset[]) => {
     generatedTerrains = assets;
@@ -175,6 +201,18 @@ export const bootStudio = (app: HTMLElement) => {
     sceneState.current = state;
     syncStudioControls(app, state);
   };
+  const setSourceTextures = (textures: StudioSourceTexture[]) => {
+    sourceTextures = textures;
+    renderSourceTextureList(app, sourceTextures, generatedSourceTexture?.textureId);
+    bindSourceTextureList(app, {
+      getSourceTextures: () => sourceTextures,
+      setGeneratedSourceTexture: (texture) => {
+        generatedSourceTexture = texture;
+        renderSourceTexturePreview(app, texture?.url ?? null);
+        renderSourceTextureList(app, sourceTextures, texture?.textureId);
+      },
+    });
+  };
 
   scene = new StudioScene({
     terrainAssets,
@@ -184,6 +222,14 @@ export const bootStudio = (app: HTMLElement) => {
         getScene: () => scene,
         getGeneratedTerrains: () => generatedTerrains,
         setGeneratedTerrains,
+        getGeneratedSourceTexture: () => generatedSourceTexture,
+        setGeneratedSourceTexture: (texture) => {
+          generatedSourceTexture = texture;
+          renderSourceTexturePreview(app, texture?.url ?? null);
+          renderSourceTextureList(app, sourceTextures, texture?.textureId);
+        },
+        getSourceTextures: () => sourceTextures,
+        setSourceTextures,
       });
     },
   });
@@ -193,6 +239,14 @@ export const bootStudio = (app: HTMLElement) => {
     getState: () => sceneState.current,
     getGeneratedTerrains: () => generatedTerrains,
     setGeneratedTerrains,
+    getGeneratedSourceTexture: () => generatedSourceTexture,
+    setGeneratedSourceTexture: (texture) => {
+      generatedSourceTexture = texture;
+      renderSourceTexturePreview(app, texture?.url ?? null);
+      renderSourceTextureList(app, sourceTextures, texture?.textureId);
+    },
+    getSourceTextures: () => sourceTextures,
+    setSourceTextures,
     requestImport: () => importInput?.click(),
   });
 
@@ -264,6 +318,73 @@ const renderTerrainPalette = (
   palette.innerHTML = renderTerrainButtons(assets);
 };
 
+const renderSourceTexturePreview = (app: HTMLElement, url: string | null) => {
+  const preview = app.querySelector<HTMLElement>("#studio-texture-preview");
+  const image = app.querySelector<HTMLImageElement>(
+    "#studio-texture-preview-image"
+  );
+
+  if (!preview || !image) {
+    return;
+  }
+
+  if (!url) {
+    preview.hidden = true;
+    image.removeAttribute("src");
+    return;
+  }
+
+  image.src = url;
+  preview.hidden = false;
+};
+
+const renderSourceTextureList = (
+  app: HTMLElement,
+  textures: StudioSourceTexture[],
+  selectedTextureId?: string
+) => {
+  const shell = app.querySelector<HTMLElement>("#studio-source-textures");
+  const list = app.querySelector<HTMLElement>("#studio-source-texture-list");
+
+  if (!shell || !list) {
+    return;
+  }
+
+  if (textures.length === 0) {
+    shell.hidden = true;
+    list.innerHTML = "";
+    return;
+  }
+
+  shell.hidden = false;
+  list.innerHTML = textures
+    .slice(0, 8)
+    .map(
+      (texture) => `
+        <button
+          class="studio-source-texture-button"
+          data-source-texture="${escapeHtml(texture.textureId)}"
+          ${texture.textureId === selectedTextureId ? "data-active" : ""}
+          type="button"
+        >
+          <img src="${escapeHtml(texture.url ?? "")}" alt="" />
+          <span>${escapeHtml(texture.label)}</span>
+        </button>
+      `
+    )
+    .join("");
+};
+
+const setGeneratorBusy = (app: HTMLElement, isBusy: boolean) => {
+  app
+    .querySelectorAll<HTMLButtonElement>(
+      "#studio-generate-texture-button, #studio-copy-prompt-button, #studio-generate-terrain-button"
+    )
+    .forEach((button) => {
+      button.disabled = isBusy;
+    });
+};
+
 const getSwatchClass = (terrainId: string) => {
   if (terrainId.startsWith("uniswap-")) {
     return `studio-swatch--${terrainId.replace("uniswap-", "")}`;
@@ -277,12 +398,22 @@ type StudioControlBindings = {
   getState: () => StudioSceneState | null;
   getGeneratedTerrains: () => TerrainVisualAsset[];
   setGeneratedTerrains: (assets: TerrainVisualAsset[]) => void;
+  getGeneratedSourceTexture: () => StudioSourceTexture | null;
+  setGeneratedSourceTexture: (texture: StudioSourceTexture | null) => void;
+  getSourceTextures: () => StudioSourceTexture[];
+  setSourceTextures: (textures: StudioSourceTexture[]) => void;
   requestImport: () => void;
 };
 
 type StudioTerrainBinding = Pick<
   StudioControlBindings,
-  "getScene" | "getGeneratedTerrains" | "setGeneratedTerrains"
+  | "getScene"
+  | "getGeneratedTerrains"
+  | "setGeneratedTerrains"
+  | "getGeneratedSourceTexture"
+  | "setGeneratedSourceTexture"
+  | "getSourceTextures"
+  | "setSourceTextures"
 >;
 
 const hydrateStudioFromConvex = async (
@@ -292,30 +423,50 @@ const hydrateStudioFromConvex = async (
   if (!isConvexStudioConfigured()) {
     updateGeneratorStatus(
       app,
-      "Convex is not configured. Set VITE_CONVEX_URL to save shared terrain."
+      "Convex is not configured. Set VITE_CONVEX_URL to save shared terrain.",
+      "error"
     );
     return;
   }
 
   try {
-    updateGeneratorStatus(app, "Loading terrain library from Convex...");
-    const assets = await listStudioTerrainAssets();
+    updateGeneratorStatus(app, "Loading Studio library from Convex...", "loading");
+    const [assets, textures] = await Promise.all([
+      listStudioTerrainAssets(),
+      listStudioSourceTextures(),
+    ]);
     const nextTerrains = upsertManyTerrainAssets(
       bindings.getGeneratedTerrains(),
       assets
     );
+    const nextTextures = upsertManySourceTextures(
+      bindings.getSourceTextures(),
+      textures
+    );
 
     bindings.setGeneratedTerrains(nextTerrains);
+    bindings.setSourceTextures(nextTextures);
     for (const asset of assets) {
       bindings.getScene()?.addTerrainAsset(asset, false);
     }
-    updateGeneratorStatus(app, `Loaded ${assets.length} Convex terrain assets`);
+
+    if (!bindings.getGeneratedSourceTexture() && nextTextures[0]) {
+      bindings.setGeneratedSourceTexture(nextTextures[0]);
+      fillTerrainGeneratorForm(app, nextTextures[0]);
+    }
+
+    updateGeneratorStatus(
+      app,
+      `Loaded ${assets.length} terrain assets and ${textures.length} source textures from Convex`,
+      "success"
+    );
   } catch (error) {
     updateGeneratorStatus(
       app,
       error instanceof Error
         ? error.message
-        : "Could not load Convex terrain library."
+        : "Could not load Convex terrain library.",
+      "error"
     );
   }
 };
@@ -411,11 +562,12 @@ const bindStudioControls = (
           `Open Wilds ${map.width}x${map.height}`,
           map
         );
-        updateGeneratorStatus(app, "Saved map to Convex");
+        updateGeneratorStatus(app, "Saved map to Convex", "success");
       } catch (error) {
         updateGeneratorStatus(
           app,
-          error instanceof Error ? error.message : "Could not save map."
+          error instanceof Error ? error.message : "Could not save map.",
+          "error"
         );
       }
     });
@@ -426,12 +578,46 @@ const bindStudioControls = (
       try {
         const prompt = buildTerrainTexturePrompt(readTerrainGeneratorForm(app));
         await navigator.clipboard.writeText(prompt);
-        updateGeneratorStatus(app, "Copied source texture prompt");
+        updateGeneratorStatus(app, "Copied source texture prompt", "success");
       } catch (error) {
         updateGeneratorStatus(
           app,
-          error instanceof Error ? error.message : "Could not copy prompt."
+          error instanceof Error ? error.message : "Could not copy prompt.",
+          "error"
         );
+      }
+    });
+
+  app
+    .querySelector<HTMLButtonElement>("#studio-generate-texture-button")
+    ?.addEventListener("click", async () => {
+      try {
+        const form = readTerrainGeneratorForm(app);
+        setGeneratorBusy(app, true);
+        updateGeneratorStatus(
+          app,
+          `Generating ${form.label} source texture with Convex...`,
+          "loading"
+        );
+        const texture = await generateSourceTexture(form);
+
+        bindings.setSourceTextures(
+          upsertSourceTexture(bindings.getSourceTextures(), texture)
+        );
+        bindings.setGeneratedSourceTexture(texture);
+        updateGeneratorStatus(
+          app,
+          `Generated ${form.label} source texture. Review the preview, then build terrain.`,
+          "success"
+        );
+      } catch (error) {
+        updateGeneratorStatus(
+          app,
+          error instanceof Error ? error.message : "Texture generation failed.",
+          "error"
+        );
+      } finally {
+        setGeneratorBusy(app, false);
       }
     });
 
@@ -441,26 +627,47 @@ const bindStudioControls = (
       const source = app.querySelector<HTMLInputElement>(
         "#studio-terrain-source"
       )?.files?.[0];
+      const generatedTexture = bindings.getGeneratedSourceTexture();
 
-      if (!source) {
-        updateGeneratorStatus(app, "Choose a square source texture PNG first.");
+      if (!source && !generatedTexture?.url) {
+        updateGeneratorStatus(
+          app,
+          "Generate or choose a source texture first.",
+          "error"
+        );
         return;
       }
 
       try {
-        updateGeneratorStatus(app, "Uploading source texture to Convex...");
+        setGeneratorBusy(app, true);
         const form = readTerrainGeneratorForm(app);
-        const sourceTextureId = await registerSourceTexture({
-          ...form,
-          file: source,
-        });
+        let sourceTextureId = generatedTexture?.textureId;
+        let sourceTexture: File | Blob = source as File;
 
-        updateGeneratorStatus(app, "Building autotile terrain...");
+        if (source) {
+          updateGeneratorStatus(app, "Uploading source texture to Convex...", "loading");
+          sourceTextureId = await registerSourceTexture({
+            ...form,
+            file: source,
+          });
+          bindings.setGeneratedSourceTexture(null);
+        } else if (generatedTexture?.url) {
+          updateGeneratorStatus(app, "Loading generated source texture...", "loading");
+          const response = await fetch(generatedTexture.url);
+
+          if (!response.ok) {
+            throw new Error("Could not load generated source texture.");
+          }
+
+          sourceTexture = await response.blob();
+        }
+
+        updateGeneratorStatus(app, "Building autotile terrain...", "loading");
         const asset = await generateTerrainAsset({
           ...form,
-          sourceTexture: source,
+          sourceTexture,
         });
-        updateGeneratorStatus(app, "Uploading generated terrain to Convex...");
+        updateGeneratorStatus(app, "Uploading generated terrain to Convex...", "loading");
         await registerGeneratedTerrainAsset({
           ...form,
           sourceTextureId,
@@ -478,13 +685,56 @@ const bindStudioControls = (
 
         bindings.setGeneratedTerrains(nextTerrains);
         bindings.getScene()?.addTerrainAsset(storedAsset);
-        updateGeneratorStatus(app, `Saved ${storedAsset.label} to Convex`);
+        updateGeneratorStatus(
+          app,
+          `Saved ${storedAsset.label} to Convex and added it to the palette.`,
+          "success"
+        );
       } catch (error) {
         updateGeneratorStatus(
           app,
-          error instanceof Error ? error.message : "Terrain generation failed."
+          error instanceof Error ? error.message : "Terrain generation failed.",
+          "error"
         );
+      } finally {
+        setGeneratorBusy(app, false);
       }
+    });
+};
+
+const bindSourceTextureList = (
+  app: HTMLElement,
+  bindings: Pick<
+    StudioControlBindings,
+    "getSourceTextures" | "setGeneratedSourceTexture"
+  >
+) => {
+  app
+    .querySelectorAll<HTMLButtonElement>("[data-source-texture]")
+    .forEach((button) => {
+      if (button.dataset.bound === "true") {
+        return;
+      }
+
+      button.dataset.bound = "true";
+      button.addEventListener("click", () => {
+        const textureId = button.dataset.sourceTexture;
+        const texture = bindings
+          .getSourceTextures()
+          .find((texture) => texture.textureId === textureId);
+
+        if (!texture) {
+          return;
+        }
+
+        bindings.setGeneratedSourceTexture(texture);
+        fillTerrainGeneratorForm(app, texture);
+        updateGeneratorStatus(
+          app,
+          `Selected ${texture.label} source texture. Build terrain when ready.`,
+          "success"
+        );
+      });
     });
 };
 
@@ -595,11 +845,45 @@ const readTerrainGeneratorForm = (app: HTMLElement) => {
   };
 };
 
-const updateGeneratorStatus = (app: HTMLElement, message: string) => {
-  const status = app.querySelector<HTMLElement>("#studio-help-status");
+const fillTerrainGeneratorForm = (
+  app: HTMLElement,
+  texture: StudioSourceTexture
+) => {
+  const setValue = (selector: string, value: string) => {
+    const input =
+      app.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector);
 
-  if (status) {
-    status.textContent = message;
+    if (input) {
+      input.value = value;
+    }
+  };
+
+  setValue("#studio-terrain-name", texture.label);
+  setValue("#studio-terrain-id", texture.terrainId);
+  setValue("#studio-terrain-material", texture.material);
+  setValue("#studio-terrain-texture", texture.texturePrompt);
+  setValue("#studio-terrain-style", texture.stylePrompt);
+};
+
+type GeneratorStatusState = "idle" | "loading" | "success" | "error";
+
+const updateGeneratorStatus = (
+  app: HTMLElement,
+  message: string,
+  state: GeneratorStatusState = "idle"
+) => {
+  const generatorStatus = app.querySelector<HTMLElement>(
+    "#studio-generator-status"
+  );
+  const helpStatus = app.querySelector<HTMLElement>("#studio-help-status");
+
+  if (generatorStatus) {
+    generatorStatus.textContent = message;
+    generatorStatus.dataset.state = state;
+  }
+
+  if (helpStatus) {
+    helpStatus.textContent = message;
   }
 };
 
@@ -623,6 +907,43 @@ const upsertManyTerrainAssets = (
     (mergedAssets, asset) => upsertTerrainAsset(mergedAssets, asset),
     assets
   );
+
+const upsertSourceTexture = (
+  textures: StudioSourceTexture[],
+  texture: StudioSourceTexture
+) => {
+  const nextTextures = textures.filter(
+    (existingTexture) => existingTexture.textureId !== texture.textureId
+  );
+
+  nextTextures.unshift(texture);
+  return nextTextures.sort((left, right) => right.updatedAt - left.updatedAt);
+};
+
+const upsertManySourceTextures = (
+  textures: StudioSourceTexture[],
+  nextTextures: StudioSourceTexture[]
+) =>
+  nextTextures.reduce(
+    (mergedTextures, texture) => upsertSourceTexture(mergedTextures, texture),
+    textures
+  );
+
+const escapeHtml = (value: string) =>
+  value.replace(/[&<>"']/g, (character) => {
+    switch (character) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      default:
+        return "&#39;";
+    }
+  });
 
 const DEFAULT_STUDIO_HELP =
   "Drag to paint. Right/middle drag pans. Wheel zooms.";

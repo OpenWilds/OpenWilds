@@ -26,11 +26,37 @@ type StudioTerrainAssetRecord = TerrainPromptMetadata & {
   generatedAt: number;
 };
 
+type StudioTerrainTextureRecord = TerrainPromptMetadata & {
+  _id: string;
+  url: string | null;
+  contentType: string;
+  size: number;
+  status: TextureStatus;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type StudioSourceTexture = TerrainPromptMetadata & {
+  textureId: string;
+  url: string | null;
+  contentType: string;
+  size: number;
+  updatedAt: number;
+};
+
+export type GeneratedSourceTexture = StudioSourceTexture & {
+  storageId: string;
+  prompt: string;
+  model: string;
+};
+
 type UploadResult = {
   storageId: string;
 };
 
-const convexUrl = import.meta.env.VITE_CONVEX_URL as string | undefined;
+declare const __OPEN_WILDS_CONVEX_URL__: string;
+
+const convexUrl = __OPEN_WILDS_CONVEX_URL__;
 
 const client = convexUrl
   ? new ConvexHttpClient(convexUrl, {
@@ -71,11 +97,24 @@ const refs = {
     { status?: TerrainStatus },
     StudioTerrainAssetRecord[]
   >("studio:listTerrainAssets"),
+  listTerrainTextures: makeFunctionReference<
+    "query",
+    { status?: TextureStatus },
+    StudioTerrainTextureRecord[]
+  >("studio:listTerrainTextures"),
   saveMap: makeFunctionReference<
     "mutation",
     { name: string; width: number; height: number; mapJson: string },
     string
   >("studio:saveMap"),
+  generateSourceTexture: makeFunctionReference<
+    "action",
+    TerrainPromptMetadata & {
+      imageModel?: string;
+      reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+    },
+    GeneratedSourceTexture
+  >("studio:generateSourceTexture"),
 };
 
 export const isConvexStudioConfigured = () => client !== null;
@@ -116,6 +155,19 @@ export async function registerSourceTexture(args: TerrainPromptMetadata & {
     stylePrompt: args.stylePrompt,
     status: "approved",
   });
+}
+
+export async function generateSourceTexture(
+  args: TerrainPromptMetadata
+): Promise<GeneratedSourceTexture> {
+  const convex = getClient();
+  const result = await convex.action(refs.generateSourceTexture, args);
+
+  return {
+    ...result,
+    ...args,
+    updatedAt: Date.now(),
+  };
 }
 
 export async function registerGeneratedTerrainAsset(args: TerrainPromptMetadata & {
@@ -163,6 +215,34 @@ export async function listStudioTerrainAssets(): Promise<TerrainVisualAsset[]> {
         atlasUrl: record.atlasUrl,
         centerVariantsUrl: record.centerVariantsUrl,
         generated: true,
+      },
+    ];
+  });
+}
+
+export async function listStudioSourceTextures(): Promise<StudioSourceTexture[]> {
+  const convex = getClient();
+  const records = await convex.query(refs.listTerrainTextures, {
+    status: "approved",
+  });
+
+  return records.flatMap((record) => {
+    if (!record.url) {
+      return [];
+    }
+
+    return [
+      {
+        textureId: record._id,
+        terrainId: record.terrainId,
+        label: record.label,
+        material: record.material,
+        texturePrompt: record.texturePrompt,
+        stylePrompt: record.stylePrompt,
+        url: record.url,
+        contentType: record.contentType,
+        size: record.size,
+        updatedAt: record.updatedAt,
       },
     ];
   });
