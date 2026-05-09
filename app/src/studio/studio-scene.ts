@@ -1,8 +1,10 @@
 import Phaser from "phaser";
 import {
+  BUILT_IN_TERRAIN_VISUAL_ASSET_IDS,
   TERRAIN_VISUAL_ASSETS,
   terrainAtlasKey,
   terrainCenterVariantsKey,
+  type TerrainVisualAsset,
   type TerrainVisualAssetId,
 } from "../assets/visual-assets";
 import {
@@ -50,10 +52,12 @@ export type StudioMapExport = {
   height: number;
   tileSize: number;
   baseTerrain: TerrainVisualAssetId;
+  terrainAssets?: TerrainVisualAsset[];
   layers: StudioMapLayerExport[];
 };
 
 type StudioSceneOptions = {
+  terrainAssets?: TerrainVisualAsset[];
   onStateChange?: (state: StudioSceneState) => void;
 };
 
@@ -92,6 +96,8 @@ export class StudioScene extends Phaser.Scene {
   private lastPaintKey = "";
   private worldLayer!: Phaser.GameObjects.Container;
   private gridGraphics!: Phaser.GameObjects.Graphics;
+  private terrainAssets: TerrainVisualAsset[];
+  private paintableTerrains: TerrainVisualAssetId[];
   private readonly layers = new Map<
     number,
     Map<TerrainVisualAssetId, StudioLayer>
@@ -100,10 +106,14 @@ export class StudioScene extends Phaser.Scene {
   constructor(options: StudioSceneOptions) {
     super("studio-scene");
     this.options = options;
+    this.terrainAssets = mergeTerrainAssets(options.terrainAssets ?? []);
+    this.paintableTerrains = this.terrainAssets
+      .map((asset) => asset.id)
+      .filter((assetId) => assetId !== BASE_TERRAIN);
   }
 
   preload() {
-    for (const asset of Object.values(TERRAIN_VISUAL_ASSETS)) {
+    for (const asset of this.terrainAssets) {
       this.load.image(terrainAtlasKey(asset.id), asset.atlasUrl);
       this.load.image(
         terrainCenterVariantsKey(asset.id),
@@ -141,6 +151,10 @@ export class StudioScene extends Phaser.Scene {
     this.widthTiles = map.width;
     this.heightTiles = map.height;
 
+    for (const asset of map.terrainAssets ?? []) {
+      this.addTerrainAsset(asset, false);
+    }
+
     for (const terrainLayers of this.layers.values()) {
       for (const layer of terrainLayers.values()) {
         layer.cells.clear();
@@ -174,7 +188,7 @@ export class StudioScene extends Phaser.Scene {
   }
 
   setSelectedTerrain(terrainId: TerrainVisualAssetId) {
-    if (!PAINTABLE_TERRAINS.includes(terrainId)) {
+    if (!this.paintableTerrains.includes(terrainId)) {
       return;
     }
 
@@ -233,6 +247,35 @@ export class StudioScene extends Phaser.Scene {
     return this.exportMap();
   }
 
+  addTerrainAsset(asset: TerrainVisualAsset, selectAfterLoad = true) {
+    const normalizedAsset: TerrainVisualAsset = {
+      ...asset,
+      id: asset.id.trim(),
+      label: asset.label?.trim() || terrainLabel(asset.id),
+      generated: asset.generated ?? true,
+    };
+    const existingIndex = this.terrainAssets.findIndex(
+      (terrainAsset) => terrainAsset.id === normalizedAsset.id
+    );
+
+    if (existingIndex >= 0) {
+      this.terrainAssets[existingIndex] = normalizedAsset;
+    } else {
+      this.terrainAssets.push(normalizedAsset);
+    }
+
+    this.paintableTerrains = this.terrainAssets
+      .map((terrainAsset) => terrainAsset.id)
+      .filter((assetId) => assetId !== BASE_TERRAIN);
+    this.addLayerForTerrain(normalizedAsset.id);
+    this.loadGeneratedTerrainTextures(normalizedAsset, () => {
+      if (selectAfterLoad) {
+        this.setSelectedTerrain(normalizedAsset.id);
+      }
+      this.updateStatus(`Added ${terrainLabel(normalizedAsset.id)}`);
+    });
+  }
+
   getState(): StudioSceneState {
     const activeLayer = this.getLayer(this.selectedLayer, this.selectedTerrain);
 
@@ -274,7 +317,7 @@ export class StudioScene extends Phaser.Scene {
     for (let slot = 1; slot <= STUDIO_LAYER_COUNT; slot += 1) {
       const terrainLayers = new Map<TerrainVisualAssetId, StudioLayer>();
 
-      PAINTABLE_TERRAINS.forEach((assetId, terrainIndex) => {
+      this.paintableTerrains.forEach((assetId, terrainIndex) => {
         const container = this.add
           .container(0, 0)
           .setDepth(slot * 10 + terrainIndex);
@@ -322,7 +365,37 @@ export class StudioScene extends Phaser.Scene {
     return this.layers.get(slot)?.get(terrainId) ?? null;
   }
 
+  private addLayerForTerrain(assetId: TerrainVisualAssetId) {
+    for (let slot = 1; slot <= STUDIO_LAYER_COUNT; slot += 1) {
+      const terrainLayers = this.layers.get(slot);
+
+      if (!terrainLayers || terrainLayers.has(assetId)) {
+        continue;
+      }
+
+      const container = this.add
+        .container(0, 0)
+        .setDepth(slot * 10 + terrainLayers.size);
+
+      this.worldLayer.add(container);
+      terrainLayers.set(assetId, {
+        assetId,
+        slot,
+        cells: new Set<string>(),
+        container,
+        dirty: false,
+      });
+    }
+  }
+
   private renderLayer(layer: StudioLayer) {
+    if (
+      !this.textures.exists(terrainAtlasKey(layer.assetId)) ||
+      !this.textures.exists(terrainCenterVariantsKey(layer.assetId))
+    ) {
+      return;
+    }
+
     renderAutotileLayer(
       this,
       layer.container,
@@ -611,13 +684,14 @@ export class StudioScene extends Phaser.Scene {
       height: this.heightTiles,
       tileSize: TILE_SIZE,
       baseTerrain: BASE_TERRAIN,
+      terrainAssets: this.terrainAssets.filter((asset) => asset.generated),
       layers: STUDIO_LAYER_OPTIONS.flatMap((slot) => {
         const terrainLayers = this.layers.get(slot);
         if (!terrainLayers) {
           return [];
         }
 
-        return PAINTABLE_TERRAINS.map((terrainId) => {
+        return this.paintableTerrains.map((terrainId) => {
           const layer = terrainLayers.get(terrainId);
           const cells = [...(layer?.cells ?? [])]
             .map((key) => key.split(",").map(Number) as [number, number])
@@ -631,6 +705,37 @@ export class StudioScene extends Phaser.Scene {
 
   private isInBounds(x: number, y: number) {
     return x >= 0 && y >= 0 && x < this.widthTiles && y < this.heightTiles;
+  }
+
+  private loadGeneratedTerrainTextures(
+    asset: TerrainVisualAsset,
+    onComplete: () => void
+  ) {
+    const atlasKey = terrainAtlasKey(asset.id);
+    const centerKey = terrainCenterVariantsKey(asset.id);
+
+    if (this.textures.exists(atlasKey)) {
+      this.textures.remove(atlasKey);
+    }
+    if (this.textures.exists(centerKey)) {
+      this.textures.remove(centerKey);
+    }
+
+    this.load.image(atlasKey, asset.atlasUrl);
+    this.load.image(centerKey, asset.centerVariantsUrl);
+    this.load.once(Phaser.Loader.Events.COMPLETE, () => {
+      const changedLayers = this.layers.values();
+
+      for (const terrainLayers of changedLayers) {
+        const layer = terrainLayers.get(asset.id);
+        if (layer) {
+          layer.dirty = true;
+        }
+      }
+
+      onComplete();
+    });
+    this.load.start();
   }
 }
 
@@ -659,7 +764,7 @@ export function validateStudioMap(
   }
 
   for (const layer of map.layers) {
-    if (!layer || !PAINTABLE_TERRAINS.includes(layer.terrainId)) {
+    if (!layer || typeof layer.terrainId !== "string") {
       throw new Error("Map includes an unknown terrain layer.");
     }
 
@@ -712,4 +817,28 @@ export function terrainLabel(terrainId: TerrainVisualAssetId) {
     .replace("uniswap-", "")
     .replace("forest-floor", "forest")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function mergeTerrainAssets(customAssets: TerrainVisualAsset[]) {
+  const assets = BUILT_IN_TERRAIN_VISUAL_ASSET_IDS.map(
+    (assetId) => TERRAIN_VISUAL_ASSETS[assetId]
+  );
+
+  for (const asset of customAssets) {
+    if (!asset.id || !asset.atlasUrl || !asset.centerVariantsUrl) {
+      continue;
+    }
+
+    const existingIndex = assets.findIndex(
+      (terrainAsset) => terrainAsset.id === asset.id
+    );
+
+    if (existingIndex >= 0) {
+      assets[existingIndex] = asset;
+    } else {
+      assets.push(asset);
+    }
+  }
+
+  return assets;
 }

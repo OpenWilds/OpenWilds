@@ -1,9 +1,13 @@
 import Phaser from "phaser";
-import type { TerrainVisualAssetId } from "../assets/visual-assets";
+import {
+  BUILT_IN_TERRAIN_VISUAL_ASSET_IDS,
+  TERRAIN_VISUAL_ASSETS,
+  type TerrainVisualAsset,
+  type TerrainVisualAssetId,
+} from "../assets/visual-assets";
 import {
   STUDIO_HEIGHT,
   STUDIO_LAYER_OPTIONS,
-  STUDIO_TERRAIN_OPTIONS,
   STUDIO_WIDTH,
   StudioScene,
   terrainLabel,
@@ -11,6 +15,11 @@ import {
   type StudioMapExport,
   type StudioSceneState,
 } from "./studio-scene";
+import {
+  buildTerrainTexturePrompt,
+  generateTerrainAsset,
+  normalizeTerrainId,
+} from "./terrain-generator";
 
 export const bootStudio = (app: HTMLElement) => {
   app.innerHTML = `
@@ -40,18 +49,43 @@ export const bootStudio = (app: HTMLElement) => {
           <section class="studio-panel__section">
             <h2>Terrain</h2>
             <div class="studio-terrain-grid">
-              ${STUDIO_TERRAIN_OPTIONS.map(
-                (terrainId) => `
-                  <button class="studio-terrain-button" data-terrain="${terrainId}" type="button">
-                    <span class="studio-swatch studio-swatch--${terrainId.replace(
-                      "uniswap-",
-                      ""
-                    )}"></span>
-                    ${terrainLabel(terrainId)}
-                  </button>
-                `
-              ).join("")}
+              ${renderTerrainButtons(getInitialTerrainAssets())}
             </div>
+          </section>
+
+          <section class="studio-panel__section">
+            <h2>Terrain Workshop</h2>
+            <div class="studio-generator-fields">
+              <label>
+                Name
+                <input id="studio-terrain-name" type="text" value="Moonlit Moss" />
+              </label>
+              <label>
+                Terrain ID
+                <input id="studio-terrain-id" type="text" value="moonlit-moss" />
+              </label>
+              <label>
+                Material
+                <input id="studio-terrain-material" type="text" value="moonlit moss meadow" />
+              </label>
+              <label>
+                Texture
+                <textarea id="studio-terrain-texture" rows="3">soft dark green moss with tiny blue-white flower specks and pale dew highlights</textarea>
+              </label>
+              <label>
+                Style
+                <textarea id="studio-terrain-style" rows="3">cozy hand-painted 2D game terrain, top-down, readable at small tile size, no logos, no text</textarea>
+              </label>
+              <label>
+                Source texture PNG
+                <input id="studio-terrain-source" type="file" accept="image/png,image/jpeg,image/webp" />
+              </label>
+            </div>
+            <div class="studio-command-grid">
+              <button id="studio-generate-terrain-button" type="button">Build Terrain</button>
+              <button id="studio-copy-prompt-button" type="button">Copy Prompt</button>
+            </div>
+            <p class="studio-note">Use the prompt to make a square seamless texture, then load that PNG here. The studio turns it into a 47-tile autotile set.</p>
           </section>
 
           <section class="studio-panel__section">
@@ -115,10 +149,10 @@ export const bootStudio = (app: HTMLElement) => {
     </section>
   `;
 
-  const importInput = app.querySelector<HTMLInputElement>(
-    "#studio-import-input"
-  );
+  const importInput = app.querySelector<HTMLInputElement>("#studio-import-input");
+  const terrainAssets = getInitialTerrainAssets();
   let scene: StudioScene | null = null;
+  let generatedTerrains: TerrainVisualAsset[] = [];
   const sceneState: { current: StudioSceneState | null } = { current: null };
   const syncControls = (state: StudioSceneState) => {
     sceneState.current = state;
@@ -126,12 +160,22 @@ export const bootStudio = (app: HTMLElement) => {
   };
 
   scene = new StudioScene({
+    terrainAssets,
     onStateChange: syncControls,
   });
 
   bindStudioControls(app, {
     getScene: () => scene,
     getState: () => sceneState.current,
+    getGeneratedTerrains: () => generatedTerrains,
+    setGeneratedTerrains: (assets) => {
+      generatedTerrains = assets;
+      renderTerrainPalette(app, [...terrainAssets, ...generatedTerrains]);
+      bindTerrainPalette(app, { getScene: () => scene });
+      if (sceneState.current) {
+        syncStudioControls(app, sceneState.current);
+      }
+    },
     requestImport: () => importInput?.click(),
   });
 
@@ -146,6 +190,12 @@ export const bootStudio = (app: HTMLElement) => {
     try {
       const parsed = JSON.parse(await file.text()) as unknown;
       validateStudioMap(parsed);
+      generatedTerrains = upsertManyTerrainAssets(
+        generatedTerrains,
+        parsed.terrainAssets ?? []
+      );
+      renderTerrainPalette(app, [...terrainAssets, ...generatedTerrains]);
+      bindTerrainPalette(app, { getScene: () => scene });
       scene.importMap(parsed);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "Import failed.");
@@ -166,9 +216,50 @@ export const bootStudio = (app: HTMLElement) => {
   });
 };
 
+const getInitialTerrainAssets = (): TerrainVisualAsset[] =>
+  BUILT_IN_TERRAIN_VISUAL_ASSET_IDS.map(
+    (assetId) => TERRAIN_VISUAL_ASSETS[assetId]
+  );
+
+const renderTerrainButtons = (assets: TerrainVisualAsset[]) =>
+  assets
+    .filter((asset) => asset.id !== "uniswap-plain")
+    .map(
+      (asset) => `
+        <button class="studio-terrain-button" data-terrain="${asset.id}" type="button">
+          <span class="studio-swatch ${getSwatchClass(asset.id)}"></span>
+          <span>${asset.label ?? terrainLabel(asset.id)}</span>
+        </button>
+      `
+    )
+    .join("");
+
+const renderTerrainPalette = (
+  app: HTMLElement,
+  assets: TerrainVisualAsset[]
+) => {
+  const palette = app.querySelector<HTMLElement>(".studio-terrain-grid");
+
+  if (!palette) {
+    return;
+  }
+
+  palette.innerHTML = renderTerrainButtons(assets);
+};
+
+const getSwatchClass = (terrainId: string) => {
+  if (terrainId.startsWith("uniswap-")) {
+    return `studio-swatch--${terrainId.replace("uniswap-", "")}`;
+  }
+
+  return "studio-swatch--generated";
+};
+
 type StudioControlBindings = {
   getScene: () => StudioScene | null;
   getState: () => StudioSceneState | null;
+  getGeneratedTerrains: () => TerrainVisualAsset[];
+  setGeneratedTerrains: (assets: TerrainVisualAsset[]) => void;
   requestImport: () => void;
 };
 
@@ -176,15 +267,7 @@ const bindStudioControls = (
   app: HTMLElement,
   bindings: StudioControlBindings
 ) => {
-  app
-    .querySelectorAll<HTMLButtonElement>("[data-terrain]")
-    .forEach((button) => {
-      button.addEventListener("click", () => {
-        bindings
-          .getScene()
-          ?.setSelectedTerrain(button.dataset.terrain as TerrainVisualAssetId);
-      });
-    });
+  bindTerrainPalette(app, bindings);
 
   app
     .querySelector<HTMLSelectElement>("#studio-layer-select")
@@ -255,6 +338,76 @@ const bindStudioControls = (
   app
     .querySelector<HTMLButtonElement>("#studio-import-button")
     ?.addEventListener("click", () => bindings.requestImport());
+
+  app
+    .querySelector<HTMLButtonElement>("#studio-copy-prompt-button")
+    ?.addEventListener("click", async () => {
+      try {
+        const prompt = buildTerrainTexturePrompt(readTerrainGeneratorForm(app));
+        await navigator.clipboard.writeText(prompt);
+        updateGeneratorStatus(app, "Copied source texture prompt");
+      } catch (error) {
+        updateGeneratorStatus(
+          app,
+          error instanceof Error ? error.message : "Could not copy prompt."
+        );
+      }
+    });
+
+  app
+    .querySelector<HTMLButtonElement>("#studio-generate-terrain-button")
+    ?.addEventListener("click", async () => {
+      const source = app.querySelector<HTMLInputElement>(
+        "#studio-terrain-source"
+      )?.files?.[0];
+
+      if (!source) {
+        updateGeneratorStatus(app, "Choose a square source texture PNG first.");
+        return;
+      }
+
+      try {
+        updateGeneratorStatus(app, "Building autotile terrain...");
+        const form = readTerrainGeneratorForm(app);
+        const asset = await generateTerrainAsset({
+          ...form,
+          sourceTexture: source,
+        });
+        const nextTerrains = upsertTerrainAsset(
+          bindings.getGeneratedTerrains(),
+          asset
+        );
+
+        bindings.setGeneratedTerrains(nextTerrains);
+        bindings.getScene()?.addTerrainAsset(asset);
+        updateGeneratorStatus(app, `Built ${asset.label}`);
+      } catch (error) {
+        updateGeneratorStatus(
+          app,
+          error instanceof Error ? error.message : "Terrain generation failed."
+        );
+      }
+    });
+};
+
+const bindTerrainPalette = (
+  app: HTMLElement,
+  bindings: Pick<StudioControlBindings, "getScene">
+) => {
+  app
+    .querySelectorAll<HTMLButtonElement>("[data-terrain]")
+    .forEach((button) => {
+      if (button.dataset.bound === "true") {
+        return;
+      }
+
+      button.dataset.bound = "true";
+      button.addEventListener("click", () => {
+        bindings
+          .getScene()
+          ?.setSelectedTerrain(button.dataset.terrain as TerrainVisualAssetId);
+      });
+    });
 };
 
 const syncStudioControls = (app: HTMLElement, state: StudioSceneState) => {
@@ -320,6 +473,58 @@ const syncStudioControls = (app: HTMLElement, state: StudioSceneState) => {
         : state.message;
   }
 };
+
+const readTerrainGeneratorForm = (app: HTMLElement) => {
+  const value = (selector: string) =>
+    app.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector)?.value ??
+    "";
+  const label = value("#studio-terrain-name").trim();
+  const terrainId = normalizeTerrainId(value("#studio-terrain-id") || label);
+  const material = value("#studio-terrain-material").trim() || label;
+  const texturePrompt = value("#studio-terrain-texture").trim();
+  const stylePrompt = value("#studio-terrain-style").trim();
+
+  if (!texturePrompt || !stylePrompt) {
+    throw new Error("Texture and style prompts are required.");
+  }
+
+  return {
+    terrainId,
+    label: label || terrainLabel(terrainId),
+    material,
+    texturePrompt,
+    stylePrompt,
+  };
+};
+
+const updateGeneratorStatus = (app: HTMLElement, message: string) => {
+  const status = app.querySelector<HTMLElement>("#studio-help-status");
+
+  if (status) {
+    status.textContent = message;
+  }
+};
+
+const upsertTerrainAsset = <TAsset extends TerrainVisualAsset>(
+  assets: TAsset[],
+  asset: TAsset
+) => {
+  const nextAssets = assets.filter(
+    (existingAsset) => existingAsset.id !== asset.id
+  );
+
+  nextAssets.push(asset);
+  return nextAssets;
+};
+
+const upsertManyTerrainAssets = (
+  assets: TerrainVisualAsset[],
+  nextAssets: TerrainVisualAsset[]
+) =>
+  nextAssets.reduce(
+    (mergedAssets, asset) => upsertTerrainAsset(mergedAssets, asset),
+    assets
+  );
 
 const DEFAULT_STUDIO_HELP =
   "Drag to paint. Right/middle drag pans. Wheel zooms.";

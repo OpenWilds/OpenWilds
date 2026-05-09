@@ -16,7 +16,7 @@ import routeberrySpriteUrl from "./object-sprites/routeberry/routeberry-sprite-s
 import stonepineSpriteUrl from "./object-sprites/stonepine/stonepine-sprite-sheet.png?url";
 import sungrainSpriteUrl from "./object-sprites/sungrain/sungrain-sprite-sheet.png?url";
 
-export type TerrainVisualAssetId =
+export type BuiltInTerrainVisualAssetId =
   | "uniswap-dirt"
   | "uniswap-forest-floor"
   | "uniswap-grass"
@@ -24,14 +24,18 @@ export type TerrainVisualAssetId =
   | "uniswap-stone"
   | "uniswap-water";
 
+export type TerrainVisualAssetId = BuiltInTerrainVisualAssetId | string;
+
 export type TerrainVisualAsset = {
   id: TerrainVisualAssetId;
   atlasUrl: string;
   centerVariantsUrl: string;
+  label?: string;
+  generated?: boolean;
 };
 
 export const TERRAIN_VISUAL_ASSETS: Record<
-  TerrainVisualAssetId,
+  BuiltInTerrainVisualAssetId,
   TerrainVisualAsset
 > = {
   "uniswap-dirt": {
@@ -71,6 +75,10 @@ export const terrainAtlasKey = (assetId: TerrainVisualAssetId) =>
 
 export const terrainCenterVariantsKey = (assetId: TerrainVisualAssetId) =>
   `terrain-center-variants-${assetId}`;
+
+export const BUILT_IN_TERRAIN_VISUAL_ASSET_IDS = Object.keys(
+  TERRAIN_VISUAL_ASSETS
+) as BuiltInTerrainVisualAssetId[];
 
 export type ObjectSpriteAssetId =
   | "applewood"

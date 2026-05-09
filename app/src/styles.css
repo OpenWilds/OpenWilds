@@ -362,6 +362,12 @@ h1 {
   background: #a57755;
 }
 
+.studio-swatch--generated {
+  background:
+    linear-gradient(135deg, rgba(255, 224, 163, 0.95), rgba(159, 216, 189, 0.95)),
+    #9fd8bd;
+}
+
 .studio-segmented,
 .studio-command-grid,
 .studio-size-row {
@@ -375,6 +381,7 @@ h1 {
 }
 
 .studio-size-row label,
+.studio-generator-fields label,
 .studio-toggle,
 .studio-layer-select {
   display: grid;
@@ -393,6 +400,30 @@ h1 {
   color: #17211e;
   font: inherit;
   font-weight: 850;
+}
+
+.studio-generator-fields {
+  display: grid;
+  gap: 8px;
+}
+
+.studio-generator-fields input,
+.studio-generator-fields textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(247, 241, 229, 0.26);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #f7f1e5;
+  color: #17211e;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+.studio-generator-fields textarea {
+  resize: vertical;
 }
 
 .studio-layer-select select {
