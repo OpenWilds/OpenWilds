@@ -27,6 +27,29 @@ export const STUDIO_LAYER_OPTIONS = Array.from(
 );
 
 type PaintMode = "paint" | "erase";
+type StudioToolMode = "terrain" | "object";
+type ObjectPaintMode = "place" | "erase";
+
+export type StudioObjectCategory = "plants";
+
+export type StudioObjectSpriteAsset = {
+  id: string;
+  label: string;
+  category: StudioObjectCategory;
+  kind: "plant" | "tree";
+  imageUrl: string;
+  frameSize: number;
+  rows: number;
+  columns: number;
+};
+
+type StudioObjectPlacementExport = {
+  category: StudioObjectCategory;
+  assetId: string;
+  x: number;
+  y: number;
+  frame: number;
+};
 
 type StudioMapLayerExport = {
   layer: number;
@@ -41,12 +64,15 @@ export type StudioMapExport = {
   tileSize: number;
   baseTerrain: TerrainVisualAssetId;
   terrainAssets?: TerrainVisualAsset[];
+  objectAssets?: StudioObjectSpriteAsset[];
+  objects?: StudioObjectPlacementExport[];
   layers: StudioMapLayerExport[];
 };
 
 type StudioSceneOptions = {
   baseTerrain?: TerrainVisualAssetId;
   height?: number;
+  objectAssets?: StudioObjectSpriteAsset[];
   terrainAssets?: TerrainVisualAsset[];
   width?: number;
   onStateChange?: (state: StudioSceneState) => void;
@@ -63,13 +89,22 @@ type StudioLayer = TerrainGridLayer & {
 export type StudioSceneState = {
   width: number;
   height: number;
+  toolMode: StudioToolMode;
   selectedLayer: number;
   selectedTerrain: TerrainVisualAssetId;
+  selectedObject: string;
+  selectedObjectFrame: number;
   brushSize: number;
   paintMode: PaintMode;
+  objectPaintMode: ObjectPaintMode;
   showGrid: boolean;
   activeLayerCellCount: number;
+  objectCount: number;
   message: string;
+};
+
+type StudioObjectPlacement = StudioObjectPlacementExport & {
+  image: Phaser.GameObjects.Image;
 };
 
 export class StudioScene extends Phaser.Scene {
@@ -78,9 +113,13 @@ export class StudioScene extends Phaser.Scene {
   private heightTiles = DEFAULT_WORLD_SIZE;
   private selectedLayer = 1;
   private selectedTerrain: TerrainVisualAssetId = "";
+  private selectedObject = "";
+  private selectedObjectFrame = 0;
   private baseTerrain: TerrainVisualAssetId = "";
   private brushSize = 1;
   private paintMode: PaintMode = "paint";
+  private objectPaintMode: ObjectPaintMode = "place";
+  private toolMode: StudioToolMode = "terrain";
   private showGrid = true;
   private isPainting = false;
   private isPanning = false;
@@ -88,9 +127,15 @@ export class StudioScene extends Phaser.Scene {
   private cameraStart: Phaser.Math.Vector2 | null = null;
   private lastPaintKey = "";
   private worldLayer!: Phaser.GameObjects.Container;
+  private objectLayer!: Phaser.GameObjects.Container;
+  private objectPreviewLayer!: Phaser.GameObjects.Container;
+  private objectPreviewImage: Phaser.GameObjects.Image | null = null;
+  private objectPreviewBorder: Phaser.GameObjects.Rectangle | null = null;
   private gridGraphics!: Phaser.GameObjects.Graphics;
   private terrainAssets: TerrainVisualAsset[];
+  private objectAssets: StudioObjectSpriteAsset[];
   private paintableTerrains: TerrainVisualAssetId[];
+  private objectPlacements = new Map<string, StudioObjectPlacement>();
   private isReady = false;
   private readonly layers = new Map<
     number,
@@ -103,9 +148,14 @@ export class StudioScene extends Phaser.Scene {
     this.widthTiles = options.width ?? DEFAULT_WORLD_SIZE;
     this.heightTiles = options.height ?? DEFAULT_WORLD_SIZE;
     this.terrainAssets = mergeTerrainAssets(options.terrainAssets ?? []);
+    this.objectAssets = mergeObjectAssets(options.objectAssets ?? []);
     this.baseTerrain = options.baseTerrain ?? this.terrainAssets[0]?.id ?? "";
     this.paintableTerrains = this.getPaintableTerrainIds();
     this.selectedTerrain = this.paintableTerrains[0] ?? this.baseTerrain;
+    this.selectedObject = this.objectAssets[0]?.id ?? "";
+    this.selectedObjectFrame = this.objectAssets[0]
+      ? getDefaultObjectFrame(this.objectAssets[0])
+      : 0;
   }
 
   preload() {
@@ -116,12 +166,21 @@ export class StudioScene extends Phaser.Scene {
         asset.centerVariantsUrl
       );
     }
+
+    for (const asset of this.objectAssets) {
+      this.load.spritesheet(studioObjectSpriteKey(asset.id), asset.imageUrl, {
+        frameWidth: asset.frameSize,
+        frameHeight: asset.frameSize,
+      });
+    }
   }
 
   create() {
     this.input.mouse?.disableContextMenu();
     this.cameras.main.setBackgroundColor("#17211e");
     this.worldLayer = this.add.container(0, 0).setDepth(0);
+    this.objectLayer = this.add.container(0, 0).setDepth(420);
+    this.objectPreviewLayer = this.add.container(0, 0).setDepth(470);
     this.gridGraphics = this.add.graphics().setDepth(GRID_DEPTH);
     this.isReady = true;
 
@@ -155,6 +214,9 @@ export class StudioScene extends Phaser.Scene {
     for (const asset of map.terrainAssets ?? []) {
       this.addTerrainAsset(asset, false);
     }
+    for (const asset of map.objectAssets ?? []) {
+      this.addObjectAsset(asset, false);
+    }
 
     this.widthTiles = map.width;
     this.heightTiles = map.height;
@@ -163,6 +225,7 @@ export class StudioScene extends Phaser.Scene {
     this.selectedTerrain = this.paintableTerrains[0] ?? this.baseTerrain;
 
     await this.ensureTerrainAssetsLoaded(this.terrainAssets);
+    await this.ensureObjectAssetsLoaded(this.objectAssets);
     this.applyMap(map);
   }
 
@@ -172,6 +235,9 @@ export class StudioScene extends Phaser.Scene {
 
     for (const asset of map.terrainAssets ?? []) {
       this.addTerrainAsset(asset, false);
+    }
+    for (const asset of map.objectAssets ?? []) {
+      this.addObjectAsset(asset, false);
     }
 
     if (map.baseTerrain) {
@@ -185,6 +251,13 @@ export class StudioScene extends Phaser.Scene {
       for (const layer of terrainLayers.values()) {
         layer.cells.clear();
         layer.dirty = true;
+      }
+    }
+
+    for (const [key, placement] of [...this.objectPlacements]) {
+      if (!this.isInBounds(placement.x, placement.y)) {
+        placement.image.destroy();
+        this.objectPlacements.delete(key);
       }
     }
 
@@ -206,6 +279,11 @@ export class StudioScene extends Phaser.Scene {
         layer.cells.add(cellKey(x, y));
       }
       layer.dirty = true;
+    }
+
+    this.clearObjectPlacements();
+    for (const object of map.objects ?? []) {
+      this.placeObjectAt(object.x, object.y, object.assetId, object.frame);
     }
 
     this.updateCameraBounds();
@@ -245,6 +323,53 @@ export class StudioScene extends Phaser.Scene {
     this.updateStatus();
   }
 
+  setToolMode(mode: StudioToolMode) {
+    this.toolMode = mode;
+    this.updateStatus();
+  }
+
+  setObjectPaintMode(mode: ObjectPaintMode) {
+    this.objectPaintMode = mode;
+    this.updateStatus();
+  }
+
+  setSelectedObject(assetId: string) {
+    const asset = this.objectAssets.find(
+      (candidate) => candidate.id === assetId
+    );
+    if (!asset) {
+      return;
+    }
+
+    this.selectedObject = assetId;
+    if (
+      this.selectedObjectFrame < 0 ||
+      this.selectedObjectFrame >= asset.rows * asset.columns
+    ) {
+      this.selectedObjectFrame = getDefaultObjectFrame(asset);
+    }
+    this.refreshObjectPreview();
+    this.updateStatus();
+  }
+
+  setSelectedObjectVariant(assetId: string, frame: number) {
+    const asset = this.objectAssets.find(
+      (candidate) => candidate.id === assetId
+    );
+    if (!asset) {
+      return;
+    }
+
+    const frameCount = asset.rows * asset.columns;
+    this.selectedObject = assetId;
+    this.selectedObjectFrame = Math.min(
+      frameCount - 1,
+      Math.max(0, Math.floor(frame))
+    );
+    this.refreshObjectPreview();
+    this.updateStatus();
+  }
+
   setGridVisible(visible: boolean) {
     this.showGrid = visible;
     this.drawGrid();
@@ -257,6 +382,11 @@ export class StudioScene extends Phaser.Scene {
 
   clearActiveLayer() {
     this.clearSelectedLayer();
+  }
+
+  clearObjects() {
+    this.clearObjectPlacements();
+    this.updateStatus("Cleared placed objects");
   }
 
   resizeMap(width: number, height: number) {
@@ -360,18 +490,71 @@ export class StudioScene extends Phaser.Scene {
     });
   }
 
+  addObjectAsset(asset: StudioObjectSpriteAsset, selectAfterLoad = true) {
+    const normalizedAsset = normalizeObjectAsset(asset);
+    const existingIndex = this.objectAssets.findIndex(
+      (objectAsset) => objectAsset.id === normalizedAsset.id
+    );
+    const existingAsset =
+      existingIndex >= 0 ? this.objectAssets[existingIndex] : null;
+    const shouldLoadSprite =
+      this.isReady &&
+      (!this.hasObjectTexture(normalizedAsset) ||
+        existingAsset?.imageUrl !== normalizedAsset.imageUrl ||
+        existingAsset?.frameSize !== normalizedAsset.frameSize);
+
+    if (existingIndex >= 0) {
+      this.objectAssets[existingIndex] = normalizedAsset;
+    } else {
+      this.objectAssets.push(normalizedAsset);
+    }
+
+    if (!this.selectedObject) {
+      this.selectedObject = normalizedAsset.id;
+    }
+
+    if (!this.isReady) {
+      if (selectAfterLoad) {
+        this.selectedObject = normalizedAsset.id;
+      }
+      return;
+    }
+
+    if (!shouldLoadSprite) {
+      if (selectAfterLoad) {
+        this.setSelectedObject(normalizedAsset.id);
+      }
+      this.updateObjectPlacementTextures(normalizedAsset.id);
+      this.updateStatus(`Added ${normalizedAsset.label}`);
+      return;
+    }
+
+    this.loadObjectSpriteAsset(normalizedAsset, () => {
+      if (selectAfterLoad) {
+        this.setSelectedObject(normalizedAsset.id);
+      }
+      this.updateObjectPlacementTextures(normalizedAsset.id);
+      this.updateStatus(`Added ${normalizedAsset.label}`);
+    });
+  }
+
   getState(): StudioSceneState {
     const activeLayer = this.getLayer(this.selectedLayer, this.selectedTerrain);
 
     return {
       width: this.widthTiles,
       height: this.heightTiles,
+      toolMode: this.toolMode,
       selectedLayer: this.selectedLayer,
       selectedTerrain: this.selectedTerrain,
+      selectedObject: this.selectedObject,
+      selectedObjectFrame: this.selectedObjectFrame,
       brushSize: this.brushSize,
       paintMode: this.paintMode,
+      objectPaintMode: this.objectPaintMode,
       showGrid: this.showGrid,
       activeLayerCellCount: activeLayer?.cells.size ?? 0,
+      objectCount: this.objectPlacements.size,
       message: "Drag to paint. Right/middle drag pans. Wheel zooms.",
     };
   }
@@ -518,7 +701,7 @@ export class StudioScene extends Phaser.Scene {
 
       this.isPainting = true;
       this.lastPaintKey = "";
-      this.paintAtPointer(pointer);
+      this.applyToolAtPointer(pointer);
     });
 
     this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
@@ -527,8 +710,10 @@ export class StudioScene extends Phaser.Scene {
         return;
       }
 
+      this.updateObjectPreviewAtPointer(pointer);
+
       if (this.isPainting) {
-        this.paintAtPointer(pointer);
+        this.applyToolAtPointer(pointer);
       }
     });
 
@@ -536,6 +721,10 @@ export class StudioScene extends Phaser.Scene {
       this.isPainting = false;
       this.isPanning = false;
       this.lastPaintKey = "";
+    });
+
+    this.input.on("pointerout", () => {
+      this.hideObjectPreview();
     });
 
     this.input.on(
@@ -567,6 +756,15 @@ export class StudioScene extends Phaser.Scene {
     const worldPointAfterZoom = camera.getWorldPoint(pointer.x, pointer.y);
     camera.scrollX += worldPointBeforeZoom.x - worldPointAfterZoom.x;
     camera.scrollY += worldPointBeforeZoom.y - worldPointAfterZoom.y;
+  }
+
+  private applyToolAtPointer(pointer: Phaser.Input.Pointer) {
+    if (this.toolMode === "object") {
+      this.placeObjectAtPointer(pointer);
+      return;
+    }
+
+    this.paintAtPointer(pointer);
   }
 
   private paintAtPointer(pointer: Phaser.Input.Pointer) {
@@ -602,6 +800,36 @@ export class StudioScene extends Phaser.Scene {
     for (const layer of changedLayers) {
       layer.dirty = true;
     }
+    this.updateStatus();
+  }
+
+  private placeObjectAtPointer(pointer: Phaser.Input.Pointer) {
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const tileX = Math.floor(worldPoint.x / TILE_SIZE);
+    const tileY = Math.floor(worldPoint.y / TILE_SIZE);
+
+    if (!this.isInBounds(tileX, tileY)) {
+      return;
+    }
+
+    const stampKey = `${tileX},${tileY},object,${this.objectPaintMode},${this.selectedObject},${this.selectedObjectFrame}`;
+    if (stampKey === this.lastPaintKey) {
+      return;
+    }
+    this.lastPaintKey = stampKey;
+
+    if (this.objectPaintMode === "erase") {
+      this.removeObjectAt(tileX, tileY);
+      this.updateStatus();
+      return;
+    }
+
+    this.placeObjectAt(
+      tileX,
+      tileY,
+      this.selectedObject,
+      this.selectedObjectFrame
+    );
     this.updateStatus();
   }
 
@@ -649,6 +877,94 @@ export class StudioScene extends Phaser.Scene {
       this.cameras.main.scrollX,
       this.cameras.main.scrollY
     );
+  }
+
+  private updateObjectPreviewAtPointer(pointer: Phaser.Input.Pointer) {
+    if (this.toolMode !== "object") {
+      this.hideObjectPreview();
+      return;
+    }
+
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const tileX = Math.floor(worldPoint.x / TILE_SIZE);
+    const tileY = Math.floor(worldPoint.y / TILE_SIZE);
+
+    if (!this.isInBounds(tileX, tileY)) {
+      this.hideObjectPreview();
+      return;
+    }
+
+    const border = this.ensureObjectPreviewBorder();
+    border
+      .setPosition(
+        tileX * TILE_SIZE + TILE_SIZE / 2,
+        tileY * TILE_SIZE + TILE_SIZE / 2
+      )
+      .setVisible(true);
+
+    if (this.objectPaintMode === "erase") {
+      this.objectPreviewImage?.setVisible(false);
+      return;
+    }
+
+    const asset = this.objectAssets.find(
+      (candidate) => candidate.id === this.selectedObject
+    );
+    if (!asset || !this.textures.exists(studioObjectSpriteKey(asset.id))) {
+      this.objectPreviewImage?.setVisible(false);
+      return;
+    }
+
+    const image = this.ensureObjectPreviewImage(asset);
+    image
+      .setTexture(studioObjectSpriteKey(asset.id), this.selectedObjectFrame)
+      .setPosition(
+        tileX * TILE_SIZE + TILE_SIZE / 2,
+        tileY * TILE_SIZE + TILE_SIZE * 0.82
+      )
+      .setDisplaySize(
+        asset.kind === "tree" ? TILE_SIZE * 1.85 : TILE_SIZE * 1.18,
+        asset.kind === "tree" ? TILE_SIZE * 1.85 : TILE_SIZE * 1.18
+      )
+      .setVisible(true);
+  }
+
+  private refreshObjectPreview() {
+    if (this.objectPreviewImage) {
+      this.objectPreviewImage.destroy();
+      this.objectPreviewImage = null;
+    }
+  }
+
+  private hideObjectPreview() {
+    this.objectPreviewImage?.setVisible(false);
+    this.objectPreviewBorder?.setVisible(false);
+  }
+
+  private ensureObjectPreviewBorder() {
+    if (!this.objectPreviewBorder) {
+      this.objectPreviewBorder = this.add
+        .rectangle(0, 0, TILE_SIZE, TILE_SIZE)
+        .setStrokeStyle(2, 0x93b9ff, 0.95)
+        .setFillStyle(0x2563eb, 0.08)
+        .setVisible(false);
+      this.objectPreviewLayer.add(this.objectPreviewBorder);
+    }
+
+    return this.objectPreviewBorder;
+  }
+
+  private ensureObjectPreviewImage(asset: StudioObjectSpriteAsset) {
+    if (!this.objectPreviewImage) {
+      this.objectPreviewImage = this.add
+        .image(0, 0, studioObjectSpriteKey(asset.id), this.selectedObjectFrame)
+        .setOrigin(0.5, 0.82)
+        .setAlpha(0.48)
+        .setVisible(false);
+      this.objectPreviewLayer.add(this.objectPreviewImage);
+    }
+
+    return this.objectPreviewImage;
   }
 
   private panCamera(pointer: Phaser.Input.Pointer) {
@@ -706,6 +1022,71 @@ export class StudioScene extends Phaser.Scene {
       layer.dirty = true;
     }
     this.updateStatus(`Cleared layer ${this.selectedLayer}`);
+  }
+
+  private placeObjectAt(x: number, y: number, assetId: string, frame?: number) {
+    if (!this.isInBounds(x, y)) {
+      return;
+    }
+
+    const asset = this.objectAssets.find(
+      (candidate) => candidate.id === assetId
+    );
+    if (
+      !asset ||
+      !this.textures ||
+      !this.textures.exists(studioObjectSpriteKey(asset.id))
+    ) {
+      return;
+    }
+
+    const key = cellKey(x, y);
+    this.removeObjectAt(x, y);
+
+    const selectedFrame = frame ?? getDefaultObjectFrame(asset);
+    const image = this.add
+      .image(
+        x * TILE_SIZE + TILE_SIZE / 2,
+        y * TILE_SIZE + TILE_SIZE * 0.82,
+        studioObjectSpriteKey(asset.id),
+        selectedFrame
+      )
+      .setOrigin(0.5, 0.82)
+      .setDisplaySize(
+        asset.kind === "tree" ? TILE_SIZE * 1.85 : TILE_SIZE * 1.18,
+        asset.kind === "tree" ? TILE_SIZE * 1.85 : TILE_SIZE * 1.18
+      )
+      .setDepth(y);
+
+    this.objectLayer.add(image);
+    this.objectPlacements.set(key, {
+      category: asset.category,
+      assetId: asset.id,
+      x,
+      y,
+      frame: selectedFrame,
+      image,
+    });
+  }
+
+  private removeObjectAt(x: number, y: number) {
+    const key = cellKey(x, y);
+    const placement = this.objectPlacements.get(key);
+
+    if (!placement) {
+      return;
+    }
+
+    placement.image.destroy();
+    this.objectPlacements.delete(key);
+  }
+
+  private clearObjectPlacements() {
+    for (const placement of this.objectPlacements.values()) {
+      placement.image.destroy();
+    }
+
+    this.objectPlacements.clear();
   }
 
   private resizeWorld(width: number, height: number) {
@@ -770,12 +1151,17 @@ export class StudioScene extends Phaser.Scene {
     this.options.onStateChange?.({
       width: this.widthTiles,
       height: this.heightTiles,
+      toolMode: this.toolMode,
       selectedLayer: this.selectedLayer,
       selectedTerrain: this.selectedTerrain,
+      selectedObject: this.selectedObject,
+      selectedObjectFrame: this.selectedObjectFrame,
       brushSize: this.brushSize,
       paintMode: this.paintMode,
+      objectPaintMode: this.objectPaintMode,
       showGrid: this.showGrid,
       activeLayerCellCount: cellCount,
+      objectCount: this.objectPlacements.size,
       message: message ?? "Drag to paint. Right/middle drag pans. Wheel zooms.",
     });
   }
@@ -788,6 +1174,18 @@ export class StudioScene extends Phaser.Scene {
       tileSize: TILE_SIZE,
       baseTerrain: this.baseTerrain,
       terrainAssets: this.terrainAssets.filter((asset) => asset.generated),
+      objectAssets: this.getUsedObjectAssets(),
+      objects: [...this.objectPlacements.values()]
+        .map((object) => ({
+          category: object.category,
+          assetId: object.assetId,
+          x: object.x,
+          y: object.y,
+          frame: object.frame,
+        }))
+        .sort(
+          (a, b) => a.y - b.y || a.x - b.x || a.assetId.localeCompare(b.assetId)
+        ),
       layers: STUDIO_LAYER_OPTIONS.flatMap((slot) => {
         const terrainLayers = this.layers.get(slot);
         if (!terrainLayers) {
@@ -873,6 +1271,120 @@ export class StudioScene extends Phaser.Scene {
       this.load.start();
     });
   }
+
+  private hasObjectTexture(asset: StudioObjectSpriteAsset) {
+    return this.textures.exists(studioObjectSpriteKey(asset.id));
+  }
+
+  private loadObjectSpriteAsset(
+    asset: StudioObjectSpriteAsset,
+    onComplete: () => void
+  ) {
+    if (!this.isReady) {
+      onComplete();
+      return;
+    }
+
+    const key = studioObjectSpriteKey(asset.id);
+    const onLoadComplete = () => {
+      this.load.off(Phaser.Loader.Events.LOAD_ERROR, onLoadError);
+      onComplete();
+    };
+    const onLoadError = (file: Phaser.Loader.File) => {
+      this.load.off(Phaser.Loader.Events.COMPLETE, onLoadComplete);
+      this.updateStatus(`Could not load object asset: ${file.key}`);
+    };
+
+    this.load.once(Phaser.Loader.Events.COMPLETE, onLoadComplete);
+    this.load.once(Phaser.Loader.Events.LOAD_ERROR, onLoadError);
+
+    if (this.textures.exists(key)) {
+      this.textures.remove(key);
+    }
+
+    this.load.spritesheet(key, asset.imageUrl, {
+      frameWidth: asset.frameSize,
+      frameHeight: asset.frameSize,
+    });
+    this.load.start();
+  }
+
+  private ensureObjectAssetsLoaded(assets: StudioObjectSpriteAsset[]) {
+    if (!this.isReady) {
+      return Promise.resolve();
+    }
+
+    const assetsToLoad = assets.filter(
+      (asset) => !this.hasObjectTexture(asset)
+    );
+    if (!assetsToLoad.length) {
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      const onComplete = () => {
+        this.load.off(Phaser.Loader.Events.LOAD_ERROR, onLoadError);
+        resolve();
+      };
+      const onLoadError = (file: Phaser.Loader.File) => {
+        this.load.off(Phaser.Loader.Events.COMPLETE, onComplete);
+        reject(new Error(`Could not load object asset: ${file.key}`));
+      };
+
+      this.load.once(Phaser.Loader.Events.COMPLETE, onComplete);
+      this.load.once(Phaser.Loader.Events.LOAD_ERROR, onLoadError);
+
+      for (const asset of assetsToLoad) {
+        const key = studioObjectSpriteKey(asset.id);
+
+        if (this.textures.exists(key)) {
+          this.textures.remove(key);
+        }
+
+        this.load.spritesheet(key, asset.imageUrl, {
+          frameWidth: asset.frameSize,
+          frameHeight: asset.frameSize,
+        });
+      }
+
+      this.load.start();
+    });
+  }
+
+  private updateObjectPlacementTextures(assetId: string) {
+    const asset = this.objectAssets.find(
+      (candidate) => candidate.id === assetId
+    );
+    if (
+      !this.isReady ||
+      !this.textures ||
+      !asset ||
+      !this.textures.exists(studioObjectSpriteKey(asset.id))
+    ) {
+      return;
+    }
+
+    for (const placement of this.objectPlacements.values()) {
+      if (placement.assetId !== assetId) {
+        continue;
+      }
+
+      placement.image
+        .setTexture(studioObjectSpriteKey(asset.id), placement.frame)
+        .setDisplaySize(
+          asset.kind === "tree" ? TILE_SIZE * 1.85 : TILE_SIZE * 1.18,
+          asset.kind === "tree" ? TILE_SIZE * 1.85 : TILE_SIZE * 1.18
+        );
+    }
+  }
+
+  private getUsedObjectAssets() {
+    const usedAssetIds = new Set(
+      [...this.objectPlacements.values()].map((object) => object.assetId)
+    );
+
+    return this.objectAssets.filter((asset) => usedAssetIds.has(asset.id));
+  }
 }
 
 export function validateStudioMap(
@@ -930,6 +1442,47 @@ export function validateStudioMap(
       }
     }
   }
+
+  if (map.objectAssets !== undefined && !Array.isArray(map.objectAssets)) {
+    throw new Error("Map object assets must be an array.");
+  }
+
+  for (const asset of map.objectAssets ?? []) {
+    if (
+      !asset ||
+      typeof asset.id !== "string" ||
+      typeof asset.label !== "string" ||
+      asset.category !== "plants" ||
+      !["plant", "tree"].includes(asset.kind) ||
+      typeof asset.imageUrl !== "string" ||
+      !Number.isInteger(asset.frameSize) ||
+      !Number.isInteger(asset.rows) ||
+      !Number.isInteger(asset.columns)
+    ) {
+      throw new Error("Map includes an invalid object asset.");
+    }
+  }
+
+  if (map.objects !== undefined && !Array.isArray(map.objects)) {
+    throw new Error("Map objects must be an array.");
+  }
+
+  for (const object of map.objects ?? []) {
+    if (
+      !object ||
+      object.category !== "plants" ||
+      typeof object.assetId !== "string" ||
+      !Number.isInteger(object.x) ||
+      !Number.isInteger(object.y) ||
+      !Number.isInteger(object.frame) ||
+      object.x < 0 ||
+      object.y < 0 ||
+      object.x >= map.width ||
+      object.y >= map.height
+    ) {
+      throw new Error("Map includes an invalid object placement.");
+    }
+  }
 }
 
 function isValidWorldSize(value: unknown): value is number {
@@ -946,6 +1499,55 @@ function isValidLayer(value: unknown): value is number {
     (value as number) >= 1 &&
     (value as number) <= STUDIO_LAYER_COUNT
   );
+}
+
+function mergeObjectAssets(assets: StudioObjectSpriteAsset[]) {
+  const merged = new Map<string, StudioObjectSpriteAsset>();
+
+  for (const asset of assets) {
+    const normalizedAsset = normalizeObjectAsset(asset);
+    if (!normalizedAsset.id || !normalizedAsset.imageUrl) {
+      continue;
+    }
+
+    merged.set(normalizedAsset.id, normalizedAsset);
+  }
+
+  return [...merged.values()];
+}
+
+function normalizeObjectAsset(asset: StudioObjectSpriteAsset) {
+  const id = asset.id.trim();
+  const frameSize = Math.max(16, Math.floor(asset.frameSize));
+  const rows = Math.max(1, Math.floor(asset.rows));
+  const columns = Math.max(1, Math.floor(asset.columns));
+
+  return {
+    ...asset,
+    id,
+    label: asset.label.trim() || objectLabel(id),
+    category: asset.category,
+    kind: asset.kind,
+    imageUrl: asset.imageUrl.trim(),
+    frameSize,
+    rows,
+    columns,
+  };
+}
+
+function studioObjectSpriteKey(assetId: string) {
+  return `studio-object-sprite-${assetId}`;
+}
+
+function getDefaultObjectFrame(asset: StudioObjectSpriteAsset) {
+  const grownRow = Math.min(2, asset.rows - 1);
+  return grownRow * asset.columns;
+}
+
+function objectLabel(objectId: string) {
+  return objectId
+    .replace(/-/g, " ")
+    .replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
 }
 
 export function terrainLabel(terrainId: TerrainVisualAssetId) {

@@ -917,6 +917,235 @@ h1 {
   background: #f8fbff;
 }
 
+.studio-object-select {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #d7dde7;
+  border-radius: 8px;
+  padding: 6px;
+  background: #ffffff;
+  color: #344155;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.studio-object-select:hover {
+  border-color: #93b9ff;
+  background: #f8fbff;
+}
+
+.studio-object-select__thumb {
+  display: block;
+  overflow: hidden;
+  width: 42px;
+  aspect-ratio: 1;
+  border: 1px solid #dfe5ee;
+  border-radius: 6px;
+  background-color: #ffffff;
+  background-repeat: no-repeat;
+}
+
+.studio-object-select strong,
+.studio-object-select small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.studio-object-select strong {
+  color: #172033;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.studio-object-select small {
+  color: #7b8494;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.studio-object-palette {
+  display: grid;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.studio-object-palette__item {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #d7dde7;
+  border-radius: 8px;
+  padding: 6px;
+  background: #ffffff;
+  color: #344155;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.studio-object-palette__item[data-active] {
+  border-color: #93b9ff;
+  background: #eef5ff;
+  color: #1d4ed8;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+}
+
+.studio-object-palette__thumb {
+  display: block;
+  overflow: hidden;
+  width: 42px;
+  aspect-ratio: 1;
+  border: 1px solid #dfe5ee;
+  border-radius: 6px;
+  background: linear-gradient(45deg, #eef2f7 25%, transparent 25%),
+    linear-gradient(-45deg, #eef2f7 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #eef2f7 75%),
+    linear-gradient(-45deg, transparent 75%, #eef2f7 75%), #ffffff;
+  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+  background-size: 12px 12px;
+}
+
+.studio-object-palette__thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.studio-object-palette__item strong,
+.studio-object-palette__item small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.studio-object-palette__item strong {
+  color: inherit;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.studio-object-palette__item small {
+  color: #7b8494;
+  font-size: 10px;
+  font-weight: 850;
+  text-transform: capitalize;
+}
+
+.studio-object-modal {
+  width: min(940px, calc(100vw - 48px));
+}
+
+.studio-object-category-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.studio-object-category-tabs button {
+  border: 1px solid #93b9ff;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: #eef5ff;
+  color: #1d4ed8;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.studio-object-modal__list {
+  display: grid;
+  gap: 14px;
+  max-height: min(68vh, 620px);
+  overflow: auto;
+}
+
+.studio-object-modal__asset {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #e5e9f0;
+  border-radius: 8px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.studio-object-modal__asset-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.studio-object-modal__asset-header strong {
+  color: #172033;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.studio-object-modal__asset-header small {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: capitalize;
+}
+
+.studio-object-variant-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.studio-object-variant {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid #d7dde7;
+  border-radius: 8px;
+  padding: 6px;
+  background: #ffffff;
+  color: #344155;
+  cursor: pointer;
+  font: inherit;
+}
+
+.studio-object-variant[data-active] {
+  border-color: #93b9ff;
+  background: #eef5ff;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+}
+
+.studio-object-variant span {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  background-color: #ffffff;
+  background-repeat: no-repeat;
+}
+
+.studio-object-variant small {
+  overflow: hidden;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 850;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .studio-terrain-select span:not(.studio-terrain-button__thumb) {
   display: grid;
   gap: 2px;

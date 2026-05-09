@@ -3,6 +3,8 @@ import { v } from "convex/values";
 import { api } from "./_generated/api";
 import { action, mutation, query } from "./_generated/server";
 
+const photoroomSegmentEndpoint = "https://sdk.photoroom.com/v1/segment";
+
 const terrainStatus = v.union(
   v.literal("draft"),
   v.literal("library"),
@@ -299,6 +301,10 @@ export const generatePlantSprite = action({
       columns,
       cellSize,
     });
+    const layoutGuide = createObjectSpriteLayoutGuide({
+      rows,
+      columns,
+    });
     const prompt = buildPlantSpritePrompt({
       ...args,
       cellSize,
@@ -316,6 +322,13 @@ export const generatePlantSprite = action({
       reasoningEffort,
       promptLength: prompt.length,
     });
+    const layoutGuideStorageId = await ctx.storage.store(layoutGuide.blob);
+    logPlantGeneration(requestId, "layout_guide_stored", {
+      storageId: layoutGuideStorageId,
+      size: layoutGuide.blob.size,
+      width: layoutGuide.width,
+      height: layoutGuide.height,
+    });
 
     const content = await requestOpenRouterImage({
       id: `${args.plantId}-sprite-sheet`,
@@ -323,6 +336,7 @@ export const generatePlantSprite = action({
       prompt,
       imageModel,
       reasoningEffort,
+      referenceImageDataUrls: [layoutGuide.dataUrl],
       requestId,
       logScope: "plant",
     });
@@ -331,7 +345,15 @@ export const generatePlantSprite = action({
       dataUrlLength: content.dataUrl.length,
     });
 
-    const blob = await dataUrlToBlob(content.dataUrl);
+    const rawBlob = await dataUrlToBlob(content.dataUrl);
+    logPlantGeneration(requestId, "background_removal_started", {
+      rawContentType: rawBlob.type || content.contentType,
+      rawSize: rawBlob.size,
+    });
+    const blob = await removeObjectSpriteBackground(
+      rawBlob,
+      `${args.plantId}-sprite-sheet.png`
+    );
     const storageId = await ctx.storage.store(blob);
     logPlantGeneration(requestId, "stored", {
       storageId,
@@ -345,8 +367,9 @@ export const generatePlantSprite = action({
         label: args.label,
         kind: args.kind,
         spriteStorageId: storageId,
+        layoutGuideStorageId,
         fileName: `${args.plantId}-sprite-sheet.png`,
-        contentType: content.contentType,
+        contentType: blob.type || "image/png",
         size: blob.size,
         status: "library",
         region: args.region,
@@ -378,7 +401,7 @@ export const generatePlantSprite = action({
       kind: args.kind,
       spriteStorageId: storageId,
       url,
-      contentType: content.contentType,
+      contentType: blob.type || "image/png",
       size: blob.size,
       status: "library",
       region: args.region,
@@ -578,6 +601,7 @@ async function requestOpenRouterImage(args: {
   prompt: string;
   imageModel: string;
   reasoningEffort?: string;
+  referenceImageDataUrls?: string[];
   requestId: string;
   logScope: "texture" | "plant";
 }) {
@@ -637,7 +661,20 @@ async function requestOpenRouterImage(args: {
             messages: [
               {
                 role: "user",
-                content: args.prompt,
+                content: args.referenceImageDataUrls?.length
+                  ? [
+                      {
+                        type: "text",
+                        text: args.prompt,
+                      },
+                      ...args.referenceImageDataUrls.map((url) => ({
+                        type: "image_url",
+                        image_url: {
+                          url,
+                        },
+                      })),
+                    ]
+                  : args.prompt,
               },
             ],
             modalities: ["image", "text"],
@@ -899,11 +936,15 @@ function buildPlantSpritePrompt(args: {
       ? "This tree must look native to its terrain and region. Do not make wet-terrain variants look like ordinary dry-land trees."
       : "This is a ground, wetland, vine, moss, flower, or crop-like plant. Keep it lower and smaller than trees.",
     "",
-    "Use an exact checkerboard-style sprite-sheet composition.",
-    `Preserve a ${args.columns}:${args.rows} sheet ratio and exactly ${args.columns} columns by ${args.rows} rows of equal square cells.`,
-    "Place exactly one frame in the center of each cell.",
+    "Reference image 1 is a checkerboard layout guide. Use it as the exact composition template with exact sizes, all cells are square all equal size.",
+    `Preserve its ${args.columns}:${args.rows} sheet ratio and its ${args.columns} columns by ${args.rows} rows of equal square cells.`,
+    `The exact guide has also been saved to Convex storage as the layout guide for ${args.plantId}.`,
+    "Place exactly one frame in the center of each checkerboard cell.",
     "Align the center of each object frame to the center of its cell.",
     "Keep every frame fully inside its own cell, with consistent margins and no overlap into neighboring cells.",
+    "Keep the checkerboard grid visible in the final image so the generated frames can be verified against the grid.",
+    "Preserve the alternating white and gray cell backgrounds from the guide.",
+    "Draw the object frames on top of the provided checkerboard cells.",
     "",
     `Target runtime atlas metadata: ${width}x${height} logical units, arranged as ${args.rows} rows by ${args.columns} columns.`,
     `Each logical grid cell is ${args.cellSize}x${args.cellSize} units. The generated image may be higher resolution, but it must keep the same ${args.columns}:${args.rows} grid ratio.`,
@@ -976,6 +1017,41 @@ function buildPlantSpriteCells(args: {
   );
 }
 
+function createObjectSpriteLayoutGuide(args: {
+  rows: number;
+  columns: number;
+}) {
+  const guideCellSize = 256;
+  const width = args.columns * guideCellSize;
+  const height = args.rows * guideCellSize;
+  const pixels = new Uint8Array(width * height * 4);
+
+  for (let y = 0; y < height; y += 1) {
+    const row = Math.floor(y / guideCellSize);
+
+    for (let x = 0; x < width; x += 1) {
+      const column = Math.floor(x / guideCellSize);
+      const fill = (row + column) % 2 === 0 ? 255 : 216;
+      const offset = (y * width + x) * 4;
+
+      pixels[offset] = fill;
+      pixels[offset + 1] = fill;
+      pixels[offset + 2] = fill;
+      pixels[offset + 3] = 255;
+    }
+  }
+
+  const png = encodePngRgba(width, height, pixels);
+  const blob = new Blob([png], { type: "image/png" });
+
+  return {
+    blob,
+    dataUrl: `data:image/png;base64,${bytesToBase64(png)}`,
+    width,
+    height,
+  };
+}
+
 async function dataUrlToBlob(dataUrl: string) {
   const match = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(dataUrl);
 
@@ -992,6 +1068,41 @@ async function dataUrlToBlob(dataUrl: string) {
 
   return new Blob([bytes], {
     type: contentType,
+  });
+}
+
+async function removeObjectSpriteBackground(blob: Blob, fileName: string) {
+  const apiKey = process.env.PHOTOROOM_API_KEY?.trim();
+
+  if (!apiKey) {
+    throw new Error(
+      "Missing PHOTOROOM_API_KEY in Convex environment. Plant Studio now follows the Pantheon sprite workflow and requires PhotoRoom background removal after generation. Set it with `npx convex env set PHOTOROOM_API_KEY <key>`."
+    );
+  }
+
+  const form = new FormData();
+  form.append("image_file", blob, fileName);
+  form.append("format", "png");
+  form.append("channels", "rgba");
+  form.append("size", "full");
+
+  const response = await fetch(photoroomSegmentEndpoint, {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+    },
+    body: form,
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      `PhotoRoom background removal failed (${response.status}): ${body}`
+    );
+  }
+
+  return new Blob([await response.arrayBuffer()], {
+    type: "image/png",
   });
 }
 
@@ -1014,6 +1125,120 @@ function base64ToBytes(base64: string) {
 
 function textToBytes(text: string) {
   return new TextEncoder().encode(text);
+}
+
+function encodePngRgba(width: number, height: number, rgba: Uint8Array) {
+  const scanlineLength = width * 4 + 1;
+  const raw = new Uint8Array(scanlineLength * height);
+
+  for (let y = 0; y < height; y += 1) {
+    const rawOffset = y * scanlineLength;
+    const rgbaOffset = y * width * 4;
+
+    raw[rawOffset] = 0;
+    raw.set(rgba.subarray(rgbaOffset, rgbaOffset + width * 4), rawOffset + 1);
+  }
+
+  const idat = zlibStore(raw);
+  const signature = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+  const ihdr = new Uint8Array(13);
+  const ihdrView = new DataView(ihdr.buffer);
+  ihdrView.setUint32(0, width);
+  ihdrView.setUint32(4, height);
+  ihdr[8] = 8;
+  ihdr[9] = 6;
+
+  return concatBytes([
+    signature,
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", idat),
+    pngChunk("IEND", new Uint8Array()),
+  ]);
+}
+
+function zlibStore(data: Uint8Array) {
+  const blocks: Uint8Array[] = [new Uint8Array([0x78, 0x01])];
+
+  for (let offset = 0; offset < data.length; offset += 65535) {
+    const block = data.subarray(offset, Math.min(offset + 65535, data.length));
+    const header = new Uint8Array(5);
+    const finalBlock = offset + block.length >= data.length;
+
+    header[0] = finalBlock ? 1 : 0;
+    header[1] = block.length & 0xff;
+    header[2] = (block.length >> 8) & 0xff;
+    header[3] = ~block.length & 0xff;
+    header[4] = (~block.length >> 8) & 0xff;
+    blocks.push(header, block);
+  }
+
+  const checksum = new Uint8Array(4);
+  new DataView(checksum.buffer).setUint32(0, adler32(data));
+  blocks.push(checksum);
+
+  return concatBytes(blocks);
+}
+
+function pngChunk(type: string, data: Uint8Array) {
+  const typeBytes = new TextEncoder().encode(type);
+  const chunk = new Uint8Array(12 + data.length);
+  const view = new DataView(chunk.buffer);
+
+  view.setUint32(0, data.length);
+  chunk.set(typeBytes, 4);
+  chunk.set(data, 8);
+  view.setUint32(8 + data.length, crc32(concatBytes([typeBytes, data])));
+
+  return chunk;
+}
+
+function concatBytes(parts: Uint8Array[]) {
+  const totalLength = parts.reduce((total, part) => total + part.length, 0);
+  const output = new Uint8Array(totalLength);
+  let offset = 0;
+
+  for (const part of parts) {
+    output.set(part, offset);
+    offset += part.length;
+  }
+
+  return output;
+}
+
+function adler32(bytes: Uint8Array) {
+  let a = 1;
+  let b = 0;
+
+  for (const byte of bytes) {
+    a = (a + byte) % 65521;
+    b = (b + a) % 65521;
+  }
+
+  return ((b << 16) | a) >>> 0;
+}
+
+function crc32(bytes: Uint8Array) {
+  let crc = 0xffffffff;
+
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = crc & 1 ? (crc >>> 1) ^ 0xedb88320 : crc >>> 1;
+    }
+  }
+
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  const chunkSize = 0x8000;
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+
+  return btoa(binary);
 }
 
 function isRetryableImageError(error: unknown) {

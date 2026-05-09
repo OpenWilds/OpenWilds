@@ -140,6 +140,7 @@ export function StudioShell({
         {route === "map" ? (
           <WorldStudioView
             generatedTerrains={generatedTerrains}
+            plantSprites={plantSprites}
             savedWorlds={savedWorlds}
           />
         ) : null}
