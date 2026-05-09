@@ -217,6 +217,232 @@ h1 {
   display: block;
 }
 
+.studio-shell {
+  width: min(100%, 1500px);
+}
+
+.studio-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  color: #f7f1e5;
+}
+
+.studio-link {
+  border: 1px solid rgba(247, 241, 229, 0.32);
+  border-radius: 8px;
+  padding: 9px 12px;
+  background: #f7f1e5;
+  color: #17211e;
+  font-size: 14px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+#studio-game {
+  width: 100%;
+  min-width: 0;
+  aspect-ratio: 1280 / 820;
+  overflow: hidden;
+  border: 1px solid rgba(247, 241, 229, 0.22);
+  border-radius: 8px;
+  background: #17211e;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+}
+
+#studio-game canvas {
+  display: block;
+}
+
+.studio-workspace {
+  display: grid;
+  grid-template-columns: 330px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.studio-panel {
+  display: grid;
+  gap: 12px;
+  max-height: min(820px, calc(100vh - 150px));
+  overflow: auto;
+  border: 1px solid rgba(247, 241, 229, 0.22);
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(247, 241, 229, 0.08);
+  color: #f7f1e5;
+}
+
+.studio-panel__section,
+.studio-panel__status {
+  display: grid;
+  gap: 10px;
+  border-bottom: 1px solid rgba(247, 241, 229, 0.12);
+  padding-bottom: 12px;
+}
+
+.studio-panel__section h2 {
+  margin: 0;
+  color: #9fd8bd;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.studio-terrain-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.studio-terrain-button,
+.studio-segmented button,
+.studio-command,
+.studio-command-grid button {
+  min-height: 40px;
+  border: 1px solid rgba(247, 241, 229, 0.26);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #f7f1e5;
+  color: #17211e;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 850;
+  letter-spacing: 0;
+}
+
+.studio-terrain-button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  text-align: left;
+}
+
+.studio-terrain-button[data-active],
+.studio-segmented button[data-active] {
+  border-color: #ffffff;
+  background: #9fd8bd;
+  box-shadow: 0 0 0 2px rgba(159, 216, 189, 0.25);
+}
+
+.studio-swatch {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(23, 33, 30, 0.28);
+  border-radius: 4px;
+}
+
+.studio-swatch--plain {
+  background: #b7d8b1;
+}
+
+.studio-swatch--grass {
+  background: #72bf6a;
+}
+
+.studio-swatch--forest-floor {
+  background: #587a48;
+}
+
+.studio-swatch--stone {
+  background: #a9a8bc;
+}
+
+.studio-swatch--water {
+  background: #5bbccf;
+}
+
+.studio-swatch--dirt {
+  background: #a57755;
+}
+
+.studio-segmented,
+.studio-command-grid,
+.studio-size-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.studio-segmented[data-control="brush"] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.studio-size-row label,
+.studio-toggle,
+.studio-layer-select {
+  display: grid;
+  gap: 5px;
+  color: #d9eee3;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.studio-size-row input {
+  width: 100%;
+  border: 1px solid rgba(247, 241, 229, 0.26);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #f7f1e5;
+  color: #17211e;
+  font: inherit;
+  font-weight: 850;
+}
+
+.studio-layer-select select {
+  width: 100%;
+  border: 1px solid rgba(247, 241, 229, 0.26);
+  border-radius: 8px;
+  padding: 10px;
+  background: #f7f1e5;
+  color: #17211e;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 850;
+}
+
+.studio-note {
+  margin: 0;
+  color: #c7dfd4;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.studio-toggle {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.studio-toggle input {
+  width: 18px;
+  height: 18px;
+}
+
+.studio-panel__status {
+  border-bottom: 0;
+  gap: 6px;
+  padding-bottom: 0;
+}
+
+.studio-panel__status p {
+  margin: 0;
+  color: #f7f1e5;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+#studio-tool-status {
+  color: #ffe0a3;
+}
+
 @media (max-width: 620px) {
   #app {
     padding: 14px;
@@ -248,5 +474,18 @@ h1 {
 
   .wallet-actions button {
     flex: 1;
+  }
+
+  .studio-header {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .studio-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .studio-panel {
+    max-height: none;
   }
 }

@@ -27,8 +27,14 @@ import {
 import { getWorldItemKey } from "./world-items";
 import { projectFarmGrowth } from "./farm-growth";
 import { GAME_SECONDS_PER_DAY, getGameTimeSeconds } from "./game-time";
-import { GAME_HEIGHT, GAME_WIDTH } from "./grid-constants";
-import { CELL_SIZE, GRID_ORIGIN_X, GRID_ORIGIN_Y } from "./grid-constants";
+import {
+  CELL_SIZE,
+  GAME_HEIGHT,
+  GAME_WIDTH,
+  GRID_ORIGIN_X,
+  GRID_ORIGIN_Y,
+  GRID_SIZE,
+} from "./grid-constants";
 import { pointerToGrid } from "./grid-math";
 import { installGridResources, type GridInput } from "./resources";
 import { createTradeOverlay } from "./trade-overlay";
