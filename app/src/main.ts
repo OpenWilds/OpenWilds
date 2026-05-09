@@ -12,7 +12,7 @@ if (!app) {
   throw new Error("App root is missing.");
 }
 
-if (window.location.pathname.replace(/\/$/, "") === "/studio") {
+if (window.location.pathname.replace(/\/$/, "").startsWith("/studio")) {
   bootStudio(app);
 } else {
   const localnetClient = new LocalnetClient(getHudElements());

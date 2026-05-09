@@ -1,32 +1,31 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 
 import type { TerrainVisualAsset } from "../../assets/visual-assets";
 import type { StudioSourceTexture } from "../convex/convex-studio";
 import { useStudioRoute } from "../hooks/use-studio-route";
-import { initialTerrainAssets, ROUTES } from "../lib/studio-data";
+import { ROUTES } from "../lib/studio-data";
+import type { StudioMapRecord } from "../lib/studio-types";
 import { AssetsView } from "../views/AssetsView";
 import { DashboardView } from "../views/DashboardView";
-import { MapEditorView } from "../views/MapEditorView";
 import { TextureStudioView } from "../views/TextureStudioView";
+import { WorldStudioView } from "../views/WorldStudioView";
 
 export function StudioShell({
   generatedTerrains,
   isLoading = false,
   offline = false,
+  savedWorlds,
   sourceTextures,
 }: {
   generatedTerrains: TerrainVisualAsset[];
   isLoading?: boolean;
   offline?: boolean;
+  savedWorlds: StudioMapRecord[];
   sourceTextures: StudioSourceTexture[];
 }) {
   const [route, setRoute] = useStudioRoute();
   const [selectedSourceTexture, setSelectedSourceTexture] =
     useState<StudioSourceTexture | null>(null);
-  const allTerrainAssets = useMemo(
-    () => [...initialTerrainAssets(), ...generatedTerrains],
-    [generatedTerrains]
-  );
   const routeLabel = ROUTES[route] ?? ROUTES.dashboard;
 
   useEffect(() => {
@@ -119,7 +118,7 @@ export function StudioShell({
           <DashboardView
             setRoute={setRoute}
             sourceTextureCount={sourceTextures.length}
-            terrainCount={allTerrainAssets.length}
+            terrainCount={generatedTerrains.length}
           />
         ) : null}
         {route === "textures" ? (
@@ -132,7 +131,10 @@ export function StudioShell({
           />
         ) : null}
         {route === "map" ? (
-          <MapEditorView generatedTerrains={generatedTerrains} />
+          <WorldStudioView
+            generatedTerrains={generatedTerrains}
+            savedWorlds={savedWorlds}
+          />
         ) : null}
         {route === "assets" ? <AssetsView setRoute={setRoute} /> : null}
       </main>

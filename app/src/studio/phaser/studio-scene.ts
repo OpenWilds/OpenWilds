@@ -1,7 +1,5 @@
 import Phaser from "phaser";
 import {
-  BUILT_IN_TERRAIN_VISUAL_ASSET_IDS,
-  TERRAIN_VISUAL_ASSETS,
   terrainAtlasKey,
   terrainCenterVariantsKey,
   type TerrainVisualAsset,
@@ -21,22 +19,12 @@ const MAX_WORLD_SIZE = 200;
 const DEFAULT_WORLD_SIZE = 40;
 const TILE_SIZE = 32;
 const GRID_DEPTH = 500;
-const BASE_TERRAIN: TerrainVisualAssetId = "uniswap-plain";
 const STUDIO_LAYER_COUNT = 5;
-const PAINTABLE_TERRAINS: TerrainVisualAssetId[] = [
-  "uniswap-grass",
-  "uniswap-forest-floor",
-  "uniswap-stone",
-  "uniswap-water",
-  "uniswap-dirt",
-];
 
 export const STUDIO_LAYER_OPTIONS = Array.from(
   { length: STUDIO_LAYER_COUNT },
   (_, index) => index + 1
 );
-
-export const STUDIO_TERRAIN_OPTIONS = PAINTABLE_TERRAINS;
 
 type PaintMode = "paint" | "erase";
 
@@ -57,7 +45,10 @@ export type StudioMapExport = {
 };
 
 type StudioSceneOptions = {
+  baseTerrain?: TerrainVisualAssetId;
+  height?: number;
   terrainAssets?: TerrainVisualAsset[];
+  width?: number;
   onStateChange?: (state: StudioSceneState) => void;
   onReady?: () => void;
 };
@@ -86,7 +77,8 @@ export class StudioScene extends Phaser.Scene {
   private widthTiles = DEFAULT_WORLD_SIZE;
   private heightTiles = DEFAULT_WORLD_SIZE;
   private selectedLayer = 1;
-  private selectedTerrain: TerrainVisualAssetId = "uniswap-grass";
+  private selectedTerrain: TerrainVisualAssetId = "";
+  private baseTerrain: TerrainVisualAssetId = "";
   private brushSize = 1;
   private paintMode: PaintMode = "paint";
   private showGrid = true;
@@ -99,6 +91,7 @@ export class StudioScene extends Phaser.Scene {
   private gridGraphics!: Phaser.GameObjects.Graphics;
   private terrainAssets: TerrainVisualAsset[];
   private paintableTerrains: TerrainVisualAssetId[];
+  private isReady = false;
   private readonly layers = new Map<
     number,
     Map<TerrainVisualAssetId, StudioLayer>
@@ -107,10 +100,12 @@ export class StudioScene extends Phaser.Scene {
   constructor(options: StudioSceneOptions) {
     super("studio-scene");
     this.options = options;
+    this.widthTiles = options.width ?? DEFAULT_WORLD_SIZE;
+    this.heightTiles = options.height ?? DEFAULT_WORLD_SIZE;
     this.terrainAssets = mergeTerrainAssets(options.terrainAssets ?? []);
-    this.paintableTerrains = this.terrainAssets
-      .map((asset) => asset.id)
-      .filter((assetId) => assetId !== BASE_TERRAIN);
+    this.baseTerrain = options.baseTerrain ?? this.terrainAssets[0]?.id ?? "";
+    this.paintableTerrains = this.getPaintableTerrainIds();
+    this.selectedTerrain = this.paintableTerrains[0] ?? this.baseTerrain;
   }
 
   preload() {
@@ -128,6 +123,7 @@ export class StudioScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor("#17211e");
     this.worldLayer = this.add.container(0, 0).setDepth(0);
     this.gridGraphics = this.add.graphics().setDepth(GRID_DEPTH);
+    this.isReady = true;
 
     this.createLayers();
     this.renderAllLayers();
@@ -150,11 +146,39 @@ export class StudioScene extends Phaser.Scene {
 
   importMap(map: StudioMapExport) {
     validateStudioMap(map);
+    this.applyMap(map);
+  }
+
+  async loadMap(map: StudioMapExport) {
+    validateStudioMap(map);
+
+    for (const asset of map.terrainAssets ?? []) {
+      this.addTerrainAsset(asset, false);
+    }
+
+    this.widthTiles = map.width;
+    this.heightTiles = map.height;
+    this.baseTerrain = map.baseTerrain;
+    this.paintableTerrains = this.getPaintableTerrainIds();
+    this.selectedTerrain = this.paintableTerrains[0] ?? this.baseTerrain;
+
+    await this.ensureTerrainAssetsLoaded(this.terrainAssets);
+    this.applyMap(map);
+  }
+
+  private applyMap(map: StudioMapExport) {
     this.widthTiles = map.width;
     this.heightTiles = map.height;
 
     for (const asset of map.terrainAssets ?? []) {
       this.addTerrainAsset(asset, false);
+    }
+
+    if (map.baseTerrain) {
+      this.baseTerrain = map.baseTerrain;
+      this.paintableTerrains = this.getPaintableTerrainIds();
+      this.selectedTerrain = this.paintableTerrains[0] ?? this.baseTerrain;
+      this.createLayers();
     }
 
     for (const terrainLayers of this.layers.values()) {
@@ -166,7 +190,7 @@ export class StudioScene extends Phaser.Scene {
 
     this.fillBaseLayer();
     for (const exportedLayer of map.layers) {
-      if (exportedLayer.terrainId === BASE_TERRAIN) {
+      if (exportedLayer.terrainId === this.baseTerrain) {
         continue;
       }
 
@@ -249,6 +273,42 @@ export class StudioScene extends Phaser.Scene {
     return this.exportMap();
   }
 
+  setBaseTerrain(terrainId: TerrainVisualAssetId) {
+    const terrainAsset = this.terrainAssets.find(
+      (asset) => asset.id === terrainId
+    );
+    if (!terrainAsset) {
+      this.updateStatus("Choose a generated terrain for layer 0 first.");
+      return false;
+    }
+
+    this.baseTerrain = terrainId;
+    this.paintableTerrains = this.getPaintableTerrainIds();
+    this.selectedTerrain = this.paintableTerrains[0] ?? this.baseTerrain;
+    if (!this.isReady) {
+      return true;
+    }
+
+    if (!this.hasTerrainTextures(terrainAsset)) {
+      this.updateStatus(`Loading ${terrainLabel(terrainId)} for layer 0...`);
+      this.loadGeneratedTerrainTextures(terrainAsset, () => {
+        if (this.baseTerrain === terrainId) {
+          this.rebuildLayersForBaseTerrain(terrainId);
+        }
+      });
+      return true;
+    }
+
+    this.rebuildLayersForBaseTerrain(terrainId);
+    return true;
+  }
+
+  private rebuildLayersForBaseTerrain(terrainId: TerrainVisualAssetId) {
+    this.createLayers();
+    this.renderAllLayers();
+    this.updateStatus(`Layer 0 set to ${terrainLabel(terrainId)}`);
+  }
+
   addTerrainAsset(asset: TerrainVisualAsset, selectAfterLoad = true) {
     const normalizedAsset: TerrainVisualAsset = {
       ...asset,
@@ -259,6 +319,13 @@ export class StudioScene extends Phaser.Scene {
     const existingIndex = this.terrainAssets.findIndex(
       (terrainAsset) => terrainAsset.id === normalizedAsset.id
     );
+    const existingAsset =
+      existingIndex >= 0 ? this.terrainAssets[existingIndex] : null;
+    const shouldLoadTextures =
+      this.isReady &&
+      (!this.hasTerrainTextures(normalizedAsset) ||
+        existingAsset?.atlasUrl !== normalizedAsset.atlasUrl ||
+        existingAsset?.centerVariantsUrl !== normalizedAsset.centerVariantsUrl);
 
     if (existingIndex >= 0) {
       this.terrainAssets[existingIndex] = normalizedAsset;
@@ -266,14 +333,29 @@ export class StudioScene extends Phaser.Scene {
       this.terrainAssets.push(normalizedAsset);
     }
 
-    this.paintableTerrains = this.terrainAssets
-      .map((terrainAsset) => terrainAsset.id)
-      .filter((assetId) => assetId !== BASE_TERRAIN);
-    this.addLayerForTerrain(normalizedAsset.id);
-    this.loadGeneratedTerrainTextures(normalizedAsset, () => {
-      if (selectAfterLoad) {
+    if (!this.baseTerrain) {
+      this.baseTerrain = normalizedAsset.id;
+    }
+
+    this.paintableTerrains = this.getPaintableTerrainIds();
+    if (this.isReady && normalizedAsset.id !== this.baseTerrain) {
+      this.addLayerForTerrain(normalizedAsset.id);
+    }
+
+    if (!this.isReady || !shouldLoadTextures) {
+      if (selectAfterLoad && normalizedAsset.id !== this.baseTerrain) {
         this.setSelectedTerrain(normalizedAsset.id);
       }
+      this.markTerrainLayersDirty(normalizedAsset.id);
+      this.updateStatus(`Added ${terrainLabel(normalizedAsset.id)}`);
+      return;
+    }
+
+    this.loadGeneratedTerrainTextures(normalizedAsset, () => {
+      if (selectAfterLoad && normalizedAsset.id !== this.baseTerrain) {
+        this.setSelectedTerrain(normalizedAsset.id);
+      }
+      this.markTerrainLayersDirty(normalizedAsset.id);
       this.updateStatus(`Added ${terrainLabel(normalizedAsset.id)}`);
     });
   }
@@ -304,9 +386,9 @@ export class StudioScene extends Phaser.Scene {
       0,
       new Map([
         [
-          BASE_TERRAIN,
+          this.baseTerrain,
           {
-            assetId: BASE_TERRAIN,
+            assetId: this.baseTerrain,
             slot: 0,
             cells: new Set<string>(),
             container: baseContainer,
@@ -341,7 +423,7 @@ export class StudioScene extends Phaser.Scene {
   }
 
   private fillBaseLayer() {
-    const baseLayer = this.getLayer(0, BASE_TERRAIN);
+    const baseLayer = this.getLayer(0, this.baseTerrain);
     if (!baseLayer) {
       return;
     }
@@ -411,6 +493,22 @@ export class StudioScene extends Phaser.Scene {
     layer.dirty = false;
   }
 
+  private hasTerrainTextures(asset: TerrainVisualAsset) {
+    return (
+      this.textures.exists(terrainAtlasKey(asset.id)) &&
+      this.textures.exists(terrainCenterVariantsKey(asset.id))
+    );
+  }
+
+  private markTerrainLayersDirty(assetId: TerrainVisualAssetId) {
+    for (const terrainLayers of this.layers.values()) {
+      const layer = terrainLayers.get(assetId);
+      if (layer) {
+        layer.dirty = true;
+      }
+    }
+  }
+
   private registerInput() {
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
       if (pointer.middleButtonDown() || pointer.rightButtonDown()) {
@@ -449,9 +547,9 @@ export class StudioScene extends Phaser.Scene {
         deltaY: number
       ) => {
         const nextZoom = Phaser.Math.Clamp(
-          this.cameras.main.zoom * (deltaY > 0 ? 0.9 : 1.1),
-          0.25,
-          3
+          this.cameras.main.zoom * (deltaY > 0 ? 0.88 : 1.16),
+          0.15,
+          8
         );
 
         this.zoomAtPointer(pointer, nextZoom);
@@ -656,10 +754,13 @@ export class StudioScene extends Phaser.Scene {
   private updateCameraBounds() {
     const worldWidth = this.widthTiles * TILE_SIZE;
     const worldHeight = this.heightTiles * TILE_SIZE;
+    const viewportWidth = this.scale.width || STUDIO_WIDTH;
+    const viewportHeight = this.scale.height || STUDIO_HEIGHT;
+
     this.cameras.main.setBounds(0, 0, worldWidth, worldHeight);
     this.cameras.main.centerOn(worldWidth / 2, worldHeight / 2);
     this.cameras.main.setZoom(
-      Math.min(1.2, STUDIO_WIDTH / worldWidth, STUDIO_HEIGHT / worldHeight)
+      Math.min(1.2, viewportWidth / worldWidth, viewportHeight / worldHeight)
     );
   }
 
@@ -685,7 +786,7 @@ export class StudioScene extends Phaser.Scene {
       width: this.widthTiles,
       height: this.heightTiles,
       tileSize: TILE_SIZE,
-      baseTerrain: BASE_TERRAIN,
+      baseTerrain: this.baseTerrain,
       terrainAssets: this.terrainAssets.filter((asset) => asset.generated),
       layers: STUDIO_LAYER_OPTIONS.flatMap((slot) => {
         const terrainLayers = this.layers.get(slot);
@@ -693,14 +794,16 @@ export class StudioScene extends Phaser.Scene {
           return [];
         }
 
-        return this.paintableTerrains.map((terrainId) => {
-          const layer = terrainLayers.get(terrainId);
-          const cells = [...(layer?.cells ?? [])]
-            .map((key) => key.split(",").map(Number) as [number, number])
-            .sort(([ax, ay], [bx, by]) => ay - by || ax - bx);
+        return this.paintableTerrains
+          .map((terrainId) => {
+            const layer = terrainLayers.get(terrainId);
+            const cells = [...(layer?.cells ?? [])]
+              .map((key) => key.split(",").map(Number) as [number, number])
+              .sort(([ax, ay], [bx, by]) => ay - by || ax - bx);
 
-          return { layer: slot, terrainId, cells };
-        }).filter((layer) => layer.cells.length > 0);
+            return { layer: slot, terrainId, cells };
+          })
+          .filter((layer) => layer.cells.length > 0);
       }),
     };
   }
@@ -709,35 +812,66 @@ export class StudioScene extends Phaser.Scene {
     return x >= 0 && y >= 0 && x < this.widthTiles && y < this.heightTiles;
   }
 
+  private getPaintableTerrainIds() {
+    return this.terrainAssets
+      .map((terrainAsset) => terrainAsset.id)
+      .filter((assetId) => assetId !== this.baseTerrain);
+  }
+
   private loadGeneratedTerrainTextures(
     asset: TerrainVisualAsset,
     onComplete: () => void
   ) {
-    const atlasKey = terrainAtlasKey(asset.id);
-    const centerKey = terrainCenterVariantsKey(asset.id);
+    void this.ensureTerrainAssetsLoaded([asset]).then(onComplete);
+  }
 
-    if (this.textures.exists(atlasKey)) {
-      this.textures.remove(atlasKey);
-    }
-    if (this.textures.exists(centerKey)) {
-      this.textures.remove(centerKey);
+  private ensureTerrainAssetsLoaded(assets: TerrainVisualAsset[]) {
+    if (!this.isReady) {
+      return Promise.resolve();
     }
 
-    this.load.image(atlasKey, asset.atlasUrl);
-    this.load.image(centerKey, asset.centerVariantsUrl);
-    this.load.once(Phaser.Loader.Events.COMPLETE, () => {
-      const changedLayers = this.layers.values();
+    const assetsToLoad = assets.filter(
+      (asset) => !this.hasTerrainTextures(asset)
+    );
+    if (!assetsToLoad.length) {
+      return Promise.resolve();
+    }
 
-      for (const terrainLayers of changedLayers) {
-        const layer = terrainLayers.get(asset.id);
-        if (layer) {
-          layer.dirty = true;
+    return new Promise<void>((resolve, reject) => {
+      const onComplete = () => {
+        this.load.off(Phaser.Loader.Events.LOAD_ERROR, onLoadError);
+
+        for (const asset of assetsToLoad) {
+          this.markTerrainLayersDirty(asset.id);
         }
+
+        resolve();
+      };
+      const onLoadError = (file: Phaser.Loader.File) => {
+        this.load.off(Phaser.Loader.Events.COMPLETE, onComplete);
+        reject(new Error(`Could not load terrain asset: ${file.key}`));
+      };
+
+      this.load.once(Phaser.Loader.Events.COMPLETE, onComplete);
+      this.load.once(Phaser.Loader.Events.LOAD_ERROR, onLoadError);
+
+      for (const asset of assetsToLoad) {
+        const atlasKey = terrainAtlasKey(asset.id);
+        const centerKey = terrainCenterVariantsKey(asset.id);
+
+        if (this.textures.exists(atlasKey)) {
+          this.textures.remove(atlasKey);
+        }
+        if (this.textures.exists(centerKey)) {
+          this.textures.remove(centerKey);
+        }
+
+        this.load.image(atlasKey, asset.atlasUrl);
+        this.load.image(centerKey, asset.centerVariantsUrl);
       }
 
-      onComplete();
+      this.load.start();
     });
-    this.load.start();
   }
 }
 
@@ -757,7 +891,7 @@ export function validateStudioMap(
     throw new Error("Map dimensions must be between 5 and 200.");
   }
 
-  if (map.tileSize !== TILE_SIZE || map.baseTerrain !== BASE_TERRAIN) {
+  if (map.tileSize !== TILE_SIZE || typeof map.baseTerrain !== "string") {
     throw new Error("Map tile size or base terrain is not supported.");
   }
 
@@ -822,9 +956,7 @@ export function terrainLabel(terrainId: TerrainVisualAssetId) {
 }
 
 function mergeTerrainAssets(customAssets: TerrainVisualAsset[]) {
-  const assets = BUILT_IN_TERRAIN_VISUAL_ASSET_IDS.map(
-    (assetId) => TERRAIN_VISUAL_ASSETS[assetId]
-  );
+  const assets: TerrainVisualAsset[] = [];
 
   for (const asset of customAssets) {
     if (!asset.id || !asset.atlasUrl || !asset.centerVariantsUrl) {

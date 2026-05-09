@@ -17,6 +17,16 @@ import {
   normalizeTerrainId,
 } from "../phaser/terrain-generator";
 
+type TextureQueueItem = TerrainPromptMetadata & {
+  queueId: string;
+  message?: string;
+  previewUrl?: string | null;
+  state: "queued" | "running" | "success" | "error";
+  textureId?: string;
+};
+
+const MAX_PARALLEL_TEXTURE_JOBS = 3;
+
 export function TextureStudioView({
   generatedTerrains,
   offline,
@@ -41,7 +51,9 @@ export function TextureStudioView({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [selectedTerrain, setSelectedTerrain] =
     useState<TerrainVisualAsset | null>(null);
+  const [textureQueue, setTextureQueue] = useState<TextureQueueItem[]>([]);
   const sourceInputRef = useRef<HTMLInputElement | null>(null);
+  const runningTextureJobsRef = useRef(new Set<string>());
 
   useEffect(() => {
     if (!selectedTerrain) {
@@ -136,30 +148,133 @@ export function TextureStudioView({
     }
   };
 
-  const generateTexture = async () => {
+  useEffect(() => {
+    if (offline) {
+      return;
+    }
+
+    const availableSlots =
+      MAX_PARALLEL_TEXTURE_JOBS - runningTextureJobsRef.current.size;
+    if (availableSlots <= 0) {
+      return;
+    }
+
+    const nextJobs = textureQueue
+      .filter(
+        (item) =>
+          item.state === "queued" &&
+          !runningTextureJobsRef.current.has(item.queueId)
+      )
+      .slice(0, availableSlots);
+    if (!nextJobs.length) {
+      return;
+    }
+
+    for (const nextJob of nextJobs) {
+      runningTextureJobsRef.current.add(nextJob.queueId);
+    }
+
+    setTextureQueue((current) =>
+      current.map((item) =>
+        nextJobs.some((job) => job.queueId === item.queueId)
+          ? {
+              ...item,
+              state: "running",
+              message: "Generating with Convex...",
+            }
+          : item
+      )
+    );
+    setStatus({
+      state: "loading",
+      text: `Running ${
+        runningTextureJobsRef.current.size
+      } texture generation job${
+        runningTextureJobsRef.current.size === 1 ? "" : "s"
+      } in parallel.`,
+    });
+
+    for (const nextJob of nextJobs) {
+      void generateSourceTexture(queueItemToPrompt(nextJob))
+        .then((texture) => {
+          setSelectedTerrain(null);
+          setSelectedSourceTexture(texture);
+          setPreviewUrl(texture.url);
+          setTextureQueue((current) =>
+            current.map((item) =>
+              item.queueId === nextJob.queueId
+                ? {
+                    ...item,
+                    state: "success",
+                    message: "Done",
+                    previewUrl: texture.url,
+                    textureId: texture.textureId,
+                  }
+                : item
+            )
+          );
+          setStatus({
+            state: "success",
+            text: `Generated ${nextJob.label}.`,
+          });
+        })
+        .catch((error) => {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Texture generation failed.";
+          setTextureQueue((current) =>
+            current.map((item) =>
+              item.queueId === nextJob.queueId
+                ? {
+                    ...item,
+                    state: "error",
+                    message,
+                  }
+                : item
+            )
+          );
+          setStatus({ state: "error", text: message });
+        })
+        .finally(() => {
+          runningTextureJobsRef.current.delete(nextJob.queueId);
+          setTextureQueue((current) => [...current]);
+        });
+    }
+  }, [offline, setSelectedSourceTexture, textureQueue]);
+
+  const queueTexture = () => {
     try {
-      setIsBusy(true);
       const nextForm = readForm();
-      setStatus({
-        state: "loading",
-        text: `Generating ${nextForm.label} source texture with Convex...`,
-      });
-      const texture = await generateSourceTexture(nextForm);
-      setSelectedSourceTexture(texture);
-      setPreviewUrl(texture.url);
+      const queueId = createQueueId();
+      setTextureQueue((current) => [
+        ...current,
+        {
+          ...nextForm,
+          queueId,
+          state: "queued",
+          message: "Waiting",
+        },
+      ]);
       setStatus({
         state: "success",
-        text: `Generated ${nextForm.label} source texture. Review the preview, then build terrain.`,
+        text: `Queued ${nextForm.label} for texture generation.`,
       });
     } catch (error) {
       setStatus({
         state: "error",
         text:
-          error instanceof Error ? error.message : "Texture generation failed.",
+          error instanceof Error ? error.message : "Could not queue texture.",
       });
-    } finally {
-      setIsBusy(false);
     }
+  };
+
+  const clearFinishedQueueItems = () => {
+    setTextureQueue((current) =>
+      current.filter(
+        (item) => item.state === "queued" || item.state === "running"
+      )
+    );
   };
 
   const buildTerrain = async () => {
@@ -298,12 +413,8 @@ export function TextureStudioView({
             </label>
           </div>
           <div className="studio-command-grid">
-            <button
-              disabled={isBusy || offline}
-              onClick={generateTexture}
-              type="button"
-            >
-              Generate Texture
+            <button disabled={offline} onClick={queueTexture} type="button">
+              Queue Texture
             </button>
             <button disabled={isBusy} onClick={copyPrompt} type="button">
               Copy Prompt
@@ -323,6 +434,48 @@ export function TextureStudioView({
             aria-live="polite"
           >
             {status.text}
+          </div>
+          <div className="studio-generation-queue">
+            <div className="studio-generation-queue__header">
+              <strong>
+                Texture Queue · {runningTextureJobsRef.current.size}/
+                {MAX_PARALLEL_TEXTURE_JOBS} running
+              </strong>
+              <button
+                disabled={!textureQueue.some(isFinishedQueueItem)}
+                onClick={clearFinishedQueueItems}
+                type="button"
+              >
+                Clear Done
+              </button>
+            </div>
+            {textureQueue.length > 0 ? (
+              <div className="studio-generation-queue__list">
+                {textureQueue.map((item, index) => (
+                  <button
+                    className="studio-generation-queue__item"
+                    data-state={item.state}
+                    key={item.queueId}
+                    onClick={() => {
+                      if (item.textureId && item.previewUrl) {
+                        setSelectedTerrain(null);
+                        setPreviewUrl(item.previewUrl);
+                      }
+                    }}
+                    type="button"
+                  >
+                    <span>{index + 1}</span>
+                    <strong>{item.label}</strong>
+                    <small>{item.message ?? queueStateLabel(item.state)}</small>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="studio-note">
+                Add several prompt variants here. They will generate one at a
+                time.
+              </p>
+            )}
           </div>
         </section>
 
@@ -477,4 +630,39 @@ function formatTextureSize(size: number) {
   }
 
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function createQueueId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function isFinishedQueueItem(item: TextureQueueItem) {
+  return item.state === "success" || item.state === "error";
+}
+
+function queueStateLabel(state: TextureQueueItem["state"]) {
+  switch (state) {
+    case "queued":
+      return "Waiting";
+    case "running":
+      return "Generating";
+    case "success":
+      return "Done";
+    case "error":
+      return "Failed";
+  }
+}
+
+function queueItemToPrompt(item: TextureQueueItem): TerrainPromptMetadata {
+  return {
+    terrainId: item.terrainId,
+    label: item.label,
+    material: item.material,
+    texturePrompt: item.texturePrompt,
+    stylePrompt: item.stylePrompt,
+  };
 }

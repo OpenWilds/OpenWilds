@@ -31,7 +31,14 @@ export const bootStudio = (app: HTMLElement) => {
 
 function StudioApp({ offline = false }: { offline?: boolean }) {
   if (offline) {
-    return <StudioShell offline sourceTextures={[]} generatedTerrains={[]} />;
+    return (
+      <StudioShell
+        offline
+        sourceTextures={[]}
+        generatedTerrains={[]}
+        savedWorlds={[]}
+      />
+    );
   }
 
   return <ReactiveStudioShell />;
@@ -42,6 +49,7 @@ function ReactiveStudioShell() {
   const terrainRecords = useQuery(refs.listTerrainAssets, {
     status: "library",
   });
+  const savedWorlds = useQuery(refs.listMaps, {});
   const sourceTextures = useMemo(
     () =>
       (textureRecords ?? [])
@@ -71,7 +79,12 @@ function ReactiveStudioShell() {
     <StudioShell
       sourceTextures={sourceTextures}
       generatedTerrains={generatedTerrains}
-      isLoading={textureRecords === undefined || terrainRecords === undefined}
+      savedWorlds={savedWorlds ?? []}
+      isLoading={
+        textureRecords === undefined ||
+        terrainRecords === undefined ||
+        savedWorlds === undefined
+      }
     />
   );
 }

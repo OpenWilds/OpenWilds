@@ -30,6 +30,16 @@ export type StudioTerrainAssetRecord = TerrainPromptMetadata & {
   generatedAt: number;
 };
 
+export type StudioMapRecord = {
+  _id: string;
+  name: string;
+  width: number;
+  height: number;
+  mapJson: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type StudioRouteId = "dashboard" | "textures" | "map" | "assets";
 
 export type StudioRoute = {

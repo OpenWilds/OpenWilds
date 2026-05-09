@@ -86,18 +86,21 @@ export const generateSourceTexture = action({
       size: blob.size,
     });
 
-    const textureId: string = await ctx.runMutation(api.studio.registerSourceTexture, {
-      terrainId: args.terrainId,
-      label: args.label,
-      storageId,
-      fileName: `${args.terrainId}-source-texture.png`,
-      contentType: content.contentType,
-      size: blob.size,
-      material: args.material,
-      texturePrompt: args.texturePrompt,
-      stylePrompt: args.stylePrompt,
-      status: "approved",
-    });
+    const textureId: string = await ctx.runMutation(
+      api.studio.registerSourceTexture,
+      {
+        terrainId: args.terrainId,
+        label: args.label,
+        storageId,
+        fileName: `${args.terrainId}-source-texture.png`,
+        contentType: content.contentType,
+        size: blob.size,
+        material: args.material,
+        texturePrompt: args.texturePrompt,
+        stylePrompt: args.stylePrompt,
+        status: "approved",
+      }
+    );
     const url = await ctx.storage.getUrl(storageId);
     logTextureGeneration(requestId, "registered", {
       textureId,
@@ -128,9 +131,7 @@ export const listTerrainTextures = query({
         ? await ctx.db.query("studioTerrainTextures").order("desc").take(100)
         : await ctx.db
             .query("studioTerrainTextures")
-            .withIndex("by_status_and_updatedAt", (q) =>
-              q.eq("status", status)
-            )
+            .withIndex("by_status_and_updatedAt", (q) => q.eq("status", status))
             .order("desc")
             .take(100);
 
@@ -246,9 +247,7 @@ export const listTerrainAssets = query({
         ? await ctx.db.query("studioTerrainAssets").order("desc").take(100)
         : await ctx.db
             .query("studioTerrainAssets")
-            .withIndex("by_status_and_updatedAt", (q) =>
-              q.eq("status", status)
-            )
+            .withIndex("by_status_and_updatedAt", (q) => q.eq("status", status))
             .order("desc")
             .take(100);
 
@@ -266,6 +265,7 @@ export const listTerrainAssets = query({
 
 export const saveMap = mutation({
   args: {
+    mapId: v.optional(v.id("studioMaps")),
     name: v.string(),
     width: v.number(),
     height: v.number(),
@@ -273,14 +273,22 @@ export const saveMap = mutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-
-    return await ctx.db.insert("studioMaps", {
+    const patch = {
       name: args.name,
       width: args.width,
       height: args.height,
       mapJson: args.mapJson,
-      createdAt: now,
       updatedAt: now,
+    };
+
+    if (args.mapId) {
+      await ctx.db.patch(args.mapId, patch);
+      return args.mapId;
+    }
+
+    return await ctx.db.insert("studioMaps", {
+      ...patch,
+      createdAt: now,
     });
   },
 });
@@ -349,32 +357,36 @@ async function requestOpenRouterImage(args: {
         reasoningEffort: args.reasoningEffort ?? null,
       });
 
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": process.env.OPENROUTER_SITE_URL ?? "http://localhost",
-          "X-Title": process.env.OPENROUTER_APP_NAME ?? "Open Wilds Studio",
-        },
-        body: JSON.stringify({
-          model: args.imageModel,
-          reasoning: args.reasoningEffort
-            ? {
-                effort: args.reasoningEffort,
-                exclude: true,
-              }
-            : undefined,
-          messages: [
-            {
-              role: "user",
-              content: args.prompt,
-            },
-          ],
-          modalities: ["image", "text"],
-          stream: false,
-        }),
-      });
+      const response = await fetch(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer":
+              process.env.OPENROUTER_SITE_URL ?? "http://localhost",
+            "X-Title": process.env.OPENROUTER_APP_NAME ?? "Open Wilds Studio",
+          },
+          body: JSON.stringify({
+            model: args.imageModel,
+            reasoning: args.reasoningEffort
+              ? {
+                  effort: args.reasoningEffort,
+                  exclude: true,
+                }
+              : undefined,
+            messages: [
+              {
+                role: "user",
+                content: args.prompt,
+              },
+            ],
+            modalities: ["image", "text"],
+            stream: false,
+          }),
+        }
+      );
 
       if (!response.ok) {
         const errorBody = await response.text();
@@ -398,7 +410,9 @@ async function requestOpenRouterImage(args: {
           attempt,
           durationMs: Date.now() - attemptStartedAt,
         });
-        throw new Error(`OpenRouter image model returned no image for "${args.title}".`);
+        throw new Error(
+          `OpenRouter image model returned no image for "${args.title}".`
+        );
       }
 
       logTextureGeneration(args.requestId, "openrouter_success", {
@@ -502,7 +516,9 @@ function textToBytes(text: string) {
 }
 
 function isRetryableImageError(error: unknown) {
-  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  const message = (
+    error instanceof Error ? error.message : String(error)
+  ).toLowerCase();
 
   return (
     message.includes("terminated") ||

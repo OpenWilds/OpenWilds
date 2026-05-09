@@ -105,7 +105,13 @@ const refs = {
   >("studio:listTerrainTextures"),
   saveMap: makeFunctionReference<
     "mutation",
-    { name: string; width: number; height: number; mapJson: string },
+    {
+      mapId?: string;
+      name: string;
+      width: number;
+      height: number;
+      mapJson: string;
+    },
     string
   >("studio:saveMap"),
   generateSourceTexture: makeFunctionReference<
@@ -262,11 +268,13 @@ export async function listStudioSourceTextures(): Promise<
 
 export async function saveStudioMapToConvex(
   name: string,
-  map: StudioMapExport
+  map: StudioMapExport,
+  mapId?: string | null
 ) {
   const convex = getClient();
 
   return await convex.mutation(refs.saveMap, {
+    mapId: mapId ?? undefined,
     name,
     width: map.width,
     height: map.height,

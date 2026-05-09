@@ -14,7 +14,7 @@ export function AssetsView({
         <h2>Asset Library</h2>
         <p>
           Generated terrain and source textures are available from the Texture
-          Studio and Map Editor today.
+          Studio and World Studio today.
         </p>
         <button
           className="studio-primary-action"

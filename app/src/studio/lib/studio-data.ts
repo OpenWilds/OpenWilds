@@ -1,11 +1,8 @@
 import { makeFunctionReference } from "convex/server";
 
-import {
-  BUILT_IN_TERRAIN_VISUAL_ASSET_IDS,
-  TERRAIN_VISUAL_ASSETS,
-} from "../../assets/visual-assets";
 import type { StudioSourceTexture } from "../convex/convex-studio";
 import type {
+  StudioMapRecord,
   StudioTerrainAssetRecord,
   StudioTerrainTextureRecord,
   StudioRoute,
@@ -29,10 +26,10 @@ export const ROUTES: Record<StudioRouteId, StudioRoute> = {
     title: "Texture Studio",
   },
   map: {
-    icon: "MP",
+    icon: "WS",
     id: "map",
     kicker: "World Building",
-    title: "Map Editor",
+    title: "World Studio",
   },
   assets: {
     icon: "AS",
@@ -68,12 +65,10 @@ export const refs = {
     { status?: TerrainStatus },
     StudioTerrainAssetRecord[]
   >("studio:listTerrainAssets"),
+  listMaps: makeFunctionReference<"query", {}, StudioMapRecord[]>(
+    "studio:listMaps"
+  ),
 };
-
-export const initialTerrainAssets = () =>
-  BUILT_IN_TERRAIN_VISUAL_ASSET_IDS.map(
-    (assetId) => TERRAIN_VISUAL_ASSETS[assetId]
-  );
 
 export function textureRecordToSourceTexture(
   record: StudioTerrainTextureRecord

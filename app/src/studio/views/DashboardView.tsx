@@ -18,7 +18,7 @@ export function DashboardView({
           <article className="studio-stat">
             <span>Total Terrain Assets</span>
             <strong>{terrainCount}</strong>
-            <small>Built-in and generated</small>
+            <small>Generated in Convex</small>
           </article>
           <article className="studio-stat">
             <span>Source Textures</span>
@@ -26,7 +26,7 @@ export function DashboardView({
             <small>Live from Convex</small>
           </article>
           <article className="studio-stat">
-            <span>Active Map</span>
+            <span>Active World</span>
             <strong>40x40</strong>
             <small>Layered terrain grid</small>
           </article>
@@ -62,11 +62,11 @@ export function DashboardView({
               type="button"
             >
               <span className="studio-recent-item__icon" aria-hidden="true">
-                MP
+                WS
               </span>
               <span>
-                <strong>Open map editor</strong>
-                <small>Paint layers and export JSON</small>
+                <strong>Open world studio</strong>
+                <small>Name a world, choose layer 0, paint layers</small>
               </span>
             </button>
             <button
