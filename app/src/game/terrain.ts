@@ -1,4 +1,5 @@
 import { GRID_SIZE } from "./grid-constants";
+import type { TerrainVisualAssetId } from "../assets/visual-assets";
 import type { GridPoint } from "./types";
 
 export const TerrainFeature = {
@@ -27,6 +28,7 @@ export type TerrainTypeDefinition = {
   terrainTypeId: number;
   label: string;
   color: number;
+  visualAssetId: TerrainVisualAssetId;
   featureFlags: number;
   primaryDropItemId: number;
   secondaryDropItemId: number;
@@ -42,6 +44,7 @@ export const TERRAIN_TYPES: TerrainTypeDefinition[] = [
     terrainTypeId: TerrainTypeId.meadow,
     label: "Meadow",
     color: 0xe2f0c2,
+    visualAssetId: "uniswap-grass",
     featureFlags: TerrainFeature.farmable | TerrainFeature.forageable,
     primaryDropItemId: ItemId.grassFiber,
     secondaryDropItemId: ItemId.berry,
@@ -51,6 +54,7 @@ export const TERRAIN_TYPES: TerrainTypeDefinition[] = [
     terrainTypeId: TerrainTypeId.forest,
     label: "Forest",
     color: 0xaed4a0,
+    visualAssetId: "uniswap-forest-floor",
     featureFlags: TerrainFeature.forageable,
     primaryDropItemId: ItemId.berry,
     secondaryDropItemId: ItemId.grassFiber,
@@ -60,6 +64,7 @@ export const TERRAIN_TYPES: TerrainTypeDefinition[] = [
     terrainTypeId: TerrainTypeId.stone,
     label: "Stone",
     color: 0xb9bec6,
+    visualAssetId: "uniswap-stone",
     featureFlags: TerrainFeature.minable,
     primaryDropItemId: ItemId.stone,
     secondaryDropItemId: ItemId.none,
@@ -69,6 +74,7 @@ export const TERRAIN_TYPES: TerrainTypeDefinition[] = [
     terrainTypeId: TerrainTypeId.water,
     label: "Water",
     color: 0x8ecae6,
+    visualAssetId: "uniswap-water",
     featureFlags: TerrainFeature.blocksMovement,
     primaryDropItemId: ItemId.reed,
     secondaryDropItemId: ItemId.none,

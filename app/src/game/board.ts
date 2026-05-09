@@ -1,5 +1,12 @@
 import Phaser from "phaser";
 import {
+  TERRAIN_VISUAL_ASSETS,
+  terrainAtlasKey,
+  terrainCenterVariantsKey,
+  type TerrainVisualAssetId,
+} from "../assets/visual-assets";
+import { cellKey, renderAutotileLayer } from "./autotile";
+import {
   CELL_SIZE,
   GRID_ORIGIN_X,
   GRID_ORIGIN_Y,
@@ -9,7 +16,8 @@ import {
 import { getTerrainType, getTileTerrainDefinition } from "./terrain";
 
 export const createBoard = (scene: Phaser.Scene) => {
-  const board = scene.add.graphics();
+  const board = scene.add.graphics().setDepth(-30);
+  const terrainLayers = createTerrainLayers();
 
   board.fillStyle(0xffffff, 1);
   board.fillRoundedRect(
@@ -20,40 +28,57 @@ export const createBoard = (scene: Phaser.Scene) => {
     8
   );
 
-  board.fillStyle(0xd9eadc, 1);
-  board.fillRect(GRID_ORIGIN_X, GRID_ORIGIN_Y, GRID_PIXELS, GRID_PIXELS);
-
   for (let y = 0; y < GRID_SIZE; y += 1) {
     for (let x = 0; x < GRID_SIZE; x += 1) {
+      terrainLayers["uniswap-plain"].cells.add(cellKey(x, y));
       const terrain = getTerrainType(
         getTileTerrainDefinition({ x, y }).terrainTypeId
       );
-      const alpha = (x + y) % 2 === 0 ? 1 : 0.88;
-      board.fillStyle(terrain.color, alpha);
-      board.fillRect(
-        GRID_ORIGIN_X + x * CELL_SIZE,
-        GRID_ORIGIN_Y + y * CELL_SIZE,
-        CELL_SIZE,
-        CELL_SIZE
-      );
+
+      terrainLayers[terrain.visualAssetId].cells.add(cellKey(x, y));
     }
   }
 
-  board.lineStyle(1, 0x91aa96, 0.72);
+  Object.values(terrainLayers).forEach((layer, index) => {
+    const asset = TERRAIN_VISUAL_ASSETS[layer.assetId];
+    const container = scene.add
+      .container(GRID_ORIGIN_X, GRID_ORIGIN_Y)
+      .setDepth(-20 + index);
 
-  for (let index = 0; index <= GRID_SIZE; index += 1) {
-    const lineOffset = index * CELL_SIZE;
-    board.lineBetween(
-      GRID_ORIGIN_X + lineOffset,
-      GRID_ORIGIN_Y,
-      GRID_ORIGIN_X + lineOffset,
-      GRID_ORIGIN_Y + GRID_PIXELS
+    renderAutotileLayer(
+      scene,
+      container,
+      layer,
+      terrainAtlasKey(asset.id),
+      terrainCenterVariantsKey(asset.id),
+      CELL_SIZE,
+      GRID_SIZE,
+      GRID_SIZE
     );
-    board.lineBetween(
-      GRID_ORIGIN_X,
-      GRID_ORIGIN_Y + lineOffset,
-      GRID_ORIGIN_X + GRID_PIXELS,
-      GRID_ORIGIN_Y + lineOffset
-    );
-  }
+  });
+
+  board.lineStyle(1, 0xffffff, 0.18);
+  board.strokeRect(GRID_ORIGIN_X, GRID_ORIGIN_Y, GRID_PIXELS, GRID_PIXELS);
+};
+
+const createTerrainLayers = () => {
+  const layerIds: TerrainVisualAssetId[] = [
+    "uniswap-plain",
+    "uniswap-grass",
+    "uniswap-forest-floor",
+    "uniswap-stone",
+    "uniswap-water",
+    "uniswap-dirt",
+  ];
+
+  return layerIds.reduce(
+    (layers, assetId) => ({
+      ...layers,
+      [assetId]: { assetId, cells: new Set<string>() },
+    }),
+    {} as Record<
+      TerrainVisualAssetId,
+      { assetId: TerrainVisualAssetId; cells: Set<string> }
+    >
+  );
 };

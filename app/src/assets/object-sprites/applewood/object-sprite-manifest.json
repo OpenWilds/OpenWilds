@@ -1,0 +1,242 @@
+{
+  "generatedAt": "2026-04-27T21:21:12.028Z",
+  "request": {
+    "spriteKind": "tree",
+    "objectId": "applewood",
+    "objectName": "Applewood",
+    "objectPrompt": "round orchard fruit tree with red apples, fresh green leaves, warm brown trunk, and friendly basic farm-game readability; readable as a small top-down farming and forest game tree",
+    "stylePrompt": "cozy hand-painted 2D game tree sprite, three-quarter top-down view, bottom-center rooted anchor point, mature trees are large world objects, not crop-sized shrubs, grown tree frames should remain crisp when rendered about two terrain tiles tall, strong readable trunk and canopy silhouette, soft natural edges, warm but balanced highlights, no outlines heavier than the terrain art, transparent background",
+    "styleReferencePath": "/Users/ajand/Projects/Pantheon/apps/game/src/assets/autotiles/vibrant-grass/autotile-blob-7x7.png",
+    "styleReferenceCell": {
+      "row": 1,
+      "column": 1,
+      "cellSize": 256
+    },
+    "imageModel": "openai/gpt-5.4-image-2",
+    "reasoningEffort": "high",
+    "states": [
+      {
+        "id": "seed",
+        "title": "Seed",
+        "prompt": "column 1 is an isolated collectible tree seed, nut, pit, cone, or sapling item with no dirt; columns 2-4 are planted seed and tiny sapling steps rooted in soil"
+      },
+      {
+        "id": "growing",
+        "title": "Growing",
+        "prompt": "progressive sapling-to-young-tree growth steps, with trunk height and canopy volume increasing while the root point stays fixed; later columns should clearly grow toward a large tree silhouette"
+      },
+      {
+        "id": "grown",
+        "title": "Grown",
+        "prompt": "different stable mature harvest-ready tree variants with consistent species identity, not animation frames; full tree silhouettes designed to render about two terrain tiles tall, with substantial trunk height and canopy mass"
+      },
+      {
+        "id": "harvested",
+        "title": "Harvested",
+        "prompt": "columns 1-2 are post-harvest tree remnants such as a pruned canopy, stump, or tapped trunk; columns 3-4 are isolated harvested tree resource pickups"
+      }
+    ],
+    "columns": 4,
+    "columnLabels": [
+      "step 1",
+      "step 2",
+      "step 3",
+      "step 4"
+    ],
+    "cellSize": 256,
+    "background": "transparent",
+    "outputDir": "generated/object-sprites/applewood"
+  },
+  "imageModel": "openai/gpt-5.4-image-2",
+  "rows": 4,
+  "columns": 4,
+  "cellSize": 256,
+  "atlasWidth": 1024,
+  "atlasHeight": 1024,
+  "image": {
+    "id": "applewood-sprite-sheet",
+    "title": "Applewood sprite sheet",
+    "prompt": "Create a game object sprite sheet for Applewood.\nObject brief: round orchard fruit tree with red apples, fresh green leaves, warm brown trunk, and friendly basic farm-game readability; readable as a small top-down farming and forest game tree.\n\nReference image 1 is a checkerboard layout guide. Use it as the exact composition template with exact sizes, all cells are square all equal size.\nPreserve its 4:4 sheet ratio and its 4 columns by 4 rows of equal square cells.\nThe exact guide has also been saved locally at generated/object-sprites/applewood/object-sprite-layout-guide.png for verification.\nPlace exactly one frame in the center of each checkerboard cell.\nAlign the center of each object frame to the center of its cell.\nKeep every frame fully inside its own cell, with consistent margins and no overlap into neighboring cells.\nKeep the checkerboard grid visible in the final image so the generated frames can be verified against the grid.\nPreserve the alternating white and gray cell backgrounds from the guide.\nDraw the object frames on top of the provided checkerboard cells.\n\nTarget runtime atlas metadata: 1024x1024 logical units, arranged as 4 rows by 4 columns.\nEach logical grid cell is 256x256 units. The generated image may be higher resolution, but it must keep the same 4:4 grid ratio.\nKeep the object scale, anchor point, perspective, and lighting consistent across cells.\nDo not crop any object. Leave enough breathing room inside each cell for animation motion.\nDo not draw labels, text, numbers, watermarks, decorative borders, or UI.\nUse a transparent background for every cell.\n\nRows, top to bottom:\nRow 0: Seed (seed) - column 1 is an isolated collectible tree seed, nut, pit, cone, or sapling item with no dirt; columns 2-4 are planted seed and tiny sapling steps rooted in soil\nRow 1: Growing (growing) - progressive sapling-to-young-tree growth steps, with trunk height and canopy volume increasing while the root point stays fixed; later columns should clearly grow toward a large tree silhouette\nRow 2: Grown (grown) - different stable mature harvest-ready tree variants with consistent species identity, not animation frames; full tree silhouettes designed to render about two terrain tiles tall, with substantial trunk height and canopy mass\nRow 3: Harvested (harvested) - columns 1-2 are post-harvest tree remnants such as a pruned canopy, stump, or tapped trunk; columns 3-4 are isolated harvested tree resource pickups\n\nColumns, left to right:\nColumn 0: step 1.\nColumn 1: step 2.\nColumn 2: step 3.\nColumn 3: step 4.\n\nColumn behavior:\nFor seed rows, column 1 is an isolated collectible seed item with no dirt below it. Columns 2 through the end are planted seed growth steps from left to right.\nFor grown or harvest-ready rows, columns are different stable variants of the same mature state, not a transformation sequence.\nFor harvested rows, the first half of columns are post-harvest tree trunk, stump, or canopy remnants left in the ground, and the second half are isolated fruit, cone, branch, seed pod, resin, leaf bundle, or magical tree resource pickups.\nKeep all columns in a row coherent for that row's state, not different unrelated designs.\nPreserve the same silhouette language and materials across all states so the tree clearly evolves from row to row.\nTree frames should be rooted at the bottom center of each cell, with trunks growing upward from a stable ground contact point.\nKeep canopies readable from a three-quarter top-down view without covering neighboring cells.\nMature tree frames must read much larger than crop frames: use a full tree silhouette that will still look detailed and intentional when the game renders it at roughly two terrain tiles tall.\nDo not make mature trees crop-sized or shrub-sized. Seed and sapling frames can be small, but grown frames should have substantial trunk height and canopy mass.\n\nStyle direction:\ncozy hand-painted 2D game tree sprite, three-quarter top-down view, bottom-center rooted anchor point, mature trees are large world objects, not crop-sized shrubs, grown tree frames should remain crisp when rendered about two terrain tiles tall, strong readable trunk and canopy silhouette, soft natural edges, warm but balanced highlights, no outlines heavier than the terrain art, transparent background\nReference image 2 is a style reference. Use it for palette, rendering texture, edge softness, contrast, and game-art finish. Do not copy its subject unless it matches the object brief.\n\nReturn one PNG containing the full sprite sheet only.",
+    "model": "openai/gpt-5.4-image-2",
+    "contentType": "image/png",
+    "filePath": "generated/object-sprites/applewood/applewood-sprite-sheet.png"
+  },
+  "cells": [
+    {
+      "stateId": "seed",
+      "stateTitle": "Seed",
+      "columnLabel": "step 1",
+      "row": 0,
+      "column": 0,
+      "x": 0,
+      "y": 0,
+      "width": 256,
+      "height": 256
+    },
+    {
+      "stateId": "seed",
+      "stateTitle": "Seed",
+      "columnLabel": "step 2",
+      "row": 0,
+      "column": 1,
+      "x": 256,
+      "y": 0,
+      "width": 256,
+      "height": 256
+    },
+    {
+      "stateId": "seed",
+      "stateTitle": "Seed",
+      "columnLabel": "step 3",
+      "row": 0,
+      "column": 2,
+      "x": 512,
+      "y": 0,
+      "width": 256,
+      "height": 256
+    },
+    {
+      "stateId": "seed",
+      "stateTitle": "Seed",
+      "columnLabel": "step 4",
+      "row": 0,
+      "column": 3,
+      "x": 768,
+      "y": 0,
+      "width": 256,
+      "height": 256
+    },
+    {
+      "stateId": "growing",
+      "stateTitle": "Growing",
+      "columnLabel": "step 1",
+      "row": 1,
+      "column": 0,
+      "x": 0,
+      "y": 256,
+      "width": 256,
+      "height": 256
+    },
+    {
+      "stateId": "growing",
+      "stateTitle": "Growing",
+      "columnLabel": "step 2",
+      "row": 1,
+      "column": 1,
+      "x": 256,
+      "y": 256,
+      "width": 256,
+      "height": 256
+    },
+    {
+      "stateId": "growing",
+      "stateTitle": "Growing",
+      "columnLabel": "step 3",
+      "row": 1,
+      "column": 2,
+      "x": 512,
+      "y": 256,
+      "width": 256,
+      "height": 256
+    },
+    {
+      "stateId": "growing",
+      "stateTitle": "Growing",
+      "columnLabel": "step 4",
+      "row": 1,
+      "column": 3,
+      "x": 768,
+      "y": 256,
+      "width": 256,
+      "height": 256
+    },
+    {
+      "stateId": "grown",
+      "stateTitle": "Grown",
+      "columnLabel": "step 1",
+      "row": 2,
+      "column": 0,
+      "x": 0,
+      "y": 512,
+      "width": 256,
+      "height": 256
+    },
+    {
+      "stateId": "grown",
+      "stateTitle": "Grown",
+      "columnLabel": "step 2",
+      "row": 2,
+      "column": 1,
+      "x": 256,
+      "y": 512,
+      "width": 256,
+      "height": 256
+    },
+    {
+      "stateId": "grown",
+      "stateTitle": "Grown",
+      "columnLabel": "step 3",
+      "row": 2,
+      "column": 2,
+      "x": 512,
+      "y": 512,
+      "width": 256,
+      "height": 256
+    },
+    {
+      "stateId": "grown",
+      "stateTitle": "Grown",
+      "columnLabel": "step 4",
+      "row": 2,
+      "column": 3,
+      "x": 768,
+      "y": 512,
+      "width": 256,
+      "height": 256
+    },
+    {
+      "stateId": "harvested",
+      "stateTitle": "Harvested",
+      "columnLabel": "step 1",
+      "row": 3,
+      "column": 0,
+      "x": 0,
+      "y": 768,
+      "width": 256,
+      "height": 256
+    },
+    {
+      "stateId": "harvested",
+      "stateTitle": "Harvested",
+      "columnLabel": "step 2",
+      "row": 3,
+      "column": 1,
+      "x": 256,
+      "y": 768,
+      "width": 256,
+      "height": 256
+    },
+    {
+      "stateId": "harvested",
+      "stateTitle": "Harvested",
+      "columnLabel": "step 3",
+      "row": 3,
+      "column": 2,
+      "x": 512,
+      "y": 768,
+      "width": 256,
+      "height": 256
+    },
+    {
+      "stateId": "harvested",
+      "stateTitle": "Harvested",
+      "columnLabel": "step 4",
+      "row": 3,
+      "column": 3,
+      "x": 768,
+      "y": 768,
+      "width": 256,
+      "height": 256
+    }
+  ]
+}

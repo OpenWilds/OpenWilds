@@ -1,4 +1,8 @@
 import type * as Phaser from "phaser";
+import {
+  objectSpriteKey,
+  type ObjectSpriteAssetId,
+} from "../assets/visual-assets";
 import { ItemId } from "./terrain";
 
 export const FarmKind = {
@@ -62,6 +66,7 @@ export type FarmTypeDefinition = {
   flags: number;
   color: number;
   accentColor: number;
+  spriteAssetId: ObjectSpriteAssetId;
 };
 
 const HOUR = 60 * 60;
@@ -83,6 +88,7 @@ export const FARM_TYPES: FarmTypeDefinition[] = [
     flags: FarmFeature.requiresTilledSoil | FarmFeature.needsWater,
     color: 0xd8f3a6,
     accentColor: 0x8f5e3b,
+    spriteAssetId: "city-clover",
   },
   {
     farmTypeId: 2,
@@ -99,6 +105,7 @@ export const FARM_TYPES: FarmTypeDefinition[] = [
     flags: FarmFeature.requiresTilledSoil | FarmFeature.needsWater,
     color: 0xf3d76b,
     accentColor: 0xa26924,
+    spriteAssetId: "sungrain",
   },
   {
     farmTypeId: 3,
@@ -115,6 +122,7 @@ export const FARM_TYPES: FarmTypeDefinition[] = [
     flags: FarmFeature.requiresTilledSoil | FarmFeature.needsWater,
     color: 0xba6ee8,
     accentColor: 0x4f8b4c,
+    spriteAssetId: "routeberry",
   },
   {
     farmTypeId: 20,
@@ -131,6 +139,7 @@ export const FARM_TYPES: FarmTypeDefinition[] = [
     flags: 0,
     color: 0x7fbe5a,
     accentColor: 0xe74f3d,
+    spriteAssetId: "applewood",
   },
   {
     farmTypeId: 21,
@@ -147,6 +156,7 @@ export const FARM_TYPES: FarmTypeDefinition[] = [
     flags: 0,
     color: 0x5f9b54,
     accentColor: 0x8b5a2b,
+    spriteAssetId: "stonepine",
   },
 ];
 
@@ -200,6 +210,21 @@ export const drawFarmPlaceholder = (
   y: number,
   scale = 1
 ) => {
+  const textureKey = objectSpriteKey(farm.spriteAssetId);
+  if (scene.textures.exists(textureKey)) {
+    const frame = farm.kind === FarmKind.tree ? 8 : 10;
+    const image = scene.add
+      .image(x, y + 4 * scale, textureKey, frame)
+      .setDepth(4)
+      .setOrigin(0.5, 0.68)
+      .setDisplaySize(
+        (farm.kind === FarmKind.tree ? 38 : 30) * scale,
+        (farm.kind === FarmKind.tree ? 38 : 30) * scale
+      );
+
+    return image;
+  }
+
   const graphics = scene.add.graphics();
   graphics.setDepth(4);
 
