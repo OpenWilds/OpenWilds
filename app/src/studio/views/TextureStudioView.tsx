@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 
+import type { TerrainVisualAsset } from "../../assets/visual-assets";
 import {
   dataUrlToPngBlob,
   generateSourceTexture,
@@ -17,11 +18,13 @@ import {
 } from "../phaser/terrain-generator";
 
 export function TextureStudioView({
+  generatedTerrains,
   offline,
   selectedSourceTexture,
   setSelectedSourceTexture,
   sourceTextures,
 }: {
+  generatedTerrains: TerrainVisualAsset[];
   offline: boolean;
   selectedSourceTexture: StudioSourceTexture | null;
   setSelectedSourceTexture: (texture: StudioSourceTexture | null) => void;
@@ -36,11 +39,29 @@ export function TextureStudioView({
   });
   const [isBusy, setIsBusy] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [selectedTerrain, setSelectedTerrain] =
+    useState<TerrainVisualAsset | null>(null);
   const sourceInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    setPreviewUrl(selectedSourceTexture?.url ?? null);
+    if (!selectedTerrain) {
+      setPreviewUrl(selectedSourceTexture?.url ?? null);
+    }
   }, [selectedSourceTexture]);
+
+  useEffect(() => {
+    if (!selectedTerrain) {
+      return;
+    }
+
+    const refreshedTerrain = generatedTerrains.find(
+      (terrain) => terrain.id === selectedTerrain.id
+    );
+
+    if (refreshedTerrain) {
+      setSelectedTerrain(refreshedTerrain);
+    }
+  }, [generatedTerrains, selectedTerrain]);
 
   const updateForm = (field: keyof TerrainPromptMetadata, value: string) => {
     setForm((current) => ({
@@ -50,6 +71,7 @@ export function TextureStudioView({
   };
 
   const selectTexture = (texture: StudioSourceTexture) => {
+    setSelectedTerrain(null);
     setSelectedSourceTexture(texture);
     setForm({
       terrainId: texture.terrainId,
@@ -61,6 +83,18 @@ export function TextureStudioView({
     setStatus({
       state: "success",
       text: `Selected ${texture.label} source texture. Build terrain when ready.`,
+    });
+  };
+
+  const selectTerrain = (terrain: TerrainVisualAsset) => {
+    setSelectedTerrain(terrain);
+    setSelectedSourceTexture(null);
+    setPreviewUrl(null);
+    setStatus({
+      state: "success",
+      text: `Selected ${
+        terrain.label ?? terrainLabel(terrain.id)
+      } terrain tileset.`,
     });
   };
 
@@ -297,7 +331,28 @@ export function TextureStudioView({
             <p className="eyebrow">Review</p>
             <h2>Selected Source</h2>
           </div>
-          {previewUrl ? (
+          {selectedTerrain ? (
+            <div className="studio-tileset-preview">
+              <div>
+                <span>Autotile Atlas</span>
+                <img
+                  src={selectedTerrain.atlasUrl}
+                  alt={`${
+                    selectedTerrain.label ?? terrainLabel(selectedTerrain.id)
+                  } autotile atlas`}
+                />
+              </div>
+              <div>
+                <span>Center Variants</span>
+                <img
+                  src={selectedTerrain.centerVariantsUrl}
+                  alt={`${
+                    selectedTerrain.label ?? terrainLabel(selectedTerrain.id)
+                  } center variants`}
+                />
+              </div>
+            </div>
+          ) : previewUrl ? (
             <div className="studio-texture-preview">
               <img
                 src={previewUrl}
@@ -309,7 +364,8 @@ export function TextureStudioView({
               <span aria-hidden="true" />
               <strong>No source selected</strong>
               <p>
-                Generate or choose a Convex source texture to preview it here.
+                Generate or choose a Convex source texture, or select a terrain
+                tileset below.
               </p>
             </div>
           )}
@@ -364,6 +420,45 @@ export function TextureStudioView({
               <p>
                 Recent Textures now only displays source textures from Convex.
               </p>
+            </div>
+          )}
+          <div className="studio-library-heading studio-library-heading--secondary">
+            <div className="studio-section-heading">
+              <p className="eyebrow">Output</p>
+              <h2>Terrain Tilesets</h2>
+            </div>
+            <span>{generatedTerrains.length} Terrain</span>
+          </div>
+          {generatedTerrains.length > 0 ? (
+            <div className="studio-source-textures">
+              <div className="studio-source-texture-list">
+                {generatedTerrains.slice(0, 12).map((terrain) => (
+                  <button
+                    className="studio-source-texture-button"
+                    data-active={
+                      selectedTerrain?.id === terrain.id ? "" : undefined
+                    }
+                    key={terrain.id}
+                    onClick={() => selectTerrain(terrain)}
+                    type="button"
+                  >
+                    <span className="studio-source-texture-thumb studio-source-texture-thumb--atlas">
+                      <img src={terrain.centerVariantsUrl} alt="" />
+                    </span>
+                    <span className="studio-source-texture-meta">
+                      <strong>
+                        {terrain.label ?? terrainLabel(terrain.id)}
+                      </strong>
+                      <small>tileset · atlas</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="studio-library-empty">
+              Build terrain from a source texture to inspect its generated
+              tileset here.
             </div>
           )}
         </section>

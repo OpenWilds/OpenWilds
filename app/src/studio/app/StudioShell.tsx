@@ -124,6 +124,7 @@ export function StudioShell({
         ) : null}
         {route === "textures" ? (
           <TextureStudioView
+            generatedTerrains={generatedTerrains}
             offline={offline}
             selectedSourceTexture={selectedSourceTexture}
             setSelectedSourceTexture={setSelectedSourceTexture}
