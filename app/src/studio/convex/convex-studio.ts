@@ -1,8 +1,8 @@
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 
-import type { TerrainVisualAsset } from "../assets/visual-assets";
-import type { StudioMapExport } from "./studio-scene";
+import type { TerrainVisualAsset } from "../../assets/visual-assets";
+import type { StudioMapExport } from "../phaser/studio-scene";
 
 type TerrainStatus = "draft" | "library" | "archived";
 type TextureStatus = "draft" | "approved" | "archived";
@@ -41,6 +41,7 @@ export type StudioSourceTexture = TerrainPromptMetadata & {
   url: string | null;
   contentType: string;
   size: number;
+  status: TextureStatus;
   updatedAt: number;
 };
 
@@ -111,7 +112,13 @@ const refs = {
     "action",
     TerrainPromptMetadata & {
       imageModel?: string;
-      reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+      reasoningEffort?:
+        | "none"
+        | "minimal"
+        | "low"
+        | "medium"
+        | "high"
+        | "xhigh";
     },
     GeneratedSourceTexture
   >("studio:generateSourceTexture"),
@@ -137,9 +144,11 @@ export async function uploadStudioFile(file: Blob): Promise<UploadResult> {
   return (await response.json()) as UploadResult;
 }
 
-export async function registerSourceTexture(args: TerrainPromptMetadata & {
-  file: File;
-}) {
+export async function registerSourceTexture(
+  args: TerrainPromptMetadata & {
+    file: File;
+  }
+) {
   const convex = getClient();
   const upload = await uploadStudioFile(args.file);
 
@@ -170,11 +179,13 @@ export async function generateSourceTexture(
   };
 }
 
-export async function registerGeneratedTerrainAsset(args: TerrainPromptMetadata & {
-  sourceTextureId?: string;
-  atlasBlob: Blob;
-  centerVariantsBlob: Blob;
-}) {
+export async function registerGeneratedTerrainAsset(
+  args: TerrainPromptMetadata & {
+    sourceTextureId?: string;
+    atlasBlob: Blob;
+    centerVariantsBlob: Blob;
+  }
+) {
   const convex = getClient();
   const [atlas, centerVariants] = await Promise.all([
     uploadStudioFile(args.atlasBlob),
@@ -220,14 +231,14 @@ export async function listStudioTerrainAssets(): Promise<TerrainVisualAsset[]> {
   });
 }
 
-export async function listStudioSourceTextures(): Promise<StudioSourceTexture[]> {
+export async function listStudioSourceTextures(): Promise<
+  StudioSourceTexture[]
+> {
   const convex = getClient();
-  const records = await convex.query(refs.listTerrainTextures, {
-    status: "approved",
-  });
+  const records = await convex.query(refs.listTerrainTextures, {});
 
   return records.flatMap((record) => {
-    if (!record.url) {
+    if (!record.url || record.status === "archived") {
       return [];
     }
 
@@ -242,6 +253,7 @@ export async function listStudioSourceTextures(): Promise<StudioSourceTexture[]>
         url: record.url,
         contentType: record.contentType,
         size: record.size,
+        status: record.status,
         updatedAt: record.updatedAt,
       },
     ];

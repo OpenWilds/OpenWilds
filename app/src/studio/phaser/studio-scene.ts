@@ -6,12 +6,12 @@ import {
   terrainCenterVariantsKey,
   type TerrainVisualAsset,
   type TerrainVisualAssetId,
-} from "../assets/visual-assets";
+} from "../../assets/visual-assets";
 import {
   cellKey,
   renderAutotileLayer,
   type TerrainGridLayer,
-} from "../game/autotile";
+} from "../../game/autotile";
 
 export const STUDIO_WIDTH = 1280;
 export const STUDIO_HEIGHT = 820;

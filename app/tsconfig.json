@@ -5,10 +5,10 @@
     "moduleResolution": "node",
     "lib": ["es2020", "dom", "dom.iterable"],
     "types": ["vite/client"],
+    "jsx": "react-jsx",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "strict": false
   },
-  "include": ["src/**/*.ts", "vite-env.d.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "vite-env.d.ts"]
 }
-

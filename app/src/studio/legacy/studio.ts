@@ -4,7 +4,7 @@ import {
   TERRAIN_VISUAL_ASSETS,
   type TerrainVisualAsset,
   type TerrainVisualAssetId,
-} from "../assets/visual-assets";
+} from "../../assets/visual-assets";
 import {
   STUDIO_HEIGHT,
   STUDIO_LAYER_OPTIONS,
@@ -14,7 +14,7 @@ import {
   validateStudioMap,
   type StudioMapExport,
   type StudioSceneState,
-} from "./studio-scene";
+} from "../phaser/studio-scene";
 import {
   dataUrlToPngBlob,
   generateSourceTexture,
@@ -25,48 +25,225 @@ import {
   registerSourceTexture,
   saveStudioMapToConvex,
   type StudioSourceTexture,
-} from "./convex-studio";
+} from "../convex/convex-studio";
 import {
   buildTerrainTexturePrompt,
   generateTerrainAsset,
   normalizeTerrainId,
-} from "./terrain-generator";
+} from "../phaser/terrain-generator";
 
 export const bootStudio = (app: HTMLElement) => {
+  app.classList.add("studio-app");
   app.innerHTML = `
     <section class="studio-shell">
-      <header class="studio-header">
-        <div>
-          <p class="eyebrow">Open Wilds Studio</p>
-          <h1>Map Designer</h1>
+      <aside class="studio-sidebar" aria-label="Studio navigation">
+        <div class="studio-brand">
+          <div class="studio-brand__mark" aria-hidden="true">OW</div>
+          <div>
+            <p class="eyebrow">Open Wilds</p>
+            <h1>Studio</h1>
+          </div>
+        </div>
+        <nav class="studio-nav" aria-label="Studio sections">
+          <p>Studio Tools</p>
+          <button data-studio-route="dashboard" type="button">
+            <span class="studio-nav__icon" aria-hidden="true">OV</span>
+            <span>Overview</span>
+          </button>
+          <button data-studio-route="textures" type="button">
+            <span class="studio-nav__icon" aria-hidden="true">TX</span>
+            <span>Texture Studio</span>
+          </button>
+          <button data-studio-route="map" type="button">
+            <span class="studio-nav__icon" aria-hidden="true">MP</span>
+            <span>Map Editor</span>
+          </button>
+          <button data-studio-route="assets" type="button">
+            <span class="studio-nav__icon" aria-hidden="true">AS</span>
+            <span>Asset Library</span>
+          </button>
+        </nav>
+        <div class="studio-user-card">
+          <div class="studio-user-card__avatar" aria-hidden="true">A</div>
+          <div>
+            <strong>Creator Admin</strong>
+            <span>Local Studio</span>
+          </div>
         </div>
         <a class="studio-link" href="/">Back to game</a>
-      </header>
-      <div class="studio-workspace">
-        <aside class="studio-panel" aria-label="Map designer controls">
-          <section class="studio-panel__section">
-            <h2>Active Layer</h2>
-            <label class="studio-layer-select">
-              Numeric slot
-              <select id="studio-layer-select">
-                ${STUDIO_LAYER_OPTIONS.map(
-                  (layer) => `<option value="${layer}">Layer ${layer}</option>`
-                ).join("")}
-              </select>
-            </label>
-            <p class="studio-note">Plain is always the base. Paint replaces terrain only inside this numeric layer; different layers stack.</p>
-          </section>
+      </aside>
 
-          <section class="studio-panel__section">
-            <h2>Terrain</h2>
-            <div class="studio-terrain-grid">
-              ${renderTerrainButtons(getInitialTerrainAssets())}
+      <main class="studio-main">
+        <header class="studio-topbar">
+          <div class="studio-topbar__title">
+            <span class="studio-topbar__icon" id="studio-route-icon" aria-hidden="true">OV</span>
+            <div>
+              <p class="eyebrow" id="studio-route-kicker">World Building</p>
+              <h2 id="studio-route-title">Overview</h2>
             </div>
-          </section>
+          </div>
+          <div class="studio-topbar__actions">
+            <label class="studio-search">
+              <span aria-hidden="true"></span>
+              <input type="search" placeholder="Search assets, maps..." />
+            </label>
+            <div class="studio-topbar__meta">
+              <span>Convex Library</span>
+              <strong id="studio-library-status">Syncing</strong>
+            </div>
+            <a class="studio-playtest" href="/">Playtest</a>
+          </div>
+        </header>
 
-          <section class="studio-panel__section studio-panel__section--texture-lab">
-            <h2>Texture Lab</h2>
-            <div class="studio-generator-fields">
+        <section class="studio-page" data-studio-page="dashboard">
+          <div class="studio-dashboard">
+            <div class="studio-stats-grid">
+              <article class="studio-stat">
+                <span>Total Terrain Assets</span>
+                <strong id="studio-dashboard-terrain-count">6</strong>
+                <small>Built-in and generated</small>
+              </article>
+              <article class="studio-stat">
+                <span>Source Textures</span>
+                <strong id="studio-dashboard-texture-count">0</strong>
+                <small>Loaded from Convex</small>
+              </article>
+              <article class="studio-stat">
+                <span>Active Map</span>
+                <strong id="studio-dashboard-map-size">40x40</strong>
+                <small>Layered terrain grid</small>
+              </article>
+            </div>
+
+            <div class="studio-dashboard-grid">
+              <section class="studio-feature-panel">
+                <div>
+                  <p class="eyebrow">AI Generation</p>
+                  <h2>Generate Seamless Terrain Textures</h2>
+                  <p>Create source textures, review the result, then build map-ready autotile terrain for the palette.</p>
+                </div>
+                <button class="studio-primary-action" data-studio-route="textures" type="button">Open Texture Studio</button>
+              </section>
+
+              <section class="studio-recent-panel">
+                <div class="studio-section-heading">
+                  <p class="eyebrow">Recent Work</p>
+                  <h2>Studio Shortcuts</h2>
+                </div>
+                <button class="studio-recent-item" data-studio-route="map" type="button">
+                  <span class="studio-recent-item__icon" aria-hidden="true">MP</span>
+                  <span>
+                    <strong>Open map editor</strong>
+                    <small>Paint layers and export JSON</small>
+                  </span>
+                </button>
+                <button class="studio-recent-item" data-studio-route="textures" type="button">
+                  <span class="studio-recent-item__icon" aria-hidden="true">TX</span>
+                  <span>
+                    <strong>Generate terrain source</strong>
+                    <small>Create a reusable texture</small>
+                  </span>
+                </button>
+              </section>
+            </div>
+          </div>
+        </section>
+
+        <section class="studio-page" data-studio-page="map" hidden>
+          <div class="studio-workspace">
+            <div class="studio-editor-toolbar" aria-label="Map tools">
+              <button data-mode="paint" type="button" title="Paint">Paint</button>
+              <button data-mode="erase" type="button" title="Erase">Erase</button>
+              <button id="studio-export-button" type="button" title="Export JSON">Export</button>
+            </div>
+
+            <div class="studio-canvas-shell">
+              <div id="studio-game"></div>
+            </div>
+
+            <aside class="studio-panel" aria-label="Map designer controls">
+              <section class="studio-panel__section">
+                <h2>Active Layer</h2>
+                <label class="studio-layer-select">
+                  Numeric slot
+                  <select id="studio-layer-select">
+                    ${STUDIO_LAYER_OPTIONS.map(
+                      (layer) =>
+                        `<option value="${layer}">Layer ${layer}</option>`
+                    ).join("")}
+                  </select>
+                </label>
+                <p class="studio-note">Plain is always the base. Paint replaces terrain only inside this numeric layer.</p>
+              </section>
+
+              <section class="studio-panel__section">
+                <h2>Terrain Palette</h2>
+                <div class="studio-terrain-grid">
+                  ${renderTerrainButtons(getInitialTerrainAssets())}
+                </div>
+              </section>
+
+              <section class="studio-panel__section">
+                <h2>Brush</h2>
+                <div class="studio-segmented" data-control="brush">
+                  <button data-brush="1" type="button">1x1</button>
+                  <button data-brush="3" type="button">3x3</button>
+                  <button data-brush="5" type="button">5x5</button>
+                </div>
+                <label class="studio-toggle">
+                  <input id="studio-grid-toggle" type="checkbox" checked />
+                  Show grid
+                </label>
+              </section>
+
+              <section class="studio-panel__section">
+                <h2>World Size</h2>
+                <div class="studio-size-row">
+                  <label>
+                    Width
+                    <input id="studio-width-input" min="5" max="200" type="number" value="40" />
+                  </label>
+                  <label>
+                    Height
+                    <input id="studio-height-input" min="5" max="200" type="number" value="40" />
+                  </label>
+                </div>
+                <button id="studio-resize-button" class="studio-command" type="button">Resize Map</button>
+              </section>
+
+              <section class="studio-panel__section">
+                <h2>Layer Actions</h2>
+                <div class="studio-command-grid">
+                  <button id="studio-fill-button" type="button">Fill Layer</button>
+                  <button id="studio-clear-button" type="button">Clear Layer</button>
+                </div>
+              </section>
+
+              <section class="studio-panel__section">
+                <h2>Files</h2>
+                <div class="studio-command-grid">
+                  <button id="studio-import-button" type="button">Import JSON</button>
+                  <button id="studio-save-cloud-button" type="button">Save Cloud</button>
+                </div>
+              </section>
+
+              <section class="studio-panel__status" aria-live="polite">
+                <p id="studio-map-status">40x40</p>
+                <p id="studio-tool-status">Grass · Paint · 1x1</p>
+                <p id="studio-help-status">Paint stacks layers. Erase removes selected layer. Plain clears a tile to base.</p>
+              </section>
+            </aside>
+          </div>
+        </section>
+
+      <section class="studio-page studio-page--textures" data-studio-page="textures" hidden>
+        <div class="studio-workshop">
+          <section class="studio-workshop__form">
+            <div class="studio-section-heading">
+              <p class="eyebrow">Texture Workshop</p>
+              <h2>Source Texture Generator</h2>
+            </div>
+            <div class="studio-generator-fields studio-generator-fields--workshop">
               <label>
                 Name
                 <input id="studio-terrain-name" type="text" value="Moonlit Moss" />
@@ -80,29 +257,23 @@ export const bootStudio = (app: HTMLElement) => {
                 <input id="studio-terrain-material" type="text" value="moonlit moss meadow" />
               </label>
               <label>
-                Texture
-                <textarea id="studio-terrain-texture" rows="3">soft dark green moss with tiny blue-white flower specks and pale dew highlights</textarea>
+                Texture Brief
+                <textarea id="studio-terrain-texture" rows="5">soft dark green moss with tiny blue-white flower specks and pale dew highlights</textarea>
               </label>
               <label>
-                Style
-                <textarea id="studio-terrain-style" rows="3">cozy hand-painted 2D game terrain, top-down, readable at small tile size, no logos, no text</textarea>
+                Style Direction
+                <textarea id="studio-terrain-style" rows="5">cozy hand-painted 2D game terrain, top-down, readable at small tile size, no logos, no text</textarea>
               </label>
               <label>
                 Source texture PNG
                 <input id="studio-terrain-source" type="file" accept="image/png,image/jpeg,image/webp" />
               </label>
             </div>
-            <div class="studio-texture-preview" id="studio-texture-preview" hidden>
-              <img id="studio-texture-preview-image" alt="Generated terrain source texture preview" />
-            </div>
-            <div class="studio-source-textures" id="studio-source-textures" hidden>
-              <p>Recent Textures</p>
-              <div id="studio-source-texture-list" class="studio-source-texture-list"></div>
-            </div>
             <div class="studio-command-grid">
               <button id="studio-generate-texture-button" type="button">Generate Texture</button>
               <button id="studio-copy-prompt-button" type="button">Copy Prompt</button>
             </div>
+            <button id="studio-generate-terrain-button" class="studio-command" type="button">Build Terrain From Texture</button>
             <div
               id="studio-generator-status"
               class="studio-generator-status"
@@ -111,78 +282,56 @@ export const bootStudio = (app: HTMLElement) => {
             >
               Ready to generate a source texture.
             </div>
-            <p class="studio-note">Generate a seamless square source texture and approve the preview before turning it into terrain.</p>
           </section>
 
-          <section class="studio-panel__section">
-            <h2>Terrain Builder</h2>
-            <button id="studio-generate-terrain-button" class="studio-command" type="button">Build Terrain From Texture</button>
-            <p class="studio-note">Builds the 47-tile autotile set from the generated texture preview or the selected source PNG, then saves it to Convex.</p>
-          </section>
-
-          <section class="studio-panel__section">
-            <h2>Brush</h2>
-            <div class="studio-segmented" data-control="brush">
-              <button data-brush="1" type="button">1x1</button>
-              <button data-brush="3" type="button">3x3</button>
-              <button data-brush="5" type="button">5x5</button>
+          <section class="studio-workshop__preview">
+            <div class="studio-section-heading">
+              <p class="eyebrow">Review</p>
+              <h2>Selected Source</h2>
             </div>
-            <div class="studio-segmented" data-control="mode">
-              <button data-mode="paint" type="button">Paint</button>
-              <button data-mode="erase" type="button">Erase</button>
+            <div class="studio-texture-preview" id="studio-texture-preview" hidden>
+              <img id="studio-texture-preview-image" alt="Generated terrain source texture preview" />
             </div>
-            <label class="studio-toggle">
-              <input id="studio-grid-toggle" type="checkbox" checked />
-              Show grid
-            </label>
+            <div class="studio-empty-preview">
+              <span aria-hidden="true"></span>
+              <strong>No source selected</strong>
+              <p>Generate or choose a source texture to preview it here.</p>
+            </div>
+            <p class="studio-note">Use generated or uploaded source textures here, then build a 47-tile terrain set for the map palette.</p>
           </section>
 
-          <section class="studio-panel__section">
-            <h2>World Size</h2>
-            <div class="studio-size-row">
-              <label>
-                Width
-                <input id="studio-width-input" min="5" max="200" type="number" value="40" />
-              </label>
-              <label>
-                Height
-                <input id="studio-height-input" min="5" max="200" type="number" value="40" />
-              </label>
+          <section class="studio-workshop__library">
+            <div class="studio-section-heading">
+              <p class="eyebrow">Library</p>
+              <h2>Recent Textures</h2>
             </div>
-            <button id="studio-resize-button" class="studio-command" type="button">Resize Map</button>
-          </section>
-
-          <section class="studio-panel__section">
-            <h2>Layer Actions</h2>
-            <div class="studio-command-grid">
-              <button id="studio-fill-button" type="button">Fill Layer</button>
-              <button id="studio-clear-button" type="button">Clear Layer</button>
+            <div class="studio-source-textures" id="studio-source-textures" hidden>
+              <div id="studio-source-texture-list" class="studio-source-texture-list"></div>
+            </div>
+            <div class="studio-library-group">
+              <p>Available Terrain</p>
+              <div id="studio-terrain-asset-list" class="studio-source-texture-list"></div>
             </div>
           </section>
+        </div>
+      </section>
 
-          <section class="studio-panel__section">
-            <h2>Files</h2>
-            <div class="studio-command-grid">
-              <button id="studio-export-button" type="button">Export JSON</button>
-              <button id="studio-import-button" type="button">Import JSON</button>
-              <button id="studio-save-cloud-button" type="button">Save Cloud</button>
-            </div>
-          </section>
-
-          <section class="studio-panel__status" aria-live="polite">
-            <p id="studio-map-status">40x40</p>
-            <p id="studio-tool-status">Grass · Paint · 1x1</p>
-            <p id="studio-help-status">Paint stacks layers. Erase removes selected layer. Plain clears a tile to base.</p>
-          </section>
-        </aside>
-
-        <div id="studio-game"></div>
-      </div>
+      <section class="studio-page" data-studio-page="assets" hidden>
+        <div class="studio-empty-module">
+          <span aria-hidden="true">AS</span>
+          <h2>Asset Library</h2>
+          <p>Generated terrain and source textures are available from the Texture Studio and Map Editor today.</p>
+          <button class="studio-primary-action" data-studio-route="textures" type="button">Open Texture Studio</button>
+        </div>
+      </section>
       <input id="studio-import-input" type="file" accept="application/json,.json" hidden />
+      </main>
     </section>
   `;
 
-  const importInput = app.querySelector<HTMLInputElement>("#studio-import-input");
+  const importInput = app.querySelector<HTMLInputElement>(
+    "#studio-import-input"
+  );
   const terrainAssets = getInitialTerrainAssets();
   let scene: StudioScene | null = null;
   let generatedTerrains: TerrainVisualAsset[] = [];
@@ -192,6 +341,11 @@ export const bootStudio = (app: HTMLElement) => {
   const setGeneratedTerrains = (assets: TerrainVisualAsset[]) => {
     generatedTerrains = assets;
     renderTerrainPalette(app, [...terrainAssets, ...generatedTerrains]);
+    renderTerrainAssetLibrary(app, [...terrainAssets, ...generatedTerrains]);
+    updateStudioDashboardCounts(
+      app,
+      terrainAssets.length + generatedTerrains.length
+    );
     bindTerrainPalette(app, { getScene: () => scene });
     if (sceneState.current) {
       syncStudioControls(app, sceneState.current);
@@ -203,7 +357,12 @@ export const bootStudio = (app: HTMLElement) => {
   };
   const setSourceTextures = (textures: StudioSourceTexture[]) => {
     sourceTextures = textures;
-    renderSourceTextureList(app, sourceTextures, generatedSourceTexture?.textureId);
+    updateStudioDashboardCounts(app, undefined, sourceTextures.length);
+    renderSourceTextureList(
+      app,
+      sourceTextures,
+      generatedSourceTexture?.textureId
+    );
     bindSourceTextureList(app, {
       getSourceTextures: () => sourceTextures,
       setGeneratedSourceTexture: (texture) => {
@@ -213,6 +372,8 @@ export const bootStudio = (app: HTMLElement) => {
       },
     });
   };
+
+  renderTerrainAssetLibrary(app, terrainAssets);
 
   scene = new StudioScene({
     terrainAssets,
@@ -249,6 +410,7 @@ export const bootStudio = (app: HTMLElement) => {
     setSourceTextures,
     requestImport: () => importInput?.click(),
   });
+  bindStudioNavigation(app);
 
   importInput?.addEventListener("change", async () => {
     const file = importInput.files?.[0];
@@ -261,11 +423,9 @@ export const bootStudio = (app: HTMLElement) => {
     try {
       const parsed = JSON.parse(await file.text()) as unknown;
       validateStudioMap(parsed);
-      generatedTerrains = upsertManyTerrainAssets(
-        generatedTerrains,
-        parsed.terrainAssets ?? []
+      setGeneratedTerrains(
+        upsertManyTerrainAssets(generatedTerrains, parsed.terrainAssets ?? [])
       );
-      renderTerrainPalette(app, [...terrainAssets, ...generatedTerrains]);
       bindTerrainPalette(app, { getScene: () => scene });
       scene.importMap(parsed);
     } catch (error) {
@@ -297,7 +457,9 @@ const renderTerrainButtons = (assets: TerrainVisualAsset[]) =>
     .filter((asset) => asset.id !== "uniswap-plain")
     .map(
       (asset) => `
-        <button class="studio-terrain-button" data-terrain="${asset.id}" type="button">
+        <button class="studio-terrain-button" data-terrain="${
+          asset.id
+        }" type="button">
           <span class="studio-swatch ${getSwatchClass(asset.id)}"></span>
           <span>${asset.label ?? terrainLabel(asset.id)}</span>
         </button>
@@ -368,7 +530,37 @@ const renderSourceTextureList = (
           type="button"
         >
           <img src="${escapeHtml(texture.url ?? "")}" alt="" />
-          <span>${escapeHtml(texture.label)}</span>
+          <span>${escapeHtml(texture.label)}${
+        texture.status === "draft" ? " · draft" : ""
+      }</span>
+        </button>
+      `
+    )
+    .join("");
+};
+
+const renderTerrainAssetLibrary = (
+  app: HTMLElement,
+  assets: TerrainVisualAsset[]
+) => {
+  const list = app.querySelector<HTMLElement>("#studio-terrain-asset-list");
+
+  if (!list) {
+    return;
+  }
+
+  list.innerHTML = assets
+    .filter((asset) => asset.id !== "uniswap-plain")
+    .slice(0, 12)
+    .map(
+      (asset) => `
+        <button
+          class="studio-source-texture-button studio-terrain-asset-card"
+          data-terrain="${escapeHtml(asset.id)}"
+          type="button"
+        >
+          <img src="${escapeHtml(asset.centerVariantsUrl)}" alt="" />
+          <span>${escapeHtml(asset.label ?? terrainLabel(asset.id))}</span>
         </button>
       `
     )
@@ -383,6 +575,102 @@ const setGeneratorBusy = (app: HTMLElement, isBusy: boolean) => {
     .forEach((button) => {
       button.disabled = isBusy;
     });
+};
+
+const bindStudioNavigation = (app: HTMLElement) => {
+  const setRoute = (route: string) => {
+    const routeTitle = app.querySelector<HTMLElement>("#studio-route-title");
+    const routeKicker = app.querySelector<HTMLElement>("#studio-route-kicker");
+    const routeIcon = app.querySelector<HTMLElement>("#studio-route-icon");
+    const routeLabels: Record<
+      string,
+      { icon: string; kicker: string; title: string }
+    > = {
+      dashboard: {
+        icon: "OV",
+        kicker: "World Building",
+        title: "Overview",
+      },
+      map: {
+        icon: "MP",
+        kicker: "World Building",
+        title: "Map Editor",
+      },
+      textures: {
+        icon: "TX",
+        kicker: "Asset Pipeline",
+        title: "Texture Studio",
+      },
+      assets: {
+        icon: "AS",
+        kicker: "Library",
+        title: "Asset Library",
+      },
+    };
+    const label = routeLabels[route] ?? routeLabels.dashboard;
+
+    if (routeTitle) {
+      routeTitle.textContent = label.title;
+    }
+    if (routeKicker) {
+      routeKicker.textContent = label.kicker;
+    }
+    if (routeIcon) {
+      routeIcon.textContent = label.icon;
+    }
+
+    app.querySelectorAll<HTMLElement>("[data-studio-page]").forEach((page) => {
+      page.hidden = page.dataset.studioPage !== route;
+    });
+    app
+      .querySelectorAll<HTMLButtonElement>("[data-studio-route]")
+      .forEach((button) => {
+        button.toggleAttribute(
+          "data-active",
+          button.dataset.studioRoute === route
+        );
+      });
+  };
+
+  app
+    .querySelectorAll<HTMLButtonElement>("[data-studio-route]")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        const route = button.dataset.studioRoute ?? "map";
+        window.history.replaceState(null, "", `#${route}`);
+        setRoute(route);
+      });
+    });
+
+  const initialRoute = window.location.hash.replace("#", "") || "dashboard";
+  setRoute(routeLabels[initialRoute] ? initialRoute : "dashboard");
+};
+
+const updateStudioDashboardCounts = (
+  app: HTMLElement,
+  terrainCount?: number,
+  textureCount?: number,
+  mapSize?: string
+) => {
+  const terrainCountElement = app.querySelector<HTMLElement>(
+    "#studio-dashboard-terrain-count"
+  );
+  const textureCountElement = app.querySelector<HTMLElement>(
+    "#studio-dashboard-texture-count"
+  );
+  const mapSizeElement = app.querySelector<HTMLElement>(
+    "#studio-dashboard-map-size"
+  );
+
+  if (terrainCountElement && terrainCount !== undefined) {
+    terrainCountElement.textContent = String(terrainCount);
+  }
+  if (textureCountElement && textureCount !== undefined) {
+    textureCountElement.textContent = String(textureCount);
+  }
+  if (mapSizeElement && mapSize) {
+    mapSizeElement.textContent = mapSize;
+  }
 };
 
 const getSwatchClass = (terrainId: string) => {
@@ -420,7 +708,14 @@ const hydrateStudioFromConvex = async (
   app: HTMLElement,
   bindings: StudioTerrainBinding
 ) => {
+  const libraryStatus = app.querySelector<HTMLElement>(
+    "#studio-library-status"
+  );
+
   if (!isConvexStudioConfigured()) {
+    if (libraryStatus) {
+      libraryStatus.textContent = "Offline";
+    }
     updateGeneratorStatus(
       app,
       "Convex is not configured. Set VITE_CONVEX_URL to save shared terrain.",
@@ -430,7 +725,14 @@ const hydrateStudioFromConvex = async (
   }
 
   try {
-    updateGeneratorStatus(app, "Loading Studio library from Convex...", "loading");
+    if (libraryStatus) {
+      libraryStatus.textContent = "Loading";
+    }
+    updateGeneratorStatus(
+      app,
+      "Loading Studio library from Convex...",
+      "loading"
+    );
     const [assets, textures] = await Promise.all([
       listStudioTerrainAssets(),
       listStudioSourceTextures(),
@@ -460,7 +762,13 @@ const hydrateStudioFromConvex = async (
       `Loaded ${assets.length} terrain assets and ${textures.length} source textures from Convex`,
       "success"
     );
+    if (libraryStatus) {
+      libraryStatus.textContent = `${assets.length} terrain / ${textures.length} textures`;
+    }
   } catch (error) {
+    if (libraryStatus) {
+      libraryStatus.textContent = "Error";
+    }
     updateGeneratorStatus(
       app,
       error instanceof Error
@@ -645,14 +953,22 @@ const bindStudioControls = (
         let sourceTexture: File | Blob = source as File;
 
         if (source) {
-          updateGeneratorStatus(app, "Uploading source texture to Convex...", "loading");
+          updateGeneratorStatus(
+            app,
+            "Uploading source texture to Convex...",
+            "loading"
+          );
           sourceTextureId = await registerSourceTexture({
             ...form,
             file: source,
           });
           bindings.setGeneratedSourceTexture(null);
         } else if (generatedTexture?.url) {
-          updateGeneratorStatus(app, "Loading generated source texture...", "loading");
+          updateGeneratorStatus(
+            app,
+            "Loading generated source texture...",
+            "loading"
+          );
           const response = await fetch(generatedTexture.url);
 
           if (!response.ok) {
@@ -667,7 +983,11 @@ const bindStudioControls = (
           ...form,
           sourceTexture,
         });
-        updateGeneratorStatus(app, "Uploading generated terrain to Convex...", "loading");
+        updateGeneratorStatus(
+          app,
+          "Uploading generated terrain to Convex...",
+          "loading"
+        );
         await registerGeneratedTerrainAsset({
           ...form,
           sourceTextureId,
@@ -682,8 +1002,10 @@ const bindStudioControls = (
           bindings.getGeneratedTerrains(),
           storedAsset
         );
+        const nextSourceTextures = await listStudioSourceTextures();
 
         bindings.setGeneratedTerrains(nextTerrains);
+        bindings.setSourceTextures(nextSourceTextures);
         bindings.getScene()?.addTerrainAsset(storedAsset);
         updateGeneratorStatus(
           app,
@@ -807,6 +1129,12 @@ const syncStudioControls = (app: HTMLElement, state: StudioSceneState) => {
   if (mapStatus) {
     mapStatus.textContent = `${state.width}x${state.height} world`;
   }
+  updateStudioDashboardCounts(
+    app,
+    undefined,
+    undefined,
+    `${state.width}x${state.height}`
+  );
   if (toolStatus) {
     toolStatus.textContent = `Layer ${state.selectedLayer} · ${terrainLabel(
       state.selectedTerrain
@@ -824,8 +1152,8 @@ const syncStudioControls = (app: HTMLElement, state: StudioSceneState) => {
 
 const readTerrainGeneratorForm = (app: HTMLElement) => {
   const value = (selector: string) =>
-    app.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector)?.value ??
-    "";
+    app.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector)
+      ?.value ?? "";
   const label = value("#studio-terrain-name").trim();
   const terrainId = normalizeTerrainId(value("#studio-terrain-id") || label);
   const material = value("#studio-terrain-material").trim() || label;
@@ -850,8 +1178,9 @@ const fillTerrainGeneratorForm = (
   texture: StudioSourceTexture
 ) => {
   const setValue = (selector: string, value: string) => {
-    const input =
-      app.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector);
+    const input = app.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+      selector
+    );
 
     if (input) {
       input.value = value;

@@ -3,7 +3,7 @@ import "./polyfills";
 import { getHudElements } from "./client/hud";
 import { LocalnetClient } from "./client/localnet-client";
 import { createGridScene, GAME_HEIGHT, GAME_WIDTH } from "./game/grid-scene";
-import { bootStudio } from "./studio/studio";
+import { bootStudio } from "./studio/app/studio-react";
 import "./styles.css";
 
 const app = document.getElementById("app");

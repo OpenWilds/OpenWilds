@@ -1,9 +1,9 @@
-import leftBottomMaskUrl from "../assets/autotile-masks/Land Grid Map_Left Bottom.png?url";
-import leftTopMaskUrl from "../assets/autotile-masks/Land Grid Map_Left Top.png?url";
-import rightBottomMaskUrl from "../assets/autotile-masks/Land Grid Map_Right Bottom.png?url";
-import rightTopAMaskUrl from "../assets/autotile-masks/Land Grid Map_Right Top A.png?url";
-import rightTopBMaskUrl from "../assets/autotile-masks/Land Grid Map_Right Top B.png?url";
-import type { TerrainVisualAsset } from "../assets/visual-assets";
+import leftBottomMaskUrl from "../../assets/autotile-masks/Land Grid Map_Left Bottom.png?url";
+import leftTopMaskUrl from "../../assets/autotile-masks/Land Grid Map_Left Top.png?url";
+import rightBottomMaskUrl from "../../assets/autotile-masks/Land Grid Map_Right Bottom.png?url";
+import rightTopAMaskUrl from "../../assets/autotile-masks/Land Grid Map_Right Top A.png?url";
+import rightTopBMaskUrl from "../../assets/autotile-masks/Land Grid Map_Right Top B.png?url";
+import type { TerrainVisualAsset } from "../../assets/visual-assets";
 
 export const TERRAIN_GENERATOR_TILE_SIZE = 256;
 const CONTEXT_GRID_SIZE = 4;

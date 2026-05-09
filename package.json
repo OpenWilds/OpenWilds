@@ -29,6 +29,10 @@
     "vite": "^8.0.10"
   },
   "dependencies": {
-    "convex": "^1.38.0"
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "convex": "^1.38.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
   }
 }
