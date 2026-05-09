@@ -3,10 +3,12 @@ import React from "react";
 import type { StudioRouteId } from "../lib/studio-types";
 
 export function DashboardView({
+  plantSpriteCount,
   setRoute,
   sourceTextureCount,
   terrainCount,
 }: {
+  plantSpriteCount: number;
   setRoute: (route: StudioRouteId) => void;
   sourceTextureCount: number;
   terrainCount: number;
@@ -26,9 +28,9 @@ export function DashboardView({
             <small>Live from Convex</small>
           </article>
           <article className="studio-stat">
-            <span>Active World</span>
-            <strong>40x40</strong>
-            <small>Layered terrain grid</small>
+            <span>Plant Sprites</span>
+            <strong>{plantSpriteCount}</strong>
+            <small>4x4 sheets in Convex</small>
           </article>
         </div>
 
@@ -80,6 +82,19 @@ export function DashboardView({
               <span>
                 <strong>Generate terrain source</strong>
                 <small>Create a reusable texture</small>
+              </span>
+            </button>
+            <button
+              className="studio-recent-item"
+              onClick={() => setRoute("plants")}
+              type="button"
+            >
+              <span className="studio-recent-item__icon" aria-hidden="true">
+                PL
+              </span>
+              <span>
+                <strong>Open plant studio</strong>
+                <small>Generate plant and tree sprite sheets</small>
               </span>
             </button>
           </section>

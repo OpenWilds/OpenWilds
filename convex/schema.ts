@@ -7,6 +7,18 @@ const terrainPromptFields = {
   stylePrompt: v.string(),
 };
 
+const plantSpriteCellFields = v.object({
+  stateId: v.string(),
+  stateTitle: v.string(),
+  columnLabel: v.string(),
+  row: v.number(),
+  column: v.number(),
+  x: v.number(),
+  y: v.number(),
+  width: v.number(),
+  height: v.number(),
+});
+
 export default defineSchema({
   studioTerrainTextures: defineTable({
     terrainId: v.string(),
@@ -56,4 +68,37 @@ export default defineSchema({
     updatedAt: v.number(),
     createdAt: v.number(),
   }).index("by_updatedAt", ["updatedAt"]),
+
+  studioPlantSprites: defineTable({
+    plantId: v.string(),
+    label: v.string(),
+    kind: v.union(v.literal("plant"), v.literal("tree")),
+    spriteStorageId: v.id("_storage"),
+    layoutGuideStorageId: v.optional(v.id("_storage")),
+    fileName: v.string(),
+    contentType: v.string(),
+    size: v.number(),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("library"),
+      v.literal("archived")
+    ),
+    region: v.string(),
+    habitat: v.string(),
+    objectPrompt: v.string(),
+    stylePrompt: v.string(),
+    generatedPrompt: v.string(),
+    model: v.string(),
+    rows: v.number(),
+    columns: v.number(),
+    cellSize: v.number(),
+    atlasWidth: v.number(),
+    atlasHeight: v.number(),
+    cells: v.array(plantSpriteCellFields),
+    generatedAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_plantId", ["plantId"])
+    .index("by_status_and_updatedAt", ["status", "updatedAt"]),
 });

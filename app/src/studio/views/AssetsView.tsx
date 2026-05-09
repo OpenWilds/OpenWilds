@@ -13,16 +13,17 @@ export function AssetsView({
         <span aria-hidden="true">AS</span>
         <h2>Asset Library</h2>
         <p>
-          Generated terrain and source textures are available from the Texture
-          Studio and World Studio today.
+          Generated terrain, source textures, and plant sprite sheets are
+          available from the studio pipeline today.
         </p>
-        <button
-          className="studio-primary-action"
-          onClick={() => setRoute("textures")}
-          type="button"
-        >
-          Open Texture Studio
-        </button>
+        <div className="studio-command-grid">
+          <button onClick={() => setRoute("textures")} type="button">
+            Texture Studio
+          </button>
+          <button onClick={() => setRoute("plants")} type="button">
+            Plant Studio
+          </button>
+        </div>
       </div>
     </section>
   );

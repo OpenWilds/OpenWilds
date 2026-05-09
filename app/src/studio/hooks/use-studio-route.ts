@@ -6,6 +6,7 @@ import type { StudioRouteId } from "../lib/studio-types";
 const ROUTE_PATHS: Record<StudioRouteId, string> = {
   dashboard: "/studio",
   textures: "/studio/textures",
+  plants: "/studio/plants",
   map: "/studio/worlds",
   assets: "/studio/assets",
 };

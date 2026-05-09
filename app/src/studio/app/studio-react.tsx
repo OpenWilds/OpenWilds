@@ -36,6 +36,7 @@ function StudioApp({ offline = false }: { offline?: boolean }) {
         offline
         sourceTextures={[]}
         generatedTerrains={[]}
+        plantSprites={[]}
         savedWorlds={[]}
       />
     );
@@ -50,6 +51,9 @@ function ReactiveStudioShell() {
     status: "library",
   });
   const savedWorlds = useQuery(refs.listMaps, {});
+  const plantSprites = useQuery(refs.listPlantSprites, {
+    status: "library",
+  });
   const sourceTextures = useMemo(
     () =>
       (textureRecords ?? [])
@@ -79,11 +83,15 @@ function ReactiveStudioShell() {
     <StudioShell
       sourceTextures={sourceTextures}
       generatedTerrains={generatedTerrains}
+      plantSprites={(plantSprites ?? []).filter(
+        (sprite) => sprite.url && sprite.status !== "archived"
+      )}
       savedWorlds={savedWorlds ?? []}
       isLoading={
         textureRecords === undefined ||
         terrainRecords === undefined ||
-        savedWorlds === undefined
+        savedWorlds === undefined ||
+        plantSprites === undefined
       }
     />
   );

@@ -1,5 +1,7 @@
 export type TextureStatus = "draft" | "approved" | "archived";
 export type TerrainStatus = "draft" | "library" | "archived";
+export type PlantSpriteKind = "plant" | "tree";
+export type PlantSpriteStatus = "draft" | "library" | "archived";
 
 export type TerrainPromptMetadata = {
   terrainId: string;
@@ -40,7 +42,52 @@ export type StudioMapRecord = {
   updatedAt: number;
 };
 
-export type StudioRouteId = "dashboard" | "textures" | "map" | "assets";
+export type StudioPlantSpriteCell = {
+  stateId: string;
+  stateTitle: string;
+  columnLabel: string;
+  row: number;
+  column: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type StudioPlantSpriteRecord = {
+  _id: string;
+  plantId: string;
+  label: string;
+  kind: PlantSpriteKind;
+  url: string | null;
+  layoutGuideUrl: string | null;
+  fileName: string;
+  contentType: string;
+  size: number;
+  status: PlantSpriteStatus;
+  region: string;
+  habitat: string;
+  objectPrompt: string;
+  stylePrompt: string;
+  generatedPrompt: string;
+  model: string;
+  rows: number;
+  columns: number;
+  cellSize: number;
+  atlasWidth: number;
+  atlasHeight: number;
+  cells: StudioPlantSpriteCell[];
+  generatedAt: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type StudioRouteId =
+  | "dashboard"
+  | "textures"
+  | "plants"
+  | "map"
+  | "assets";
 
 export type StudioRoute = {
   icon: string;

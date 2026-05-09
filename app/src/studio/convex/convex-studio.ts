@@ -2,6 +2,12 @@ import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 
 import type { TerrainVisualAsset } from "../../assets/visual-assets";
+import type {
+  PlantSpriteKind,
+  PlantSpriteStatus,
+  StudioPlantSpriteCell,
+  StudioPlantSpriteRecord,
+} from "../lib/studio-types";
 import type { StudioMapExport } from "../phaser/studio-scene";
 
 type TerrainStatus = "draft" | "library" | "archived";
@@ -49,6 +55,42 @@ export type GeneratedSourceTexture = StudioSourceTexture & {
   storageId: string;
   prompt: string;
   model: string;
+};
+
+export type PlantSpritePromptMetadata = {
+  plantId: string;
+  label: string;
+  kind: PlantSpriteKind;
+  region: string;
+  habitat: string;
+  objectPrompt: string;
+  stylePrompt: string;
+  cellSize?: number;
+};
+
+export type GeneratedPlantSprite = {
+  spriteId: string;
+  plantId: string;
+  label: string;
+  kind: PlantSpriteKind;
+  spriteStorageId: string;
+  url: string | null;
+  contentType: string;
+  size: number;
+  status: PlantSpriteStatus;
+  region: string;
+  habitat: string;
+  objectPrompt: string;
+  stylePrompt: string;
+  generatedPrompt: string;
+  model: string;
+  rows: number;
+  columns: number;
+  cellSize: number;
+  atlasWidth: number;
+  atlasHeight: number;
+  cells: StudioPlantSpriteCell[];
+  updatedAt: number;
 };
 
 type UploadResult = {
@@ -103,6 +145,11 @@ const refs = {
     { status?: TextureStatus },
     StudioTerrainTextureRecord[]
   >("studio:listTerrainTextures"),
+  listPlantSprites: makeFunctionReference<
+    "query",
+    { status?: PlantSpriteStatus },
+    StudioPlantSpriteRecord[]
+  >("studio:listPlantSprites"),
   saveMap: makeFunctionReference<
     "mutation",
     {
@@ -128,6 +175,20 @@ const refs = {
     },
     GeneratedSourceTexture
   >("studio:generateSourceTexture"),
+  generatePlantSprite: makeFunctionReference<
+    "action",
+    PlantSpritePromptMetadata & {
+      imageModel?: string;
+      reasoningEffort?:
+        | "none"
+        | "minimal"
+        | "low"
+        | "medium"
+        | "high"
+        | "xhigh";
+    },
+    GeneratedPlantSprite
+  >("studio:generatePlantSprite"),
 };
 
 export const isConvexStudioConfigured = () => client !== null;
@@ -177,6 +238,19 @@ export async function generateSourceTexture(
 ): Promise<GeneratedSourceTexture> {
   const convex = getClient();
   const result = await convex.action(refs.generateSourceTexture, args);
+
+  return {
+    ...result,
+    ...args,
+    updatedAt: Date.now(),
+  };
+}
+
+export async function generatePlantSprite(
+  args: PlantSpritePromptMetadata
+): Promise<GeneratedPlantSprite> {
+  const convex = getClient();
+  const result = await convex.action(refs.generatePlantSprite, args);
 
   return {
     ...result,
@@ -264,6 +338,17 @@ export async function listStudioSourceTextures(): Promise<
       },
     ];
   });
+}
+
+export async function listStudioPlantSprites(): Promise<
+  StudioPlantSpriteRecord[]
+> {
+  const convex = getClient();
+  const records = await convex.query(refs.listPlantSprites, {
+    status: "library",
+  });
+
+  return records.filter((record) => record.url && record.status !== "archived");
 }
 
 export async function saveStudioMapToConvex(

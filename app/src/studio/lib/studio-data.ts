@@ -3,8 +3,10 @@ import { makeFunctionReference } from "convex/server";
 import type { StudioSourceTexture } from "../convex/convex-studio";
 import type {
   StudioMapRecord,
+  StudioPlantSpriteRecord,
   StudioTerrainAssetRecord,
   StudioTerrainTextureRecord,
+  PlantSpriteStatus,
   StudioRoute,
   StudioRouteId,
   TerrainPromptMetadata,
@@ -30,6 +32,12 @@ export const ROUTES: Record<StudioRouteId, StudioRoute> = {
     id: "map",
     kicker: "World Building",
     title: "World Studio",
+  },
+  plants: {
+    icon: "PL",
+    id: "plants",
+    kicker: "Asset Pipeline",
+    title: "Plant Studio",
   },
   assets: {
     icon: "AS",
@@ -68,6 +76,11 @@ export const refs = {
   listMaps: makeFunctionReference<"query", {}, StudioMapRecord[]>(
     "studio:listMaps"
   ),
+  listPlantSprites: makeFunctionReference<
+    "query",
+    { status?: PlantSpriteStatus },
+    StudioPlantSpriteRecord[]
+  >("studio:listPlantSprites"),
 };
 
 export function textureRecordToSourceTexture(

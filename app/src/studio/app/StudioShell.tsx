@@ -4,9 +4,13 @@ import type { TerrainVisualAsset } from "../../assets/visual-assets";
 import type { StudioSourceTexture } from "../convex/convex-studio";
 import { useStudioRoute } from "../hooks/use-studio-route";
 import { ROUTES } from "../lib/studio-data";
-import type { StudioMapRecord } from "../lib/studio-types";
+import type {
+  StudioMapRecord,
+  StudioPlantSpriteRecord,
+} from "../lib/studio-types";
 import { AssetsView } from "../views/AssetsView";
 import { DashboardView } from "../views/DashboardView";
+import { PlantStudioView } from "../views/PlantStudioView";
 import { TextureStudioView } from "../views/TextureStudioView";
 import { WorldStudioView } from "../views/WorldStudioView";
 
@@ -14,12 +18,14 @@ export function StudioShell({
   generatedTerrains,
   isLoading = false,
   offline = false,
+  plantSprites,
   savedWorlds,
   sourceTextures,
 }: {
   generatedTerrains: TerrainVisualAsset[];
   isLoading?: boolean;
   offline?: boolean;
+  plantSprites: StudioPlantSpriteRecord[];
   savedWorlds: StudioMapRecord[];
   sourceTextures: StudioSourceTexture[];
 }) {
@@ -105,7 +111,7 @@ export function StudioShell({
                   ? "Offline"
                   : isLoading
                   ? "Syncing"
-                  : `${generatedTerrains.length} terrain / ${sourceTextures.length} textures`}
+                  : `${generatedTerrains.length} terrain / ${sourceTextures.length} textures / ${plantSprites.length} plants`}
               </strong>
             </div>
             <a className="studio-playtest" href="/">
@@ -116,6 +122,7 @@ export function StudioShell({
 
         {route === "dashboard" ? (
           <DashboardView
+            plantSpriteCount={plantSprites.length}
             setRoute={setRoute}
             sourceTextureCount={sourceTextures.length}
             terrainCount={generatedTerrains.length}
@@ -135,6 +142,9 @@ export function StudioShell({
             generatedTerrains={generatedTerrains}
             savedWorlds={savedWorlds}
           />
+        ) : null}
+        {route === "plants" ? (
+          <PlantStudioView offline={offline} plantSprites={plantSprites} />
         ) : null}
         {route === "assets" ? <AssetsView setRoute={setRoute} /> : null}
       </main>

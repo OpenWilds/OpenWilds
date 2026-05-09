@@ -1598,6 +1598,74 @@ h1 {
   grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
 }
 
+.studio-workshop--plants {
+  grid-template-columns: minmax(300px, 400px) minmax(320px, 480px) minmax(
+      300px,
+      1fr
+    );
+}
+
+.studio-sprite-preview {
+  overflow: hidden;
+  border: 1px solid #dfe5ee;
+  border-radius: 8px;
+  background: linear-gradient(45deg, #eef2f7 25%, transparent 25%),
+    linear-gradient(-45deg, #eef2f7 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #eef2f7 75%),
+    linear-gradient(-45deg, transparent 75%, #eef2f7 75%), #ffffff;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+}
+
+.studio-sprite-preview img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+}
+
+.studio-frame-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.studio-frame-grid__cell {
+  display: grid;
+  gap: 2px;
+  min-height: 66px;
+  border: 1px solid #dfe5ee;
+  border-radius: 8px;
+  padding: 7px;
+  background: #f8fafc;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.studio-frame-grid__cell strong,
+.studio-frame-grid__cell span,
+.studio-frame-grid__cell small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.studio-frame-grid__cell strong {
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.studio-frame-grid__cell span {
+  color: #172033;
+}
+
+.studio-plant-card .studio-source-texture-thumb img {
+  object-fit: contain;
+}
+
 .studio-source-texture-button {
   display: grid;
   align-content: start;
