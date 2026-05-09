@@ -168,10 +168,7 @@ export class StudioScene extends Phaser.Scene {
     }
 
     for (const asset of this.objectAssets) {
-      this.load.spritesheet(studioObjectSpriteKey(asset.id), asset.imageUrl, {
-        frameWidth: asset.frameSize,
-        frameHeight: asset.frameSize,
-      });
+      this.load.image(studioObjectSpriteKey(asset.id), asset.imageUrl);
     }
   }
 
@@ -916,16 +913,23 @@ export class StudioScene extends Phaser.Scene {
     }
 
     const image = this.ensureObjectPreviewImage(asset);
+    const frameSize = this.applyObjectFrameTexture(
+      image,
+      asset,
+      this.selectedObjectFrame
+    );
+    const displaySize = getObjectFrameDisplaySize(
+      asset,
+      this.selectedObjectFrame,
+      frameSize
+    );
     image
-      .setTexture(studioObjectSpriteKey(asset.id), this.selectedObjectFrame)
       .setPosition(
         tileX * TILE_SIZE + TILE_SIZE / 2,
-        tileY * TILE_SIZE + TILE_SIZE * 0.82
+        tileY * TILE_SIZE + TILE_SIZE / 2
       )
-      .setDisplaySize(
-        asset.kind === "tree" ? TILE_SIZE * 1.85 : TILE_SIZE * 1.18,
-        asset.kind === "tree" ? TILE_SIZE * 1.85 : TILE_SIZE * 1.18
-      )
+      .setOrigin(0.5, 0.5)
+      .setDisplaySize(displaySize.width, displaySize.height)
       .setVisible(true);
   }
 
@@ -957,7 +961,7 @@ export class StudioScene extends Phaser.Scene {
   private ensureObjectPreviewImage(asset: StudioObjectSpriteAsset) {
     if (!this.objectPreviewImage) {
       this.objectPreviewImage = this.add
-        .image(0, 0, studioObjectSpriteKey(asset.id), this.selectedObjectFrame)
+        .image(0, 0, studioObjectSpriteKey(asset.id))
         .setOrigin(0.5, 0.82)
         .setAlpha(0.48)
         .setVisible(false);
@@ -1047,16 +1051,18 @@ export class StudioScene extends Phaser.Scene {
     const image = this.add
       .image(
         x * TILE_SIZE + TILE_SIZE / 2,
-        y * TILE_SIZE + TILE_SIZE * 0.82,
-        studioObjectSpriteKey(asset.id),
-        selectedFrame
+        y * TILE_SIZE + TILE_SIZE / 2,
+        studioObjectSpriteKey(asset.id)
       )
-      .setOrigin(0.5, 0.82)
-      .setDisplaySize(
-        asset.kind === "tree" ? TILE_SIZE * 1.85 : TILE_SIZE * 1.18,
-        asset.kind === "tree" ? TILE_SIZE * 1.85 : TILE_SIZE * 1.18
-      )
+      .setOrigin(0.5, 0.5)
       .setDepth(y);
+    const frameSize = this.applyObjectFrameTexture(image, asset, selectedFrame);
+    const displaySize = getObjectFrameDisplaySize(
+      asset,
+      selectedFrame,
+      frameSize
+    );
+    image.setDisplaySize(displaySize.width, displaySize.height);
 
     this.objectLayer.add(image);
     this.objectPlacements.set(key, {
@@ -1301,11 +1307,9 @@ export class StudioScene extends Phaser.Scene {
     if (this.textures.exists(key)) {
       this.textures.remove(key);
     }
+    this.removeObjectVariantTextures(asset);
 
-    this.load.spritesheet(key, asset.imageUrl, {
-      frameWidth: asset.frameSize,
-      frameHeight: asset.frameSize,
-    });
+    this.load.image(key, asset.imageUrl);
     this.load.start();
   }
 
@@ -1340,11 +1344,9 @@ export class StudioScene extends Phaser.Scene {
         if (this.textures.exists(key)) {
           this.textures.remove(key);
         }
+        this.removeObjectVariantTextures(asset);
 
-        this.load.spritesheet(key, asset.imageUrl, {
-          frameWidth: asset.frameSize,
-          frameHeight: asset.frameSize,
-        });
+        this.load.image(key, asset.imageUrl);
       }
 
       this.load.start();
@@ -1369,13 +1371,126 @@ export class StudioScene extends Phaser.Scene {
         continue;
       }
 
+      const frameSize = this.applyObjectFrameTexture(
+        placement.image,
+        asset,
+        placement.frame
+      );
+      const displaySize = getObjectFrameDisplaySize(
+        asset,
+        placement.frame,
+        frameSize
+      );
       placement.image
-        .setTexture(studioObjectSpriteKey(asset.id), placement.frame)
-        .setDisplaySize(
-          asset.kind === "tree" ? TILE_SIZE * 1.85 : TILE_SIZE * 1.18,
-          asset.kind === "tree" ? TILE_SIZE * 1.85 : TILE_SIZE * 1.18
-        );
+        .setPosition(
+          placement.x * TILE_SIZE + TILE_SIZE / 2,
+          placement.y * TILE_SIZE + TILE_SIZE / 2
+        )
+        .setOrigin(0.5, 0.5)
+        .setDisplaySize(displaySize.width, displaySize.height);
     }
+  }
+
+  private applyObjectFrameTexture(
+    image: Phaser.GameObjects.Image,
+    asset: StudioObjectSpriteAsset,
+    frame: number
+  ) {
+    const frameTexture = this.ensureObjectVariantTexture(asset, frame);
+    image.setTexture(frameTexture.key);
+    image.setCrop(0, 0, frameTexture.width, frameTexture.height);
+    return frameTexture;
+  }
+
+  private ensureObjectVariantTexture(
+    asset: StudioObjectSpriteAsset,
+    frame: number
+  ) {
+    const textureKey = studioObjectVariantKey(asset.id, frame);
+    const crop = this.getObjectFrameCrop(asset, frame);
+
+    if (this.textures.exists(textureKey)) {
+      return {
+        key: textureKey,
+        width: crop.width,
+        height: crop.height,
+      };
+    }
+
+    const source = this.textures
+      .get(studioObjectSpriteKey(asset.id))
+      .getSourceImage() as CanvasImageSource;
+    const texture = this.textures.createCanvas(
+      textureKey,
+      crop.width,
+      crop.height
+    );
+
+    if (!texture) {
+      return {
+        key: studioObjectSpriteKey(asset.id),
+        width: crop.width,
+        height: crop.height,
+      };
+    }
+
+    const context = texture.getContext();
+    context.clearRect(0, 0, crop.width, crop.height);
+    context.drawImage(
+      source,
+      crop.x,
+      crop.y,
+      crop.width,
+      crop.height,
+      0,
+      0,
+      crop.width,
+      crop.height
+    );
+    texture.refresh();
+
+    return {
+      key: textureKey,
+      width: crop.width,
+      height: crop.height,
+    };
+  }
+
+  private removeObjectVariantTextures(asset: StudioObjectSpriteAsset) {
+    for (let frame = 0; frame < asset.rows * asset.columns; frame += 1) {
+      const key = studioObjectVariantKey(asset.id, frame);
+      if (this.textures.exists(key)) {
+        this.textures.remove(key);
+      }
+    }
+  }
+
+  private getObjectFrameCrop(asset: StudioObjectSpriteAsset, frame: number) {
+    const texture = this.textures.get(studioObjectSpriteKey(asset.id));
+    const source = texture.getSourceImage() as {
+      width?: number;
+      height?: number;
+    };
+    const textureWidth =
+      Number(source?.width) || asset.columns * asset.frameSize;
+    const textureHeight =
+      Number(source?.height) || asset.rows * asset.frameSize;
+    const frameWidth = textureWidth / asset.columns;
+    const frameHeight = textureHeight / asset.rows;
+    const boundedFrame = Phaser.Math.Clamp(
+      frame,
+      0,
+      asset.rows * asset.columns - 1
+    );
+    const column = boundedFrame % asset.columns;
+    const row = Math.floor(boundedFrame / asset.columns);
+
+    return {
+      x: Math.round(column * frameWidth),
+      y: Math.round(row * frameHeight),
+      width: Math.round(frameWidth),
+      height: Math.round(frameHeight),
+    };
   }
 
   private getUsedObjectAssets() {
@@ -1539,9 +1654,50 @@ function studioObjectSpriteKey(assetId: string) {
   return `studio-object-sprite-${assetId}`;
 }
 
+function studioObjectVariantKey(assetId: string, frame: number) {
+  return `${studioObjectSpriteKey(assetId)}-variant-${frame}`;
+}
+
 function getDefaultObjectFrame(asset: StudioObjectSpriteAsset) {
   const grownRow = Math.min(2, asset.rows - 1);
   return grownRow * asset.columns;
+}
+
+function getObjectFrameDisplaySize(
+  asset: StudioObjectSpriteAsset,
+  frame: number,
+  frameSize: {
+    width: number;
+    height: number;
+  }
+) {
+  const scale = Math.min(
+    TILE_SIZE / frameSize.width,
+    TILE_SIZE / frameSize.height
+  );
+  const objectScale = getObjectFrameScale(asset, frame);
+
+  return {
+    width: frameSize.width * scale * objectScale,
+    height: frameSize.height * scale * objectScale,
+  };
+}
+
+function getObjectFrameScale(asset: StudioObjectSpriteAsset, frame: number) {
+  if (asset.kind !== "tree") {
+    return 1;
+  }
+
+  const row = Math.floor(frame / asset.columns);
+  const column = frame % asset.columns;
+  const growingRow = Math.min(1, asset.rows - 1);
+  const grownRow = Math.min(2, asset.rows - 1);
+
+  if (row !== growingRow && row !== grownRow) {
+    return 1;
+  }
+
+  return 1 + column * 0.15;
 }
 
 function objectLabel(objectId: string) {

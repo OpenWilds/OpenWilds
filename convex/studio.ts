@@ -897,15 +897,15 @@ function getPlantSpriteStates(kind: PlantSpriteKind): PlantSpriteState[] {
     },
     {
       id: "grown",
-      title: "Grown And Stressed",
+      title: "Grown, Dry, And Dead",
       prompt:
-        "columns 1-2 are stable mature harvest-ready variants of the same plant; column 3 is the same plant stressed from poor moisture, weak fertility, or bad terrain; column 4 is the same plant wilted from severe neglect",
+        "columns 1-2 are stable mature harvest-ready variants of the same plant; column 3 is a dry version of that mature plant; column 4 is a dead version of that mature plant",
     },
     {
       id: "harvested",
-      title: "Harvested And Flourishing",
+      title: "Harvested And High Quality",
       prompt:
-        "column 1 is one post-harvest plant remnant left in the ground; column 2 is one isolated harvested crop/resource pickup; column 3 is a flourishing ideal-care version; column 4 is a recently tended version that looks freshly watered or cared for without using UI icons",
+        "column 1 is the standard post-harvest plant remnant left in the ground; column 2 is the harvested/cut plant state; columns 3-4 are high-quality harvested versions of the same plant",
     },
   ];
 }
@@ -988,9 +988,9 @@ function buildPlantColumnBehaviorPrompt(kind: PlantSpriteKind) {
   return [
     "For seed rows, column 1 is an isolated collectible seed item with no dirt below it. Columns 2 through the end are planted seed growth steps from left to right.",
     "For growing rows, columns are progressive growth frames from young sprout to nearly mature plant.",
-    "For grown rows, columns 1-2 are normal mature harvest-ready variants only. Column 3 must be a stressed care state. Column 4 must be a wilted severe-neglect state.",
-    "For harvested rows, column 1 is the single post-harvest remnant left in the ground. Column 2 is the single isolated crop/resource pickup. Column 3 must be a flourishing ideal-care state. Column 4 must be a recently tended or freshly cared-for state.",
-    "Care-state cells must remain the same plant species and silhouette family; communicate condition through posture, leaf fullness, color, dew, and small natural details, not text or UI icons.",
+    "For grown rows, columns 1-2 are normal mature harvest-ready variants only. Column 3 must be a dry mature plant. Column 4 must be a dead mature plant.",
+    "For harvested rows, column 1 is the standard post-harvest remnant left in the ground. Column 2 is the harvested or cut plant state. Columns 3-4 must be high-quality harvested versions of the same plant.",
+    "Dry, dead, harvested, and high-quality cells must remain the same plant species and silhouette family; communicate condition through posture, leaf fullness, color, and small natural details, not text or UI icons.",
     "Keep all columns in a row coherent for that row's state, not different unrelated designs.",
     "Preserve the same silhouette language and materials across all states so the plant clearly evolves from row to row.",
   ];

@@ -1172,6 +1172,17 @@ function objectFrameBackgroundPosition(
 function objectFrameLabel(asset: StudioObjectSpriteAsset, frame: number) {
   const row = Math.floor(frame / asset.columns);
   const column = frame % asset.columns;
+
+  if (asset.kind === "plant") {
+    const plantLabels = [
+      ["Seed 1", "Seed 2", "Seed 3", "Seed 4"],
+      ["Grow 1", "Grow 2", "Grow 3", "Grow 4"],
+      ["Grown 1", "Grown 2", "Dry", "Dead"],
+      ["Harvest 1", "Harvested", "High Quality 1", "High Quality 2"],
+    ];
+    return plantLabels[row]?.[column] ?? `Row ${row + 1} ${column + 1}`;
+  }
+
   const rowLabels = ["Seed", "Grow", "Grown", "Harvest"];
 
   return `${rowLabels[row] ?? `Row ${row + 1}`} ${column + 1}`;
