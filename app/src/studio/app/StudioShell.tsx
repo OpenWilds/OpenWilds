@@ -6,10 +6,12 @@ import { useStudioRoute } from "../hooks/use-studio-route";
 import { ROUTES } from "../lib/studio-data";
 import type {
   StudioMapRecord,
+  StudioObjectSpriteRecord,
   StudioPlantSpriteRecord,
 } from "../lib/studio-types";
 import { AssetsView } from "../views/AssetsView";
 import { DashboardView } from "../views/DashboardView";
+import { ObjectStudioView } from "../views/ObjectStudioView";
 import { PlantStudioView } from "../views/PlantStudioView";
 import { TextureStudioView } from "../views/TextureStudioView";
 import { WorldStudioView } from "../views/WorldStudioView";
@@ -18,6 +20,7 @@ export function StudioShell({
   generatedTerrains,
   isLoading = false,
   offline = false,
+  objectSprites,
   plantSprites,
   savedWorlds,
   sourceTextures,
@@ -25,6 +28,7 @@ export function StudioShell({
   generatedTerrains: TerrainVisualAsset[];
   isLoading?: boolean;
   offline?: boolean;
+  objectSprites: StudioObjectSpriteRecord[];
   plantSprites: StudioPlantSpriteRecord[];
   savedWorlds: StudioMapRecord[];
   sourceTextures: StudioSourceTexture[];
@@ -111,7 +115,7 @@ export function StudioShell({
                   ? "Offline"
                   : isLoading
                   ? "Syncing"
-                  : `${generatedTerrains.length} terrain / ${sourceTextures.length} textures / ${plantSprites.length} plants`}
+                  : `${generatedTerrains.length} terrain / ${sourceTextures.length} textures / ${plantSprites.length} plants / ${objectSprites.length} objects`}
               </strong>
             </div>
             <a className="studio-playtest" href="/">
@@ -140,12 +144,19 @@ export function StudioShell({
         {route === "map" ? (
           <WorldStudioView
             generatedTerrains={generatedTerrains}
+            objectSprites={objectSprites}
             plantSprites={plantSprites}
             savedWorlds={savedWorlds}
           />
         ) : null}
         {route === "plants" ? (
           <PlantStudioView offline={offline} plantSprites={plantSprites} />
+        ) : null}
+        {route === "objects" ? (
+          <ObjectStudioView
+            objectSprites={objectSprites}
+            offline={offline}
+          />
         ) : null}
         {route === "assets" ? <AssetsView setRoute={setRoute} /> : null}
       </main>

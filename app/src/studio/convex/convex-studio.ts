@@ -3,8 +3,11 @@ import { makeFunctionReference } from "convex/server";
 
 import type { TerrainVisualAsset } from "../../assets/visual-assets";
 import type {
+  ObjectSpriteKind,
+  ObjectSpriteStatus,
   PlantSpriteKind,
   PlantSpriteStatus,
+  StudioObjectSpriteRecord,
   StudioPlantSpriteCell,
   StudioPlantSpriteRecord,
 } from "../lib/studio-types";
@@ -93,6 +96,35 @@ export type GeneratedPlantSprite = {
   updatedAt: number;
 };
 
+export type ObjectSpritePromptMetadata = {
+  objectId: string;
+  label: string;
+  kind: ObjectSpriteKind;
+  region: string;
+  habitat: string;
+  objectPrompt: string;
+  stylePrompt: string;
+};
+
+export type GeneratedObjectSprite = {
+  spriteId: string;
+  objectId: string;
+  label: string;
+  kind: ObjectSpriteKind;
+  spriteStorageId: string;
+  url: string | null;
+  contentType: string;
+  size: number;
+  status: ObjectSpriteStatus;
+  region: string;
+  habitat: string;
+  objectPrompt: string;
+  stylePrompt: string;
+  generatedPrompt: string;
+  model: string;
+  updatedAt: number;
+};
+
 type UploadResult = {
   storageId: string;
 };
@@ -150,6 +182,11 @@ const refs = {
     { status?: PlantSpriteStatus },
     StudioPlantSpriteRecord[]
   >("studio:listPlantSprites"),
+  listObjectSprites: makeFunctionReference<
+    "query",
+    { status?: ObjectSpriteStatus },
+    StudioObjectSpriteRecord[]
+  >("studio:listObjectSprites"),
   saveMap: makeFunctionReference<
     "mutation",
     {
@@ -189,6 +226,20 @@ const refs = {
     },
     GeneratedPlantSprite
   >("studio:generatePlantSprite"),
+  generateObjectSprite: makeFunctionReference<
+    "action",
+    ObjectSpritePromptMetadata & {
+      imageModel?: string;
+      reasoningEffort?:
+        | "none"
+        | "minimal"
+        | "low"
+        | "medium"
+        | "high"
+        | "xhigh";
+    },
+    GeneratedObjectSprite
+  >("studio:generateObjectSprite"),
 };
 
 export const isConvexStudioConfigured = () => client !== null;
@@ -251,6 +302,19 @@ export async function generatePlantSprite(
 ): Promise<GeneratedPlantSprite> {
   const convex = getClient();
   const result = await convex.action(refs.generatePlantSprite, args);
+
+  return {
+    ...result,
+    ...args,
+    updatedAt: Date.now(),
+  };
+}
+
+export async function generateObjectSprite(
+  args: ObjectSpritePromptMetadata
+): Promise<GeneratedObjectSprite> {
+  const convex = getClient();
+  const result = await convex.action(refs.generateObjectSprite, args);
 
   return {
     ...result,
@@ -345,6 +409,17 @@ export async function listStudioPlantSprites(): Promise<
 > {
   const convex = getClient();
   const records = await convex.query(refs.listPlantSprites, {
+    status: "library",
+  });
+
+  return records.filter((record) => record.url && record.status !== "archived");
+}
+
+export async function listStudioObjectSprites(): Promise<
+  StudioObjectSpriteRecord[]
+> {
+  const convex = getClient();
+  const records = await convex.query(refs.listObjectSprites, {
     status: "library",
   });
 

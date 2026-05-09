@@ -101,4 +101,30 @@ export default defineSchema({
   })
     .index("by_plantId", ["plantId"])
     .index("by_status_and_updatedAt", ["status", "updatedAt"]),
+
+  studioObjectSprites: defineTable({
+    objectId: v.string(),
+    label: v.string(),
+    kind: v.union(v.literal("building"), v.literal("object")),
+    spriteStorageId: v.id("_storage"),
+    fileName: v.string(),
+    contentType: v.string(),
+    size: v.number(),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("library"),
+      v.literal("archived")
+    ),
+    region: v.string(),
+    habitat: v.string(),
+    objectPrompt: v.string(),
+    stylePrompt: v.string(),
+    generatedPrompt: v.string(),
+    model: v.string(),
+    generatedAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_objectId", ["objectId"])
+    .index("by_status_and_updatedAt", ["status", "updatedAt"]),
 });

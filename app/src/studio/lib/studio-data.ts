@@ -3,9 +3,11 @@ import { makeFunctionReference } from "convex/server";
 import type { StudioSourceTexture } from "../convex/convex-studio";
 import type {
   StudioMapRecord,
+  StudioObjectSpriteRecord,
   StudioPlantSpriteRecord,
   StudioTerrainAssetRecord,
   StudioTerrainTextureRecord,
+  ObjectSpriteStatus,
   PlantSpriteStatus,
   StudioRoute,
   StudioRouteId,
@@ -38,6 +40,12 @@ export const ROUTES: Record<StudioRouteId, StudioRoute> = {
     id: "plants",
     kicker: "Asset Pipeline",
     title: "Plant Studio",
+  },
+  objects: {
+    icon: "OB",
+    id: "objects",
+    kicker: "Asset Pipeline",
+    title: "Object Studio",
   },
   assets: {
     icon: "AS",
@@ -81,6 +89,11 @@ export const refs = {
     { status?: PlantSpriteStatus },
     StudioPlantSpriteRecord[]
   >("studio:listPlantSprites"),
+  listObjectSprites: makeFunctionReference<
+    "query",
+    { status?: ObjectSpriteStatus },
+    StudioObjectSpriteRecord[]
+  >("studio:listObjectSprites"),
 };
 
 export function textureRecordToSourceTexture(

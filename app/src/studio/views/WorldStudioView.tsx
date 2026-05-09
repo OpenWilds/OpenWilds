@@ -9,6 +9,7 @@ import { saveStudioMapToConvex } from "../convex/convex-studio";
 import { DEFAULT_STUDIO_HELP, LAYERED_STUDIO_HELP } from "../lib/studio-data";
 import type {
   StudioMapRecord,
+  StudioObjectSpriteRecord,
   StudioPlantSpriteRecord,
 } from "../lib/studio-types";
 import { downloadStudioMap } from "../phaser/download-studio-map";
@@ -42,6 +43,8 @@ type WorldStudioSettings = {
   autoSave: boolean;
   brushSize: number;
   objectPaintMode: "place" | "erase";
+  objectFootprintHeight: number;
+  objectFootprintWidth: number;
   paintMode: "paint" | "erase";
   selectedLayer: number;
   selectedObject: string;
@@ -56,10 +59,12 @@ const AUTOSAVE_DELAY_MS = 1200;
 
 export function WorldStudioView({
   generatedTerrains,
+  objectSprites,
   plantSprites,
   savedWorlds,
 }: {
   generatedTerrains: TerrainVisualAsset[];
+  objectSprites: StudioObjectSpriteRecord[];
   plantSprites: StudioPlantSpriteRecord[];
   savedWorlds: StudioMapRecord[];
 }) {
@@ -89,6 +94,9 @@ export function WorldStudioView({
   const [mapStatus, setMapStatus] = useState<string | null>(null);
   const [isTerrainModalOpen, setIsTerrainModalOpen] = useState(false);
   const [isObjectModalOpen, setIsObjectModalOpen] = useState(false);
+  const [objectCategoryFilter, setObjectCategoryFilter] = useState<
+    StudioObjectSpriteAsset["category"]
+  >("plants");
   const editorTerrainAssets = useMemo(
     () =>
       mergeTerrainAssets([
@@ -101,9 +109,10 @@ export function WorldStudioView({
     () =>
       mergeObjectAssets([
         ...plantSpritesToObjectAssets(plantSprites),
+        ...objectSpritesToObjectAssets(objectSprites),
         ...(openWorld?.map?.objectAssets ?? []),
       ]),
-    [openWorld, plantSprites]
+    [objectSprites, openWorld, plantSprites]
   );
 
   const paintableTerrains = useMemo(
@@ -252,12 +261,17 @@ export function WorldStudioView({
   const selectedObject = editorObjectAssets.find(
     (asset) => asset.id === selectedObjectId
   );
+  const filteredObjectAssets = editorObjectAssets.filter(
+    (asset) => asset.category === objectCategoryFilter
+  );
   const selectedPaintTerrain = paintableTerrains.find(
     (asset) => asset.id === selectedTerrain
   );
   const toolMode = state?.toolMode ?? "terrain";
   const paintMode = state?.paintMode ?? "paint";
   const objectPaintMode = state?.objectPaintMode ?? "place";
+  const objectFootprintWidth = state?.objectFootprintWidth ?? 1;
+  const objectFootprintHeight = state?.objectFootprintHeight ?? 1;
   const brushSize = state?.brushSize ?? 1;
   const showGrid = state?.showGrid ?? true;
   const helpMessage =
@@ -282,6 +296,8 @@ export function WorldStudioView({
       autoSave: autoSaveEnabled,
       brushSize: state.brushSize,
       objectPaintMode: state.objectPaintMode,
+      objectFootprintHeight: state.objectFootprintHeight,
+      objectFootprintWidth: state.objectFootprintWidth,
       paintMode: state.paintMode,
       selectedLayer: state.selectedLayer,
       selectedObject: state.selectedObject,
@@ -296,6 +312,8 @@ export function WorldStudioView({
     autoSaveEnabled,
     state?.brushSize,
     state?.objectPaintMode,
+    state?.objectFootprintHeight,
+    state?.objectFootprintWidth,
     state?.paintMode,
     state?.selectedLayer,
     state?.selectedObject,
@@ -321,6 +339,10 @@ export function WorldStudioView({
     scene.setToolMode(storedSettings.toolMode);
     scene.setPaintMode(storedSettings.paintMode);
     scene.setObjectPaintMode(storedSettings.objectPaintMode);
+    scene.setObjectFootprint(
+      storedSettings.objectFootprintWidth,
+      storedSettings.objectFootprintHeight
+    );
     scene.setSelectedLayer(storedSettings.selectedLayer);
     if (
       storedSettings.selectedTerrain &&
@@ -383,6 +405,8 @@ export function WorldStudioView({
     state?.message,
     state?.objectCount,
     state?.objectPaintMode,
+    state?.objectFootprintHeight,
+    state?.objectFootprintWidth,
     state?.paintMode,
     state?.selectedLayer,
     state?.selectedObject,
@@ -747,7 +771,12 @@ export function WorldStudioView({
                 <button
                   className="studio-object-select"
                   disabled={isWorldLoading}
-                  onClick={() => setIsObjectModalOpen(true)}
+                  onClick={() => {
+                    if (selectedObject) {
+                      setObjectCategoryFilter(selectedObject.category);
+                    }
+                    setIsObjectModalOpen(true);
+                  }}
                   type="button"
                 >
                   {selectedObject ? (
@@ -767,9 +796,48 @@ export function WorldStudioView({
                   ) : null}
                   <span>
                     <strong>{selectedObject?.label ?? "Choose object"}</strong>
-                    <small>Plants · Variant {selectedObjectFrame + 1}</small>
+                    <small>
+                      {objectCategoryLabel(selectedObject?.category)} ·{" "}
+                      {selectedObject
+                        ? objectFrameLabel(selectedObject, selectedObjectFrame)
+                        : "Variant 1"}
+                    </small>
                   </span>
                 </button>
+                <div className="studio-size-row">
+                  <label>
+                    Width
+                    <input
+                      disabled={toolMode !== "object"}
+                      min="1"
+                      max="6"
+                      type="number"
+                      value={objectFootprintWidth}
+                      onChange={(event) =>
+                        sceneRef.current?.setObjectFootprint(
+                          Number(event.target.value),
+                          objectFootprintHeight
+                        )
+                      }
+                    />
+                  </label>
+                  <label>
+                    Height
+                    <input
+                      disabled={toolMode !== "object"}
+                      min="1"
+                      max="6"
+                      type="number"
+                      value={objectFootprintHeight}
+                      onChange={(event) =>
+                        sceneRef.current?.setObjectFootprint(
+                          objectFootprintWidth,
+                          Number(event.target.value)
+                        )
+                      }
+                    />
+                  </label>
+                </div>
               </>
             ) : (
               <p className="studio-note">
@@ -944,7 +1012,9 @@ export function WorldStudioView({
               {toolMode === "object"
                 ? `Objects · ${
                     selectedObject?.label ?? "None"
-                  } · ${objectPaintMode} · ${state?.objectCount ?? 0} placed`
+                  } · ${objectFootprintWidth}x${objectFootprintHeight} · ${objectPaintMode} · ${
+                    state?.objectCount ?? 0
+                  } placed`
                 : `Layer ${selectedLayer} · ${terrainLabel(
                     selectedTerrain
                   )} · ${paintMode} · ${brushSize}x${brushSize} · ${
@@ -1033,7 +1103,7 @@ export function WorldStudioView({
             <div className="studio-terrain-modal__header">
               <div className="studio-section-heading">
                 <p className="eyebrow">Object Palette</p>
-                <h2>Select Plant Variant</h2>
+                <h2>Select Object</h2>
               </div>
               <button
                 className="studio-command"
@@ -1044,12 +1114,24 @@ export function WorldStudioView({
               </button>
             </div>
             <div className="studio-object-category-tabs">
-              <button data-active type="button">
-                Plants
-              </button>
+              {(["plants", "buildings", "objects"] as const).map(
+                (category) => (
+                  <button
+                    data-active={
+                      objectCategoryFilter === category ? "" : undefined
+                    }
+                    key={category}
+                    onClick={() => setObjectCategoryFilter(category)}
+                    type="button"
+                  >
+                    {objectCategoryLabel(category)}
+                  </button>
+                )
+              )}
             </div>
             <div className="studio-object-modal__list">
-              {editorObjectAssets.map((asset) => (
+              {filteredObjectAssets.length > 0 ? (
+                filteredObjectAssets.map((asset) => (
                 <article className="studio-object-modal__asset" key={asset.id}>
                   <div className="studio-object-modal__asset-header">
                     <strong>{asset.label}</strong>
@@ -1097,7 +1179,13 @@ export function WorldStudioView({
                     )}
                   </div>
                 </article>
-              ))}
+                ))
+              ) : (
+                <div className="studio-library-empty">
+                  No {objectCategoryLabel(objectCategoryFilter).toLowerCase()}{" "}
+                  available yet.
+                </div>
+              )}
             </div>
           </section>
         </div>
@@ -1143,6 +1231,29 @@ function plantSpritesToObjectAssets(
   });
 }
 
+function objectSpritesToObjectAssets(
+  objectSprites: StudioObjectSpriteRecord[]
+): StudioObjectSpriteAsset[] {
+  return objectSprites.flatMap((sprite) => {
+    if (!sprite.url) {
+      return [];
+    }
+
+    return [
+      {
+        id: sprite.objectId,
+        label: sprite.label,
+        category: sprite.kind === "building" ? "buildings" : "objects",
+        kind: sprite.kind,
+        imageUrl: sprite.url,
+        frameSize: 256,
+        rows: 1,
+        columns: 1,
+      },
+    ];
+  });
+}
+
 function mergeObjectAssets(assets: StudioObjectSpriteAsset[]) {
   const merged = new Map<string, StudioObjectSpriteAsset>();
 
@@ -1170,6 +1281,10 @@ function objectFrameBackgroundPosition(
 }
 
 function objectFrameLabel(asset: StudioObjectSpriteAsset, frame: number) {
+  if (asset.category !== "plants") {
+    return "Single sprite";
+  }
+
   const row = Math.floor(frame / asset.columns);
   const column = frame % asset.columns;
 
@@ -1186,6 +1301,18 @@ function objectFrameLabel(asset: StudioObjectSpriteAsset, frame: number) {
   const rowLabels = ["Seed", "Grow", "Grown", "Harvest"];
 
   return `${rowLabels[row] ?? `Row ${row + 1}`} ${column + 1}`;
+}
+
+function objectCategoryLabel(category: StudioObjectSpriteAsset["category"] | undefined) {
+  switch (category) {
+    case "buildings":
+      return "Buildings";
+    case "objects":
+      return "Objects";
+    case "plants":
+    default:
+      return "Plants";
+  }
 }
 
 function formatUpdatedAt(updatedAt: number) {
@@ -1240,6 +1367,8 @@ function defaultWorldStudioSettings(): WorldStudioSettings {
   return {
     autoSave: true,
     brushSize: 1,
+    objectFootprintHeight: 1,
+    objectFootprintWidth: 1,
     objectPaintMode: "place",
     paintMode: "paint",
     selectedLayer: 1,

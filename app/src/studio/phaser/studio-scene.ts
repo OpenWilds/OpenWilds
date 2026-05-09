@@ -30,13 +30,13 @@ type PaintMode = "paint" | "erase";
 type StudioToolMode = "terrain" | "object";
 type ObjectPaintMode = "place" | "erase";
 
-export type StudioObjectCategory = "plants";
+export type StudioObjectCategory = "plants" | "buildings" | "objects";
 
 export type StudioObjectSpriteAsset = {
   id: string;
   label: string;
   category: StudioObjectCategory;
-  kind: "plant" | "tree";
+  kind: "plant" | "tree" | "building" | "object";
   imageUrl: string;
   frameSize: number;
   rows: number;
@@ -49,6 +49,8 @@ type StudioObjectPlacementExport = {
   x: number;
   y: number;
   frame: number;
+  width?: number;
+  height?: number;
 };
 
 type StudioMapLayerExport = {
@@ -94,6 +96,8 @@ export type StudioSceneState = {
   selectedTerrain: TerrainVisualAssetId;
   selectedObject: string;
   selectedObjectFrame: number;
+  objectFootprintWidth: number;
+  objectFootprintHeight: number;
   brushSize: number;
   paintMode: PaintMode;
   objectPaintMode: ObjectPaintMode;
@@ -105,6 +109,8 @@ export type StudioSceneState = {
 
 type StudioObjectPlacement = StudioObjectPlacementExport & {
   image: Phaser.GameObjects.Image;
+  width: number;
+  height: number;
 };
 
 export class StudioScene extends Phaser.Scene {
@@ -115,6 +121,8 @@ export class StudioScene extends Phaser.Scene {
   private selectedTerrain: TerrainVisualAssetId = "";
   private selectedObject = "";
   private selectedObjectFrame = 0;
+  private objectFootprintWidth = 1;
+  private objectFootprintHeight = 1;
   private baseTerrain: TerrainVisualAssetId = "";
   private brushSize = 1;
   private paintMode: PaintMode = "paint";
@@ -252,7 +260,14 @@ export class StudioScene extends Phaser.Scene {
     }
 
     for (const [key, placement] of [...this.objectPlacements]) {
-      if (!this.isInBounds(placement.x, placement.y)) {
+      if (
+        !this.isFootprintInBounds(
+          placement.x,
+          placement.y,
+          placement.width,
+          placement.height
+        )
+      ) {
         placement.image.destroy();
         this.objectPlacements.delete(key);
       }
@@ -280,7 +295,14 @@ export class StudioScene extends Phaser.Scene {
 
     this.clearObjectPlacements();
     for (const object of map.objects ?? []) {
-      this.placeObjectAt(object.x, object.y, object.assetId, object.frame);
+      this.placeObjectAt(
+        object.x,
+        object.y,
+        object.assetId,
+        object.frame,
+        object.width ?? 1,
+        object.height ?? 1
+      );
     }
 
     this.updateCameraBounds();
@@ -327,6 +349,13 @@ export class StudioScene extends Phaser.Scene {
 
   setObjectPaintMode(mode: ObjectPaintMode) {
     this.objectPaintMode = mode;
+    this.updateStatus();
+  }
+
+  setObjectFootprint(width: number, height: number) {
+    this.objectFootprintWidth = normalizeFootprintSize(width);
+    this.objectFootprintHeight = normalizeFootprintSize(height);
+    this.refreshObjectPreview();
     this.updateStatus();
   }
 
@@ -546,6 +575,8 @@ export class StudioScene extends Phaser.Scene {
       selectedTerrain: this.selectedTerrain,
       selectedObject: this.selectedObject,
       selectedObjectFrame: this.selectedObjectFrame,
+      objectFootprintWidth: this.objectFootprintWidth,
+      objectFootprintHeight: this.objectFootprintHeight,
       brushSize: this.brushSize,
       paintMode: this.paintMode,
       objectPaintMode: this.objectPaintMode,
@@ -769,7 +800,14 @@ export class StudioScene extends Phaser.Scene {
     const tileX = Math.floor(worldPoint.x / TILE_SIZE);
     const tileY = Math.floor(worldPoint.y / TILE_SIZE);
 
-    if (!this.isInBounds(tileX, tileY)) {
+    if (
+      !this.isFootprintInBounds(
+        tileX,
+        tileY,
+        this.objectFootprintWidth,
+        this.objectFootprintHeight
+      )
+    ) {
       return;
     }
 
@@ -825,7 +863,9 @@ export class StudioScene extends Phaser.Scene {
       tileX,
       tileY,
       this.selectedObject,
-      this.selectedObjectFrame
+      this.selectedObjectFrame,
+      this.objectFootprintWidth,
+      this.objectFootprintHeight
     );
     this.updateStatus();
   }
@@ -886,7 +926,14 @@ export class StudioScene extends Phaser.Scene {
     const tileX = Math.floor(worldPoint.x / TILE_SIZE);
     const tileY = Math.floor(worldPoint.y / TILE_SIZE);
 
-    if (!this.isInBounds(tileX, tileY)) {
+    if (
+      !this.isFootprintInBounds(
+        tileX,
+        tileY,
+        this.objectFootprintWidth,
+        this.objectFootprintHeight
+      )
+    ) {
       this.hideObjectPreview();
       return;
     }
@@ -894,8 +941,12 @@ export class StudioScene extends Phaser.Scene {
     const border = this.ensureObjectPreviewBorder();
     border
       .setPosition(
-        tileX * TILE_SIZE + TILE_SIZE / 2,
-        tileY * TILE_SIZE + TILE_SIZE / 2
+        tileX * TILE_SIZE + (this.objectFootprintWidth * TILE_SIZE) / 2,
+        tileY * TILE_SIZE + (this.objectFootprintHeight * TILE_SIZE) / 2
+      )
+      .setSize(
+        this.objectFootprintWidth * TILE_SIZE,
+        this.objectFootprintHeight * TILE_SIZE
       )
       .setVisible(true);
 
@@ -921,12 +972,14 @@ export class StudioScene extends Phaser.Scene {
     const displaySize = getObjectFrameDisplaySize(
       asset,
       this.selectedObjectFrame,
-      frameSize
+      frameSize,
+      this.objectFootprintWidth,
+      this.objectFootprintHeight
     );
     image
       .setPosition(
-        tileX * TILE_SIZE + TILE_SIZE / 2,
-        tileY * TILE_SIZE + TILE_SIZE / 2
+        tileX * TILE_SIZE + (this.objectFootprintWidth * TILE_SIZE) / 2,
+        tileY * TILE_SIZE + (this.objectFootprintHeight * TILE_SIZE) / 2
       )
       .setOrigin(0.5, 0.5)
       .setDisplaySize(displaySize.width, displaySize.height)
@@ -1028,8 +1081,17 @@ export class StudioScene extends Phaser.Scene {
     this.updateStatus(`Cleared layer ${this.selectedLayer}`);
   }
 
-  private placeObjectAt(x: number, y: number, assetId: string, frame?: number) {
-    if (!this.isInBounds(x, y)) {
+  private placeObjectAt(
+    x: number,
+    y: number,
+    assetId: string,
+    frame?: number,
+    width = 1,
+    height = 1
+  ) {
+    const footprintWidth = normalizeFootprintSize(width);
+    const footprintHeight = normalizeFootprintSize(height);
+    if (!this.isFootprintInBounds(x, y, footprintWidth, footprintHeight)) {
       return;
     }
 
@@ -1045,22 +1107,24 @@ export class StudioScene extends Phaser.Scene {
     }
 
     const key = cellKey(x, y);
-    this.removeObjectAt(x, y);
+    this.removeObjectsOverlapping(x, y, footprintWidth, footprintHeight);
 
     const selectedFrame = frame ?? getDefaultObjectFrame(asset);
     const image = this.add
       .image(
-        x * TILE_SIZE + TILE_SIZE / 2,
-        y * TILE_SIZE + TILE_SIZE / 2,
+        x * TILE_SIZE + (footprintWidth * TILE_SIZE) / 2,
+        y * TILE_SIZE + (footprintHeight * TILE_SIZE) / 2,
         studioObjectSpriteKey(asset.id)
       )
       .setOrigin(0.5, 0.5)
-      .setDepth(y);
+      .setDepth(y + footprintHeight - 1);
     const frameSize = this.applyObjectFrameTexture(image, asset, selectedFrame);
     const displaySize = getObjectFrameDisplaySize(
       asset,
       selectedFrame,
-      frameSize
+      frameSize,
+      footprintWidth,
+      footprintHeight
     );
     image.setDisplaySize(displaySize.width, displaySize.height);
 
@@ -1071,20 +1135,34 @@ export class StudioScene extends Phaser.Scene {
       x,
       y,
       frame: selectedFrame,
+      width: footprintWidth,
+      height: footprintHeight,
       image,
     });
   }
 
   private removeObjectAt(x: number, y: number) {
-    const key = cellKey(x, y);
-    const placement = this.objectPlacements.get(key);
-
-    if (!placement) {
-      return;
+    for (const [key, placement] of this.objectPlacements) {
+      if (pointIntersectsPlacement(x, y, placement)) {
+        placement.image.destroy();
+        this.objectPlacements.delete(key);
+        return;
+      }
     }
+  }
 
-    placement.image.destroy();
-    this.objectPlacements.delete(key);
+  private removeObjectsOverlapping(
+    x: number,
+    y: number,
+    width: number,
+    height: number
+  ) {
+    for (const [key, placement] of [...this.objectPlacements]) {
+      if (footprintsOverlap(x, y, width, height, placement)) {
+        placement.image.destroy();
+        this.objectPlacements.delete(key);
+      }
+    }
   }
 
   private clearObjectPlacements() {
@@ -1112,6 +1190,19 @@ export class StudioScene extends Phaser.Scene {
     }
 
     this.fillBaseLayer();
+    for (const [key, placement] of [...this.objectPlacements]) {
+      if (
+        !this.isFootprintInBounds(
+          placement.x,
+          placement.y,
+          placement.width,
+          placement.height
+        )
+      ) {
+        placement.image.destroy();
+        this.objectPlacements.delete(key);
+      }
+    }
     this.updateCameraBounds();
     this.drawGrid();
     this.updateStatus(`Resized to ${width}x${height}`);
@@ -1162,6 +1253,8 @@ export class StudioScene extends Phaser.Scene {
       selectedTerrain: this.selectedTerrain,
       selectedObject: this.selectedObject,
       selectedObjectFrame: this.selectedObjectFrame,
+      objectFootprintWidth: this.objectFootprintWidth,
+      objectFootprintHeight: this.objectFootprintHeight,
       brushSize: this.brushSize,
       paintMode: this.paintMode,
       objectPaintMode: this.objectPaintMode,
@@ -1188,6 +1281,8 @@ export class StudioScene extends Phaser.Scene {
           x: object.x,
           y: object.y,
           frame: object.frame,
+          width: object.width,
+          height: object.height,
         }))
         .sort(
           (a, b) => a.y - b.y || a.x - b.x || a.assetId.localeCompare(b.assetId)
@@ -1214,6 +1309,22 @@ export class StudioScene extends Phaser.Scene {
 
   private isInBounds(x: number, y: number) {
     return x >= 0 && y >= 0 && x < this.widthTiles && y < this.heightTiles;
+  }
+
+  private isFootprintInBounds(
+    x: number,
+    y: number,
+    width: number,
+    height: number
+  ) {
+    return (
+      x >= 0 &&
+      y >= 0 &&
+      width >= 1 &&
+      height >= 1 &&
+      x + width <= this.widthTiles &&
+      y + height <= this.heightTiles
+    );
   }
 
   private getPaintableTerrainIds() {
@@ -1379,14 +1490,17 @@ export class StudioScene extends Phaser.Scene {
       const displaySize = getObjectFrameDisplaySize(
         asset,
         placement.frame,
-        frameSize
+        frameSize,
+        placement.width,
+        placement.height
       );
       placement.image
         .setPosition(
-          placement.x * TILE_SIZE + TILE_SIZE / 2,
-          placement.y * TILE_SIZE + TILE_SIZE / 2
+          placement.x * TILE_SIZE + (placement.width * TILE_SIZE) / 2,
+          placement.y * TILE_SIZE + (placement.height * TILE_SIZE) / 2
         )
         .setOrigin(0.5, 0.5)
+        .setDepth(placement.y + placement.height - 1)
         .setDisplaySize(displaySize.width, displaySize.height);
     }
   }
@@ -1567,8 +1681,8 @@ export function validateStudioMap(
       !asset ||
       typeof asset.id !== "string" ||
       typeof asset.label !== "string" ||
-      asset.category !== "plants" ||
-      !["plant", "tree"].includes(asset.kind) ||
+      !["plants", "buildings", "objects"].includes(asset.category) ||
+      !["plant", "tree", "building", "object"].includes(asset.kind) ||
       typeof asset.imageUrl !== "string" ||
       !Number.isInteger(asset.frameSize) ||
       !Number.isInteger(asset.rows) ||
@@ -1583,17 +1697,25 @@ export function validateStudioMap(
   }
 
   for (const object of map.objects ?? []) {
+    const width = object.width ?? 1;
+    const height = object.height ?? 1;
     if (
       !object ||
-      object.category !== "plants" ||
+      !["plants", "buildings", "objects"].includes(object.category) ||
       typeof object.assetId !== "string" ||
       !Number.isInteger(object.x) ||
       !Number.isInteger(object.y) ||
       !Number.isInteger(object.frame) ||
+      !Number.isInteger(width) ||
+      !Number.isInteger(height) ||
+      width < 1 ||
+      height < 1 ||
+      width > 6 ||
+      height > 6 ||
       object.x < 0 ||
       object.y < 0 ||
-      object.x >= map.width ||
-      object.y >= map.height
+      object.x + width > map.width ||
+      object.y + height > map.height
     ) {
       throw new Error("Map includes an invalid object placement.");
     }
@@ -1613,6 +1735,42 @@ function isValidLayer(value: unknown): value is number {
     Number.isInteger(value) &&
     (value as number) >= 1 &&
     (value as number) <= STUDIO_LAYER_COUNT
+  );
+}
+
+function normalizeFootprintSize(value: number) {
+  if (!Number.isFinite(value)) {
+    return 1;
+  }
+
+  return Phaser.Math.Clamp(Math.floor(value), 1, 6);
+}
+
+function pointIntersectsPlacement(
+  x: number,
+  y: number,
+  placement: Pick<StudioObjectPlacement, "x" | "y" | "width" | "height">
+) {
+  return (
+    x >= placement.x &&
+    y >= placement.y &&
+    x < placement.x + placement.width &&
+    y < placement.y + placement.height
+  );
+}
+
+function footprintsOverlap(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  placement: Pick<StudioObjectPlacement, "x" | "y" | "width" | "height">
+) {
+  return (
+    x < placement.x + placement.width &&
+    x + width > placement.x &&
+    y < placement.y + placement.height &&
+    y + height > placement.y
   );
 }
 
@@ -1659,6 +1817,10 @@ function studioObjectVariantKey(assetId: string, frame: number) {
 }
 
 function getDefaultObjectFrame(asset: StudioObjectSpriteAsset) {
+  if (asset.category !== "plants") {
+    return 0;
+  }
+
   const grownRow = Math.min(2, asset.rows - 1);
   return grownRow * asset.columns;
 }
@@ -1669,11 +1831,15 @@ function getObjectFrameDisplaySize(
   frameSize: {
     width: number;
     height: number;
-  }
+  },
+  footprintWidth = 1,
+  footprintHeight = 1
 ) {
+  const targetWidth = TILE_SIZE * Math.max(1, footprintWidth);
+  const targetHeight = TILE_SIZE * Math.max(1, footprintHeight);
   const scale = Math.min(
-    TILE_SIZE / frameSize.width,
-    TILE_SIZE / frameSize.height
+    targetWidth / frameSize.width,
+    targetHeight / frameSize.height
   );
   const objectScale = getObjectFrameScale(asset, frame);
 

@@ -18,12 +18,14 @@ const textureStatus = v.union(
 );
 
 const plantSpriteKind = v.union(v.literal("plant"), v.literal("tree"));
+const objectSpriteKind = v.union(v.literal("building"), v.literal("object"));
 
 const plantSpriteStatus = v.union(
   v.literal("draft"),
   v.literal("library"),
   v.literal("archived")
 );
+const objectSpriteStatus = plantSpriteStatus;
 
 const plantSpriteCell = v.object({
   stateId: v.string(),
@@ -516,6 +518,202 @@ export const listPlantSprites = query({
   },
 });
 
+export const generateObjectSprite = action({
+  args: {
+    objectId: v.string(),
+    label: v.string(),
+    kind: objectSpriteKind,
+    region: v.string(),
+    habitat: v.string(),
+    objectPrompt: v.string(),
+    stylePrompt: v.string(),
+    imageModel: v.optional(v.string()),
+    reasoningEffort: v.optional(
+      v.union(
+        v.literal("none"),
+        v.literal("minimal"),
+        v.literal("low"),
+        v.literal("medium"),
+        v.literal("high"),
+        v.literal("xhigh")
+      )
+    ),
+  },
+  handler: async (ctx, args) => {
+    const startedAt = Date.now();
+    const requestId = createGenerationRequestId(args.objectId);
+    const imageModel =
+      args.imageModel ??
+      process.env.OPENROUTER_IMAGE_MODEL ??
+      "google/gemini-2.5-flash-image";
+    const reasoningEffort =
+      args.reasoningEffort ?? process.env.OPENROUTER_REASONING_EFFORT ?? "high";
+    const prompt = buildObjectSpritePrompt(args);
+
+    logObjectGeneration(requestId, "started", {
+      objectId: args.objectId,
+      label: args.label,
+      kind: args.kind,
+      imageModel,
+      reasoningEffort,
+      promptLength: prompt.length,
+    });
+
+    const content = await requestOpenRouterImage({
+      id: `${args.objectId}-object-sprite`,
+      title: `${args.label} object sprite`,
+      prompt,
+      imageModel,
+      reasoningEffort,
+      requestId,
+      logScope: "object",
+    });
+    logObjectGeneration(requestId, "image_received", {
+      contentType: content.contentType,
+      dataUrlLength: content.dataUrl.length,
+    });
+
+    const rawBlob = await dataUrlToBlob(content.dataUrl);
+    logObjectGeneration(requestId, "background_removal_started", {
+      rawContentType: rawBlob.type || content.contentType,
+      rawSize: rawBlob.size,
+    });
+    const blob = await removeObjectSpriteBackground(
+      rawBlob,
+      `${args.objectId}-object-sprite.png`
+    );
+    const storageId = await ctx.storage.store(blob);
+    logObjectGeneration(requestId, "stored", {
+      storageId,
+      size: blob.size,
+    });
+
+    const spriteId: string = await ctx.runMutation(
+      api.studio.registerObjectSprite,
+      {
+        objectId: args.objectId,
+        label: args.label,
+        kind: args.kind,
+        spriteStorageId: storageId,
+        fileName: `${args.objectId}-object-sprite.png`,
+        contentType: blob.type || "image/png",
+        size: blob.size,
+        status: "library",
+        region: args.region,
+        habitat: args.habitat,
+        objectPrompt: args.objectPrompt,
+        stylePrompt: args.stylePrompt,
+        generatedPrompt: content.prompt,
+        model: content.model,
+      }
+    );
+    const url = await ctx.storage.getUrl(storageId);
+
+    logObjectGeneration(requestId, "registered", {
+      spriteId,
+      hasUrl: url !== null,
+      durationMs: Date.now() - startedAt,
+    });
+
+    return {
+      spriteId,
+      objectId: args.objectId,
+      label: args.label,
+      kind: args.kind,
+      spriteStorageId: storageId,
+      url,
+      contentType: blob.type || "image/png",
+      size: blob.size,
+      status: "library",
+      region: args.region,
+      habitat: args.habitat,
+      objectPrompt: args.objectPrompt,
+      stylePrompt: args.stylePrompt,
+      generatedPrompt: content.prompt,
+      model: content.model,
+      updatedAt: Date.now(),
+    };
+  },
+});
+
+export const registerObjectSprite = mutation({
+  args: {
+    objectId: v.string(),
+    label: v.string(),
+    kind: objectSpriteKind,
+    spriteStorageId: v.id("_storage"),
+    fileName: v.string(),
+    contentType: v.string(),
+    size: v.number(),
+    status: v.optional(objectSpriteStatus),
+    region: v.string(),
+    habitat: v.string(),
+    objectPrompt: v.string(),
+    stylePrompt: v.string(),
+    generatedPrompt: v.string(),
+    model: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("studioObjectSprites")
+      .withIndex("by_objectId", (q) => q.eq("objectId", args.objectId))
+      .first();
+    const patch = {
+      objectId: args.objectId,
+      label: args.label,
+      kind: args.kind,
+      spriteStorageId: args.spriteStorageId,
+      fileName: args.fileName,
+      contentType: args.contentType,
+      size: args.size,
+      status: args.status ?? "draft",
+      region: args.region,
+      habitat: args.habitat,
+      objectPrompt: args.objectPrompt,
+      stylePrompt: args.stylePrompt,
+      generatedPrompt: args.generatedPrompt,
+      model: args.model,
+      generatedAt: now,
+      updatedAt: now,
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, patch);
+      return existing._id;
+    }
+
+    return await ctx.db.insert("studioObjectSprites", {
+      ...patch,
+      createdAt: now,
+    });
+  },
+});
+
+export const listObjectSprites = query({
+  args: {
+    status: v.optional(objectSpriteStatus),
+  },
+  handler: async (ctx, args) => {
+    const status = args.status;
+    const sprites =
+      status === undefined
+        ? await ctx.db.query("studioObjectSprites").order("desc").take(100)
+        : await ctx.db
+            .query("studioObjectSprites")
+            .withIndex("by_status_and_updatedAt", (q) => q.eq("status", status))
+            .order("desc")
+            .take(100);
+
+    return await Promise.all(
+      sprites.map(async (sprite) => ({
+        ...sprite,
+        url: await ctx.storage.getUrl(sprite.spriteStorageId),
+      }))
+    );
+  },
+});
+
 export const listTerrainAssets = query({
   args: {
     status: v.optional(terrainStatus),
@@ -595,6 +793,8 @@ type OpenRouterImageResponse = {
   }>;
 };
 
+type ImageGenerationScope = "texture" | "plant" | "object";
+
 async function requestOpenRouterImage(args: {
   id: string;
   title: string;
@@ -603,7 +803,7 @@ async function requestOpenRouterImage(args: {
   reasoningEffort?: string;
   referenceImageDataUrls?: string[];
   requestId: string;
-  logScope: "texture" | "plant";
+  logScope: ImageGenerationScope;
 }) {
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
 
@@ -770,7 +970,7 @@ function parseOpenRouterImageResponse(
   args: {
     attempt: number;
     durationMs: number;
-    logScope: "texture" | "plant";
+    logScope: ImageGenerationScope;
     requestId: string;
     status: number;
   }
@@ -831,6 +1031,38 @@ function buildTexturePrompt(args: {
     "Avoid large unique focal elements, landmarks, symbols, logos, text, UI, borders, frames, cast shadows, perspective objects, or lighting gradients.",
     "Keep the material readable when cropped into many 256px terrain tiles.",
     "Return one square PNG only.",
+  ].join("\n");
+}
+
+function buildObjectSpritePrompt(args: {
+  label: string;
+  kind: "building" | "object";
+  region: string;
+  habitat: string;
+  objectPrompt: string;
+  stylePrompt: string;
+}) {
+  const subject =
+    args.kind === "building" ? "building or structure" : "world object or prop";
+
+  return [
+    `Create one standalone transparent PNG game sprite for ${args.label}.`,
+    `Subject type: ${subject}.`,
+    `Object brief: ${args.objectPrompt}.`,
+    `Region: ${args.region || "custom"}.`,
+    `Terrain, habitat, or placement notes: ${args.habitat || "custom"}.`,
+    "",
+    "Make exactly one isolated subject, not a sprite sheet, not a variant grid, and not a scene.",
+    "Use a three-quarter top-down game perspective compatible with a tile-based world editor.",
+    "The image will be placed over selectable rectangular grid footprints, so give it a clear readable footprint silhouette and a stable bottom/ground contact area.",
+    "Keep the whole subject fully visible with comfortable transparent padding around every edge.",
+    "Use a plain removable background if full transparency is not possible; it will be removed in post-processing.",
+    "Do not include labels, readable text, logos, watermarks, UI, people, terrain tiles, decorative borders, multiple separate copies, or cast shadows that imply a fixed scene background.",
+    "",
+    "Style direction:",
+    args.stylePrompt,
+    "",
+    "Return one PNG image only.",
   ].join("\n");
 }
 
@@ -1300,14 +1532,34 @@ function logPlantGeneration(
   );
 }
 
+function logObjectGeneration(
+  requestId: string,
+  event: string,
+  metadata: Record<string, unknown>
+) {
+  console.log(
+    JSON.stringify({
+      scope: "studio.object_generation",
+      requestId,
+      event,
+      ...metadata,
+    })
+  );
+}
+
 function logImageGeneration(
-  scope: "texture" | "plant",
+  scope: ImageGenerationScope,
   requestId: string,
   event: string,
   metadata: Record<string, unknown>
 ) {
   if (scope === "plant") {
     logPlantGeneration(requestId, event, metadata);
+    return;
+  }
+
+  if (scope === "object") {
+    logObjectGeneration(requestId, event, metadata);
     return;
   }
 

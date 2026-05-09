@@ -7,6 +7,7 @@ const ROUTE_PATHS: Record<StudioRouteId, string> = {
   dashboard: "/studio",
   textures: "/studio/textures",
   plants: "/studio/plants",
+  objects: "/studio/objects",
   map: "/studio/worlds",
   assets: "/studio/assets",
 };
