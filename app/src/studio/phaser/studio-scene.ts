@@ -35,6 +35,7 @@ const OBJECT_FOOTPRINT_KEY_DELTAS: Record<
   ArrowRight: { width: 1, height: 0 },
   ArrowUp: { width: 0, height: 1 },
 };
+const SELECTED_OBJECT_DELETE_KEYS = new Set(["Backspace", "Delete"]);
 
 export const STUDIO_LAYER_OPTIONS = Array.from(
   { length: STUDIO_LAYER_COUNT },
@@ -184,6 +185,9 @@ export class StudioScene extends Phaser.Scene {
   private undoStack: StudioMapExport[] = [];
   private pendingUndoSnapshot: StudioMapExport | null = null;
   private isReady = false;
+  private readonly handleWindowKeydown = (event: KeyboardEvent) => {
+    this.handleStudioKeydown(event);
+  };
   private readonly layers = new Map<
     number,
     Map<TerrainVisualAssetId, StudioLayer>
@@ -233,6 +237,7 @@ export class StudioScene extends Phaser.Scene {
     this.renderAllLayers();
     this.drawGrid();
     this.registerInput();
+    this.registerGlobalKeyboardInput();
     this.updateCameraBounds();
     this.updateStatus();
     this.options.onReady?.();
@@ -960,7 +965,7 @@ export class StudioScene extends Phaser.Scene {
     });
 
     this.input.keyboard?.on("keydown", (event: KeyboardEvent) => {
-      this.handleObjectPlacementFootprintKeydown(event);
+      this.handleStudioKeydown(event);
     });
 
     this.input.on(
@@ -987,6 +992,48 @@ export class StudioScene extends Phaser.Scene {
 
         this.panCameraByWheel(deltaX, deltaY);
       }
+    );
+  }
+
+  private registerGlobalKeyboardInput() {
+    window.removeEventListener("keydown", this.handleWindowKeydown, true);
+    window.addEventListener("keydown", this.handleWindowKeydown, true);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      window.removeEventListener("keydown", this.handleWindowKeydown, true);
+    });
+  }
+
+  private handleStudioKeydown(event: KeyboardEvent) {
+    if (this.handleSelectedObjectDeleteKeydown(event)) {
+      return;
+    }
+
+    this.handleObjectPlacementFootprintKeydown(event);
+  }
+
+  private handleSelectedObjectDeleteKeydown(event: KeyboardEvent) {
+    if (
+      !SELECTED_OBJECT_DELETE_KEYS.has(event.key) ||
+      event.repeat ||
+      !this.canDeleteSelectedObjectWithKeyboard(event)
+    ) {
+      return false;
+    }
+
+    event.preventDefault();
+    this.deleteSelectedObject();
+    return true;
+  }
+
+  private canDeleteSelectedObjectWithKeyboard(event: KeyboardEvent) {
+    return (
+      this.toolMode === "object" &&
+      this.objectPaintMode === "select" &&
+      Boolean(
+        this.selectedObjectPlacementKey &&
+          this.objectPlacements.has(this.selectedObjectPlacementKey)
+      ) &&
+      !isEditableKeyboardTarget(event.target)
     );
   }
 
