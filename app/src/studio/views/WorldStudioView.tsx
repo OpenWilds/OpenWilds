@@ -1010,7 +1010,7 @@ export function WorldStudioView({
             <p>{state ? `${state.width}x${state.height} world` : "40x40"}</p>
             <p id="studio-tool-status">
               {toolMode === "object"
-                ? `Objects · ${
+                ? `Layer ${selectedLayer} · Objects · ${
                     selectedObject?.label ?? "None"
                   } · ${objectFootprintWidth}x${objectFootprintHeight} · ${objectPaintMode} · ${
                     state?.objectCount ?? 0
