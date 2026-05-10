@@ -33,9 +33,12 @@ export default definePluginEntry({
   register(api) {
     api.registerTool({
       name: "open_wilds_get_game_state",
+      label: "Get Open Wilds Game State",
       description: "Return a static sample Open Wilds game state snapshot.",
       parameters: Type.Object({}),
-      async execute() {
+      async execute(_toolCallId, _params, signal) {
+        signal?.throwIfAborted();
+
         return {
           content: [
             {
@@ -43,6 +46,7 @@ export default definePluginEntry({
               text: JSON.stringify(SAMPLE_GAME_STATE, null, 2),
             },
           ],
+          details: SAMPLE_GAME_STATE,
         };
       },
     });
