@@ -1,3 +1,17 @@
+import {
+  ArrowLeftIcon,
+  BroomIcon,
+  DotsThreeIcon,
+  DownloadSimpleIcon,
+  EraserIcon,
+  FloppyDiskIcon,
+  GridFourIcon,
+  PaintBrushIcon,
+  MinusCircleIcon,
+  PlusCircleIcon,
+  ResizeIcon,
+  UploadSimpleIcon,
+} from "@phosphor-icons/react";
 import Phaser from "phaser";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
@@ -5,6 +19,7 @@ import type {
   TerrainVisualAsset,
   TerrainVisualAssetId,
 } from "../../assets/visual-assets";
+import { SegmentedControl } from "../components/SegmentedControl";
 import { saveStudioMapToConvex } from "../convex/convex-studio";
 import { DEFAULT_STUDIO_HELP, LAYERED_STUDIO_HELP } from "../lib/studio-data";
 import type {
@@ -56,6 +71,8 @@ type WorldStudioSettings = {
 
 const WORLD_STUDIO_SETTINGS_KEY = "open-wilds:world-studio:settings";
 const AUTOSAVE_DELAY_MS = 1200;
+const MIN_OBJECT_FOOTPRINT = 1;
+const MAX_OBJECT_FOOTPRINT = 6;
 
 export function WorldStudioView({
   generatedTerrains,
@@ -92,11 +109,8 @@ export function WorldStudioView({
   const [mapSize, setMapSize] = useState({ width: 40, height: 40 });
   const [baseTerrainId, setBaseTerrainId] = useState<TerrainVisualAssetId>("");
   const [mapStatus, setMapStatus] = useState<string | null>(null);
-  const [isTerrainModalOpen, setIsTerrainModalOpen] = useState(false);
-  const [isObjectModalOpen, setIsObjectModalOpen] = useState(false);
-  const [objectCategoryFilter, setObjectCategoryFilter] = useState<
-    StudioObjectSpriteAsset["category"]
-  >("plants");
+  const [objectCategoryFilter, setObjectCategoryFilter] =
+    useState<StudioObjectSpriteAsset["category"]>("plants");
   const editorTerrainAssets = useMemo(
     () =>
       mergeTerrainAssets([
@@ -273,9 +287,6 @@ export function WorldStudioView({
   const filteredObjectAssets = editorObjectAssets.filter(
     (asset) => asset.category === objectCategoryFilter
   );
-  const selectedPaintTerrain = paintableTerrains.find(
-    (asset) => asset.id === selectedTerrain
-  );
   const toolMode = state?.toolMode ?? "terrain";
   const paintMode = state?.paintMode ?? "paint";
   const objectPaintMode = state?.objectPaintMode ?? "place";
@@ -288,12 +299,33 @@ export function WorldStudioView({
     (state?.message === DEFAULT_STUDIO_HELP || !state?.message
       ? LAYERED_STUDIO_HELP
       : state.message);
+  const worldSizeLabel = state
+    ? `${state.width}x${state.height} world`
+    : `${mapSize.width}x${mapSize.height} world`;
+  const toolSummary =
+    toolMode === "object"
+      ? `Layer ${selectedLayer} · Objects · ${
+          selectedObject?.label ?? "None"
+        } · ${objectFootprintWidth}x${objectFootprintHeight} · ${objectPaintMode} · ${
+          state?.objectCount ?? 0
+        } placed`
+      : `Layer ${selectedLayer} · ${terrainLabel(
+          selectedTerrain
+        )} · ${paintMode} · ${brushSize}x${brushSize} · ${
+          state?.activeLayerCellCount ?? 0
+        } cells`;
 
   useEffect(() => {
     if (state) {
       setMapSize({ width: state.width, height: state.height });
     }
   }, [state?.width, state?.height]);
+
+  useEffect(() => {
+    if (selectedObject) {
+      setObjectCategoryFilter(selectedObject.category);
+    }
+  }, [selectedObject?.category]);
 
   useEffect(() => {
     const worldKey = openWorld?.id ?? openWorld?.name;
@@ -648,307 +680,74 @@ export function WorldStudioView({
         className="studio-workspace studio-workspace--world"
         data-loading={isWorldLoading ? "" : undefined}
       >
-        <div
-          className="studio-world-controls"
-          aria-label="World studio controls"
-        >
-          <section className="studio-world-controls__group">
-            <h2>World</h2>
-            <button
-              className="studio-command"
-              onClick={closeWorld}
-              type="button"
+        <div className="studio-world-topbar" aria-label="World controls">
+          <button
+            className="studio-icon-command studio-icon-command--labeled"
+            onClick={closeWorld}
+            type="button"
+          >
+            <ArrowLeftIcon aria-hidden="true" size={18} weight="bold" />
+            <span>Worlds</span>
+          </button>
+          <label className="studio-world-field studio-world-field--name">
+            <span>Name</span>
+            <input
+              value={worldName}
+              onChange={(event) => setWorldName(event.target.value)}
+            />
+          </label>
+          <label className="studio-world-field">
+            <span>Layer 0</span>
+            <select
+              value={baseTerrainId}
+              onChange={(event) =>
+                setBaseTerrainId(event.target.value as TerrainVisualAssetId)
+              }
             >
-              Worlds
-            </button>
-            <label className="studio-layer-select">
-              Name
-              <input
-                value={worldName}
-                onChange={(event) => setWorldName(event.target.value)}
-              />
-            </label>
-            <label className="studio-layer-select">
-              Layer 0
-              <select
-                value={baseTerrainId}
-                onChange={(event) =>
-                  setBaseTerrainId(event.target.value as TerrainVisualAssetId)
-                }
-              >
-                {editorTerrainAssets.map((asset) => (
-                  <option key={asset.id} value={asset.id}>
-                    {asset.label ?? terrainLabel(asset.id)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="studio-toggle">
-              <input
-                checked={autoSaveEnabled}
-                onChange={(event) => setAutoSaveEnabled(event.target.checked)}
-                type="checkbox"
-              />
-              Auto save
-            </label>
-          </section>
-
-          <section className="studio-world-controls__group">
-            <h2>Tool</h2>
-            <div className="studio-segmented studio-segmented--tight">
-              <button
-                data-active={toolMode === "terrain" ? "" : undefined}
-                onClick={() => sceneRef.current?.setToolMode("terrain")}
-                type="button"
-              >
-                Terrain
-              </button>
-              <button
-                data-active={toolMode === "object" ? "" : undefined}
-                disabled={!editorObjectAssets.length}
-                onClick={() => sceneRef.current?.setToolMode("object")}
-                type="button"
-              >
-                Object
-              </button>
-            </div>
-          </section>
-
-          <section className="studio-world-controls__group">
-            <h2>Layer</h2>
-            <label className="studio-layer-select">
-              Slot
-              <select
-                value={selectedLayer}
-                onChange={(event) =>
-                  sceneRef.current?.setSelectedLayer(Number(event.target.value))
-                }
-              >
-                {STUDIO_LAYER_OPTIONS.map((layer) => (
-                  <option key={layer} value={layer}>
-                    Layer {layer}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="studio-segmented studio-segmented--tight">
-              <button
-                data-active={paintMode === "paint" ? "" : undefined}
-                disabled={!paintableTerrains.length || toolMode !== "terrain"}
-                onClick={() => sceneRef.current?.setPaintMode("paint")}
-                type="button"
-              >
-                Paint
-              </button>
-              <button
-                data-active={paintMode === "erase" ? "" : undefined}
-                disabled={!paintableTerrains.length || toolMode !== "terrain"}
-                onClick={() => sceneRef.current?.setPaintMode("erase")}
-                type="button"
-              >
-                Erase
-              </button>
-            </div>
-          </section>
-
-          <section className="studio-world-controls__group studio-world-controls__group--terrain">
-            <h2>Place Objects</h2>
-            {editorObjectAssets.length ? (
-              <>
-                <div className="studio-segmented studio-segmented--tight">
-                  <button
-                    data-active={objectPaintMode === "place" ? "" : undefined}
-                    disabled={toolMode !== "object"}
-                    onClick={() =>
-                      sceneRef.current?.setObjectPaintMode("place")
-                    }
-                    type="button"
-                  >
-                    Place
-                  </button>
-                  <button
-                    data-active={objectPaintMode === "erase" ? "" : undefined}
-                    disabled={toolMode !== "object"}
-                    onClick={() =>
-                      sceneRef.current?.setObjectPaintMode("erase")
-                    }
-                    type="button"
-                  >
-                    Erase
-                  </button>
-                </div>
-                <button
-                  className="studio-object-select"
-                  disabled={isWorldLoading}
-                  onClick={() => {
-                    if (selectedObject) {
-                      setObjectCategoryFilter(selectedObject.category);
-                    }
-                    setIsObjectModalOpen(true);
-                  }}
-                  type="button"
-                >
-                  {selectedObject ? (
-                    <span
-                      className="studio-object-select__thumb"
-                      style={{
-                        backgroundImage: `url(${selectedObject.imageUrl})`,
-                        backgroundPosition: objectFrameBackgroundPosition(
-                          selectedObject,
-                          selectedObjectFrame
-                        ),
-                        backgroundSize: `${selectedObject.columns * 100}% ${
-                          selectedObject.rows * 100
-                        }%`,
-                      }}
-                    />
-                  ) : null}
-                  <span>
-                    <strong>{selectedObject?.label ?? "Choose object"}</strong>
-                    <small>
-                      {objectCategoryLabel(selectedObject?.category)} ·{" "}
-                      {selectedObject
-                        ? objectFrameLabel(selectedObject, selectedObjectFrame)
-                        : "Variant 1"}
-                    </small>
-                  </span>
-                </button>
-                <div className="studio-size-row">
-                  <label>
-                    Width
-                    <input
-                      disabled={toolMode !== "object"}
-                      min="1"
-                      max="6"
-                      type="number"
-                      value={objectFootprintWidth}
-                      onChange={(event) =>
-                        sceneRef.current?.setObjectFootprint(
-                          Number(event.target.value),
-                          objectFootprintHeight
-                        )
-                      }
-                    />
-                  </label>
-                  <label>
-                    Height
-                    <input
-                      disabled={toolMode !== "object"}
-                      min="1"
-                      max="6"
-                      type="number"
-                      value={objectFootprintHeight}
-                      onChange={(event) =>
-                        sceneRef.current?.setObjectFootprint(
-                          objectFootprintWidth,
-                          Number(event.target.value)
-                        )
-                      }
-                    />
-                  </label>
-                </div>
-              </>
-            ) : (
-              <p className="studio-note">
-                Generate plant sprites in Plant Studio to place them here.
-              </p>
-            )}
-          </section>
-
-          <section className="studio-world-controls__group studio-world-controls__group--terrain">
-            <h2>Paint Terrain</h2>
-            {paintableTerrains.length ? (
-              <button
-                className="studio-terrain-select"
-                disabled={isWorldLoading}
-                onClick={() => setIsTerrainModalOpen(true)}
-                type="button"
-              >
-                {selectedPaintTerrain ? (
-                  <span className="studio-terrain-button__thumb">
-                    <img src={selectedPaintTerrain.centerVariantsUrl} alt="" />
-                  </span>
-                ) : null}
-                <span>
-                  <strong>
-                    {selectedPaintTerrain
-                      ? selectedPaintTerrain.label ??
-                        terrainLabel(selectedPaintTerrain.id)
-                      : "Choose terrain"}
-                  </strong>
-                  <small>{paintableTerrains.length} paintable terrains</small>
-                </span>
-              </button>
-            ) : (
-              <p className="studio-note">
-                Add another generated terrain to paint above the base layer.
-              </p>
-            )}
-          </section>
-
-          <section className="studio-world-controls__group">
-            <h2>Brush</h2>
-            <div className="studio-segmented" data-control="brush">
-              {[1, 3, 5].map((size) => (
-                <button
-                  data-active={brushSize === size ? "" : undefined}
-                  disabled={!paintableTerrains.length || toolMode !== "terrain"}
-                  key={size}
-                  onClick={() => sceneRef.current?.setBrushSize(size)}
-                  type="button"
-                >
-                  {size}x{size}
-                </button>
+              {editorTerrainAssets.map((asset) => (
+                <option key={asset.id} value={asset.id}>
+                  {asset.label ?? terrainLabel(asset.id)}
+                </option>
               ))}
-            </div>
-            <label className="studio-toggle">
+            </select>
+          </label>
+          <div className="studio-world-size-control">
+            <span>Size</span>
+            <label>
+              <span>W</span>
               <input
-                checked={showGrid}
+                aria-label="World width"
+                min="5"
+                max="200"
+                type="number"
+                value={mapSize.width}
                 onChange={(event) =>
-                  sceneRef.current?.setGridVisible(event.target.checked)
+                  setMapSize((current) => ({
+                    ...current,
+                    width: Number(event.target.value),
+                  }))
                 }
-                type="checkbox"
               />
-              Show grid
             </label>
-          </section>
-
-          <section className="studio-world-controls__group">
-            <h2>Size</h2>
-            <div className="studio-size-row">
-              <label>
-                Width
-                <input
-                  min="5"
-                  max="200"
-                  type="number"
-                  value={mapSize.width}
-                  onChange={(event) =>
-                    setMapSize((current) => ({
-                      ...current,
-                      width: Number(event.target.value),
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                Height
-                <input
-                  min="5"
-                  max="200"
-                  type="number"
-                  value={mapSize.height}
-                  onChange={(event) =>
-                    setMapSize((current) => ({
-                      ...current,
-                      height: Number(event.target.value),
-                    }))
-                  }
-                />
-              </label>
-            </div>
+            <label>
+              <span>H</span>
+              <input
+                aria-label="World height"
+                min="5"
+                max="200"
+                type="number"
+                value={mapSize.height}
+                onChange={(event) =>
+                  setMapSize((current) => ({
+                    ...current,
+                    height: Number(event.target.value),
+                  }))
+                }
+              />
+            </label>
             <button
-              className="studio-command"
+              aria-label="Resize world"
+              className="studio-icon-command"
               onClick={() => {
                 const resized =
                   sceneRef.current?.resizeMap(mapSize.width, mapSize.height) ??
@@ -962,243 +761,428 @@ export function WorldStudioView({
               }}
               type="button"
             >
-              Resize
+              <ResizeIcon aria-hidden="true" size={18} weight="bold" />
             </button>
-          </section>
-
-          <section className="studio-world-controls__group">
-            <h2>Actions</h2>
-            <div className="studio-command-grid">
+          </div>
+          <label className="studio-world-autosave">
+            <input
+              checked={autoSaveEnabled}
+              onChange={(event) => setAutoSaveEnabled(event.target.checked)}
+              type="checkbox"
+            />
+            <span>Auto save</span>
+          </label>
+          <details className="studio-world-more">
+            <summary aria-label="World actions">
+              <DotsThreeIcon aria-hidden="true" size={26} weight="bold" />
+            </summary>
+            <div className="studio-world-menu">
               <button
                 disabled={!paintableTerrains.length || toolMode !== "terrain"}
                 onClick={() => sceneRef.current?.fillActiveLayer()}
                 type="button"
               >
-                Fill Layer
+                <PaintBrushIcon aria-hidden="true" size={17} weight="bold" />
+                Fill layer
               </button>
               <button
                 disabled={!paintableTerrains.length || toolMode !== "terrain"}
                 onClick={() => sceneRef.current?.clearActiveLayer()}
                 type="button"
               >
-                Clear Layer
+                <EraserIcon aria-hidden="true" size={17} weight="bold" />
+                Clear layer
               </button>
-            </div>
-            <button
-              className="studio-command"
-              disabled={!editorObjectAssets.length}
-              onClick={() => sceneRef.current?.clearObjects()}
-              type="button"
-            >
-              Clear Objects
-            </button>
-            <div className="studio-command-grid">
+              <button
+                disabled={!editorObjectAssets.length}
+                onClick={() => sceneRef.current?.clearObjects()}
+                type="button"
+              >
+                <BroomIcon aria-hidden="true" size={17} weight="bold" />
+                Clear objects
+              </button>
               <button
                 onClick={() => importInputRef.current?.click()}
                 type="button"
               >
+                <UploadSimpleIcon aria-hidden="true" size={17} weight="bold" />
                 Import JSON
               </button>
+              <button
+                onClick={() => {
+                  const map = sceneRef.current?.getExport();
+                  if (map) {
+                    downloadStudioMap(map);
+                    setMapStatus("Exported world JSON.");
+                  }
+                }}
+                type="button"
+              >
+                <DownloadSimpleIcon
+                  aria-hidden="true"
+                  size={17}
+                  weight="bold"
+                />
+                Export JSON
+              </button>
               <button onClick={() => void saveWorld()} type="button">
-                Save Cloud
+                <FloppyDiskIcon aria-hidden="true" size={17} weight="bold" />
+                Save cloud
               </button>
+              <label className="studio-world-menu__toggle">
+                <input
+                  checked={showGrid}
+                  onChange={(event) =>
+                    sceneRef.current?.setGridVisible(event.target.checked)
+                  }
+                  type="checkbox"
+                />
+                <GridFourIcon aria-hidden="true" size={17} weight="bold" />
+                <span>Show grid</span>
+              </label>
+              <input
+                ref={importInputRef}
+                hidden
+                type="file"
+                accept="application/json,.json"
+                onChange={(event) => {
+                  void handleImport(event.currentTarget.files?.[0]);
+                  event.currentTarget.value = "";
+                }}
+              />
             </div>
-            <input
-              ref={importInputRef}
-              hidden
-              type="file"
-              accept="application/json,.json"
-              onChange={(event) => {
-                void handleImport(event.currentTarget.files?.[0]);
-                event.currentTarget.value = "";
-              }}
+          </details>
+        </div>
+
+        <div className="studio-world-body">
+          <aside className="studio-world-palette" aria-label="Editor palette">
+            <SegmentedControl
+              ariaLabel="Editor tool"
+              className="studio-world-tool-tabs"
+              value={toolMode}
+              onChange={(mode) => sceneRef.current?.setToolMode(mode)}
+              options={
+                [
+                  { label: "Terrain", value: "terrain" },
+                  {
+                    disabled: !editorObjectAssets.length,
+                    label: "Object",
+                    value: "object",
+                  },
+                ] as const
+              }
             />
-          </section>
 
-          <section className="studio-world-status" aria-live="polite">
-            <p>{state ? `${state.width}x${state.height} world` : "40x40"}</p>
-            <p id="studio-tool-status">
-              {toolMode === "object"
-                ? `Layer ${selectedLayer} · Objects · ${
-                    selectedObject?.label ?? "None"
-                  } · ${objectFootprintWidth}x${objectFootprintHeight} · ${objectPaintMode} · ${
-                    state?.objectCount ?? 0
-                  } placed`
-                : `Layer ${selectedLayer} · ${terrainLabel(
-                    selectedTerrain
-                  )} · ${paintMode} · ${brushSize}x${brushSize} · ${
-                    state?.activeLayerCellCount ?? 0
-                  } cells`}
-            </p>
-            <p>{helpMessage}</p>
-          </section>
-        </div>
+            <label className="studio-layer-select">
+              Active layer
+              <select
+                value={selectedLayer}
+                onChange={(event) =>
+                  sceneRef.current?.setSelectedLayer(Number(event.target.value))
+                }
+              >
+                {STUDIO_LAYER_OPTIONS.map((layer) => (
+                  <option key={layer} value={layer}>
+                    Layer {layer}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-        <div className="studio-canvas-shell studio-canvas-shell--world">
-          <div id={gameHostIdRef.current} className="studio-game-host" />
-          {isWorldLoading ? (
-            <div className="studio-world-loading" role="status">
-              <span aria-hidden="true" />
-              <strong>Loading World Assets</strong>
-              <p>Preparing terrain textures before opening the editor.</p>
-            </div>
-          ) : null}
-        </div>
-      </div>
-      {isTerrainModalOpen ? (
-        <div
-          className="studio-modal-backdrop"
-          role="presentation"
-          onMouseDown={() => setIsTerrainModalOpen(false)}
-        >
-          <section
-            aria-modal="true"
-            className="studio-terrain-modal"
-            role="dialog"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="studio-terrain-modal__header">
-              <div className="studio-section-heading">
-                <p className="eyebrow">Paint Palette</p>
-                <h2>Select Terrain</h2>
-              </div>
-              <button
-                className="studio-command"
-                onClick={() => setIsTerrainModalOpen(false)}
-                type="button"
-              >
-                Close
-              </button>
-            </div>
-            <div className="studio-terrain-modal__list">
-              {paintableTerrains.map((asset) => (
-                <button
-                  className="studio-terrain-modal__item"
-                  data-active={selectedTerrain === asset.id ? "" : undefined}
-                  key={asset.id}
-                  onClick={() => {
-                    sceneRef.current?.setSelectedTerrain(
-                      asset.id as TerrainVisualAssetId
-                    );
-                    setIsTerrainModalOpen(false);
-                  }}
-                  type="button"
-                >
-                  <span className="studio-terrain-modal__thumb">
-                    <img src={asset.centerVariantsUrl} alt="" />
-                  </span>
-                  <span className="studio-terrain-modal__copy">
-                    <strong>{asset.label ?? terrainLabel(asset.id)}</strong>
-                    <small>{asset.id}</small>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
-        </div>
-      ) : null}
-      {isObjectModalOpen ? (
-        <div
-          className="studio-modal-backdrop"
-          role="presentation"
-          onMouseDown={() => setIsObjectModalOpen(false)}
-        >
-          <section
-            aria-modal="true"
-            className="studio-terrain-modal studio-object-modal"
-            role="dialog"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="studio-terrain-modal__header">
-              <div className="studio-section-heading">
-                <p className="eyebrow">Object Palette</p>
-                <h2>Select Object</h2>
-              </div>
-              <button
-                className="studio-command"
-                onClick={() => setIsObjectModalOpen(false)}
-                type="button"
-              >
-                Close
-              </button>
-            </div>
-            <div className="studio-object-category-tabs">
-              {(["plants", "buildings", "objects"] as const).map(
-                (category) => (
-                  <button
-                    data-active={
-                      objectCategoryFilter === category ? "" : undefined
-                    }
-                    key={category}
-                    onClick={() => setObjectCategoryFilter(category)}
-                    type="button"
-                  >
-                    {objectCategoryLabel(category)}
-                  </button>
-                )
-              )}
-            </div>
-            <div className="studio-object-modal__list">
-              {filteredObjectAssets.length > 0 ? (
-                filteredObjectAssets.map((asset) => (
-                <article className="studio-object-modal__asset" key={asset.id}>
-                  <div className="studio-object-modal__asset-header">
-                    <strong>{asset.label}</strong>
-                    <small>{asset.kind}</small>
+            {toolMode === "terrain" ? (
+              <>
+                {paintableTerrains.length ? (
+                  <div className="studio-world-palette-grid">
+                    {paintableTerrains.map((asset) => (
+                      <button
+                        className="studio-world-terrain-option"
+                        data-active={
+                          selectedTerrain === asset.id ? "" : undefined
+                        }
+                        disabled={isWorldLoading}
+                        key={asset.id}
+                        onClick={() =>
+                          sceneRef.current?.setSelectedTerrain(
+                            asset.id as TerrainVisualAssetId
+                          )
+                        }
+                        type="button"
+                      >
+                        <span className="studio-terrain-button__thumb">
+                          <img src={asset.centerVariantsUrl} alt="" />
+                        </span>
+                        <span>
+                          <strong>
+                            {asset.label ?? terrainLabel(asset.id)}
+                          </strong>
+                          <small>{asset.id}</small>
+                        </span>
+                      </button>
+                    ))}
                   </div>
-                  <div className="studio-object-variant-grid">
-                    {Array.from(
-                      { length: asset.rows * asset.columns },
-                      (_, frame) => (
-                        <button
-                          className="studio-object-variant"
-                          data-active={
-                            selectedObjectId === asset.id &&
-                            selectedObjectFrame === frame
-                              ? ""
-                              : undefined
-                          }
-                          key={frame}
-                          onClick={() => {
-                            sceneRef.current?.setToolMode("object");
-                            sceneRef.current?.setObjectPaintMode("place");
-                            sceneRef.current?.setSelectedObjectVariant(
-                              asset.id,
-                              frame
-                            );
-                            setIsObjectModalOpen(false);
-                          }}
-                          type="button"
-                        >
-                          <span
-                            style={{
-                              backgroundImage: `url(${asset.imageUrl})`,
-                              backgroundPosition: objectFrameBackgroundPosition(
-                                asset,
+                ) : (
+                  <p className="studio-note">
+                    Add another generated terrain to paint above the base layer.
+                  </p>
+                )}
+              </>
+            ) : (
+              <>
+                <SegmentedControl
+                  ariaLabel="Object category"
+                  className="studio-object-category-tabs"
+                  value={objectCategoryFilter}
+                  onChange={setObjectCategoryFilter}
+                  options={(["plants", "buildings", "objects"] as const).map(
+                    (category) => ({
+                      label: objectCategoryLabel(category),
+                      value: category,
+                    })
+                  )}
+                />
+                {filteredObjectAssets.length > 0 ? (
+                  <div className="studio-world-palette-grid studio-world-palette-grid--objects">
+                    {filteredObjectAssets.map((asset) =>
+                      Array.from(
+                        { length: asset.rows * asset.columns },
+                        (_, frame) => (
+                          <button
+                            className="studio-world-object-option"
+                            data-active={
+                              selectedObjectId === asset.id &&
+                              selectedObjectFrame === frame
+                                ? ""
+                                : undefined
+                            }
+                            disabled={isWorldLoading}
+                            key={`${asset.id}-${frame}`}
+                            onClick={() => {
+                              sceneRef.current?.setObjectPaintMode("place");
+                              sceneRef.current?.setSelectedObjectVariant(
+                                asset.id,
                                 frame
-                              ),
-                              backgroundSize: `${asset.columns * 100}% ${
-                                asset.rows * 100
-                              }%`,
+                              );
                             }}
-                          />
-                          <small>{objectFrameLabel(asset, frame)}</small>
-                        </button>
+                            type="button"
+                          >
+                            <span
+                              className="studio-object-palette__thumb"
+                              style={{
+                                backgroundImage: `url(${asset.imageUrl})`,
+                                backgroundPosition:
+                                  objectFrameBackgroundPosition(asset, frame),
+                                backgroundSize: `${asset.columns * 100}% ${
+                                  asset.rows * 100
+                                }%`,
+                              }}
+                            />
+                            <strong>{asset.label}</strong>
+                            <small>{objectFrameLabel(asset, frame)}</small>
+                          </button>
+                        )
                       )
                     )}
                   </div>
-                </article>
-                ))
-              ) : (
-                <div className="studio-library-empty">
-                  No {objectCategoryLabel(objectCategoryFilter).toLowerCase()}{" "}
-                  available yet.
-                </div>
-              )}
+                ) : (
+                  <div className="studio-library-empty">
+                    No {objectCategoryLabel(objectCategoryFilter).toLowerCase()}{" "}
+                    available yet.
+                  </div>
+                )}
+              </>
+            )}
+          </aside>
+
+          <div className="studio-canvas-shell studio-canvas-shell--world">
+            <div className="studio-floating-toolbar" aria-label="Tool options">
+              <div className="studio-floating-toolbar__panel studio-floating-toolbar__panel--mode">
+                {toolMode === "terrain" ? (
+                  <SegmentedControl
+                    ariaLabel="Terrain paint mode"
+                    className="studio-floating-mode"
+                    value={paintMode}
+                    onChange={(mode) => sceneRef.current?.setPaintMode(mode)}
+                    options={
+                      [
+                        {
+                          disabled: !paintableTerrains.length,
+                          label: "Paint",
+                          value: "paint",
+                        },
+                        {
+                          disabled: !paintableTerrains.length,
+                          label: "Erase",
+                          value: "erase",
+                        },
+                      ] as const
+                    }
+                  />
+                ) : (
+                  <SegmentedControl
+                    ariaLabel="Object placement mode"
+                    className="studio-floating-mode"
+                    value={objectPaintMode}
+                    onChange={(mode) =>
+                      sceneRef.current?.setObjectPaintMode(mode)
+                    }
+                    options={
+                      [
+                        { label: "Place", value: "place" },
+                        { label: "Erase", value: "erase" },
+                      ] as const
+                    }
+                  />
+                )}
+              </div>
+              <div className="studio-floating-toolbar__panel studio-floating-toolbar__panel--control">
+                {toolMode === "terrain" ? (
+                  <>
+                    <span className="studio-floating-toolbar__label">
+                      {paintMode === "erase" ? (
+                        <EraserIcon
+                          aria-hidden="true"
+                          size={17}
+                          weight="bold"
+                        />
+                      ) : (
+                        <PaintBrushIcon
+                          aria-hidden="true"
+                          size={17}
+                          weight="bold"
+                        />
+                      )}
+                      {paintMode === "erase" ? "Eraser" : "Brush"}
+                    </span>
+                    <SegmentedControl
+                      ariaLabel="Brush size"
+                      className="studio-brush-size-control"
+                      value={brushSize}
+                      onChange={(size) => sceneRef.current?.setBrushSize(size)}
+                      options={[1, 3, 5].map((size) => ({
+                        disabled: !paintableTerrains.length,
+                        label: `${size}x${size}`,
+                        value: size,
+                      }))}
+                    />
+                  </>
+                ) : objectPaintMode === "erase" ? (
+                  <>
+                    <span className="studio-floating-toolbar__label">
+                      <EraserIcon aria-hidden="true" size={17} weight="bold" />
+                      Eraser
+                    </span>
+                    <SegmentedControl
+                      ariaLabel="Eraser size"
+                      className="studio-brush-size-control"
+                      value={brushSize}
+                      onChange={(size) => sceneRef.current?.setBrushSize(size)}
+                      options={[1, 3, 5].map((size) => ({
+                        label: `${size}x${size}`,
+                        value: size,
+                      }))}
+                    />
+                  </>
+                ) : (
+                  <div className="studio-footprint-stepper">
+                    <span className="studio-footprint-stepper__title">
+                      Footprint
+                    </span>
+                    <span className="studio-footprint-stepper__axis">W:</span>
+                    <div className="studio-footprint-stepper__control">
+                      <button
+                        aria-label="Decrease footprint width"
+                        disabled={objectFootprintWidth <= MIN_OBJECT_FOOTPRINT}
+                        onClick={() =>
+                          sceneRef.current?.setObjectFootprint(
+                            objectFootprintWidth - 1,
+                            objectFootprintHeight
+                          )
+                        }
+                        type="button"
+                      >
+                        <MinusCircleIcon
+                          aria-hidden="true"
+                          size={31}
+                          weight="fill"
+                        />
+                      </button>
+                      <strong>{objectFootprintWidth}</strong>
+                      <button
+                        aria-label="Increase footprint width"
+                        disabled={objectFootprintWidth >= MAX_OBJECT_FOOTPRINT}
+                        onClick={() =>
+                          sceneRef.current?.setObjectFootprint(
+                            objectFootprintWidth + 1,
+                            objectFootprintHeight
+                          )
+                        }
+                        type="button"
+                      >
+                        <PlusCircleIcon
+                          aria-hidden="true"
+                          size={31}
+                          weight="fill"
+                        />
+                      </button>
+                    </div>
+                    <span className="studio-footprint-stepper__axis">H:</span>
+                    <div className="studio-footprint-stepper__control">
+                      <button
+                        aria-label="Decrease footprint height"
+                        disabled={objectFootprintHeight <= MIN_OBJECT_FOOTPRINT}
+                        onClick={() =>
+                          sceneRef.current?.setObjectFootprint(
+                            objectFootprintWidth,
+                            objectFootprintHeight - 1
+                          )
+                        }
+                        type="button"
+                      >
+                        <MinusCircleIcon
+                          aria-hidden="true"
+                          size={31}
+                          weight="fill"
+                        />
+                      </button>
+                      <strong>{objectFootprintHeight}</strong>
+                      <button
+                        aria-label="Increase footprint height"
+                        disabled={objectFootprintHeight >= MAX_OBJECT_FOOTPRINT}
+                        onClick={() =>
+                          sceneRef.current?.setObjectFootprint(
+                            objectFootprintWidth,
+                            objectFootprintHeight + 1
+                          )
+                        }
+                        type="button"
+                      >
+                        <PlusCircleIcon
+                          aria-hidden="true"
+                          size={31}
+                          weight="fill"
+                        />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          </section>
+            <div id={gameHostIdRef.current} className="studio-game-host" />
+            <section className="studio-world-status-overlay" aria-live="polite">
+              <p>{worldSizeLabel}</p>
+              <p>{toolSummary}</p>
+              <p>{helpMessage}</p>
+            </section>
+            {isWorldLoading ? (
+              <div className="studio-world-loading" role="status">
+                <span aria-hidden="true" />
+                <strong>Loading World Assets</strong>
+                <p>Preparing terrain textures before opening the editor.</p>
+              </div>
+            ) : null}
+          </div>
         </div>
-      ) : null}
+      </div>
     </section>
   );
 }
@@ -1312,7 +1296,9 @@ function objectFrameLabel(asset: StudioObjectSpriteAsset, frame: number) {
   return `${rowLabels[row] ?? `Row ${row + 1}`} ${column + 1}`;
 }
 
-function objectCategoryLabel(category: StudioObjectSpriteAsset["category"] | undefined) {
+function objectCategoryLabel(
+  category: StudioObjectSpriteAsset["category"] | undefined
+) {
   switch (category) {
     case "buildings":
       return "Buildings";

@@ -5,6 +5,7 @@ import {
   type GeneratedObjectSprite,
   type ObjectSpritePromptMetadata,
 } from "../convex/convex-studio";
+import { SegmentedControl } from "../components/SegmentedControl";
 import type {
   ObjectSpriteKind,
   StudioObjectSpriteRecord,
@@ -137,7 +138,10 @@ export function ObjectStudioView({
 
   const downloadManifest = () => {
     if (!selectedSprite) {
-      setStatus({ state: "error", text: "Select or generate an object first." });
+      setStatus({
+        state: "error",
+        text: "Select or generate an object first.",
+      });
       return;
     }
 
@@ -182,22 +186,17 @@ export function ObjectStudioView({
             <h2>Single Sprite Generator</h2>
           </div>
 
-          <div className="studio-segmented" aria-label="Object sprite kind">
-            <button
-              data-active={form.kind === "building" ? "" : undefined}
-              onClick={() => updateForm("kind", "building")}
-              type="button"
-            >
-              Building
-            </button>
-            <button
-              data-active={form.kind === "object" ? "" : undefined}
-              onClick={() => updateForm("kind", "object")}
-              type="button"
-            >
-              Object
-            </button>
-          </div>
+          <SegmentedControl
+            ariaLabel="Object sprite kind"
+            value={form.kind}
+            onChange={(kind) => updateForm("kind", kind)}
+            options={
+              [
+                { label: "Building", value: "building" },
+                { label: "Object", value: "object" },
+              ] as const
+            }
+          />
 
           <div className="studio-generator-fields">
             <label>
@@ -213,9 +212,7 @@ export function ObjectStudioView({
               <input
                 placeholder="moonwell-cottage"
                 value={form.objectId}
-                onChange={(event) =>
-                  updateForm("objectId", event.target.value)
-                }
+                onChange={(event) => updateForm("objectId", event.target.value)}
               />
             </label>
             <label>
@@ -293,8 +290,8 @@ export function ObjectStudioView({
               <span aria-hidden="true" />
               <strong>No object sprite selected</strong>
               <p>
-                Generate a custom building or object to place it in World
-                Studio with a selectable footprint.
+                Generate a custom building or object to place it in World Studio
+                with a selectable footprint.
               </p>
             </div>
           )}
@@ -327,8 +324,8 @@ export function ObjectStudioView({
             </div>
           ) : (
             <div className="studio-library-empty">
-              No Convex object sprites yet. Generated buildings and objects
-              will appear here.
+              No Convex object sprites yet. Generated buildings and objects will
+              appear here.
             </div>
           )}
         </section>

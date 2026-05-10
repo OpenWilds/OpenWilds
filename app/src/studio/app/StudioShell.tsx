@@ -1,3 +1,13 @@
+import {
+  CubeIcon,
+  DatabaseIcon,
+  ImageSquareIcon,
+  MapTrifoldIcon,
+  PlantIcon,
+  SignOutIcon,
+  SquaresFourIcon,
+  type Icon,
+} from "@phosphor-icons/react";
 import React, { useEffect, useState } from "react";
 
 import type { TerrainVisualAsset } from "../../assets/visual-assets";
@@ -8,6 +18,7 @@ import type {
   StudioMapRecord,
   StudioObjectSpriteRecord,
   StudioPlantSpriteRecord,
+  StudioRouteId,
 } from "../lib/studio-types";
 import { AssetsView } from "../views/AssetsView";
 import { DashboardView } from "../views/DashboardView";
@@ -16,9 +27,17 @@ import { PlantStudioView } from "../views/PlantStudioView";
 import { TextureStudioView } from "../views/TextureStudioView";
 import { WorldStudioView } from "../views/WorldStudioView";
 
+const ROUTE_ICONS: Record<StudioRouteId, Icon> = {
+  assets: DatabaseIcon,
+  dashboard: SquaresFourIcon,
+  map: MapTrifoldIcon,
+  objects: CubeIcon,
+  plants: PlantIcon,
+  textures: ImageSquareIcon,
+};
+
 export function StudioShell({
   generatedTerrains,
-  isLoading = false,
   offline = false,
   objectSprites,
   plantSprites,
@@ -36,7 +55,6 @@ export function StudioShell({
   const [route, setRoute] = useStudioRoute();
   const [selectedSourceTexture, setSelectedSourceTexture] =
     useState<StudioSourceTexture | null>(null);
-  const routeLabel = ROUTES[route] ?? ROUTES.dashboard;
 
   useEffect(() => {
     if (selectedSourceTexture) {
@@ -53,77 +71,44 @@ export function StudioShell({
   return (
     <section className="studio-shell">
       <aside className="studio-sidebar" aria-label="Studio navigation">
-        <div className="studio-brand">
+        <div
+          aria-label="OpenWilds Studio"
+          className="studio-brand"
+          data-tooltip="OpenWilds Studio"
+        >
           <div className="studio-brand__mark" aria-hidden="true">
             OW
           </div>
-          <div>
-            <p className="eyebrow">Open Wilds</p>
-            <h1>Studio</h1>
-          </div>
         </div>
         <nav className="studio-nav" aria-label="Studio sections">
-          <p>Studio Tools</p>
           {Object.values(ROUTES).map((item) => (
             <button
+              aria-label={item.title}
               data-active={route === item.id ? "" : undefined}
+              data-tooltip={item.title}
               key={item.id}
               onClick={() => setRoute(item.id)}
               type="button"
             >
-              <span className="studio-nav__icon" aria-hidden="true">
-                {item.icon}
-              </span>
-              <span>{item.title}</span>
+              {React.createElement(ROUTE_ICONS[item.id], {
+                "aria-hidden": true,
+                size: 22,
+                weight: route === item.id ? "fill" : "bold",
+              })}
             </button>
           ))}
         </nav>
-        <div className="studio-user-card">
-          <div className="studio-user-card__avatar" aria-hidden="true">
-            A
-          </div>
-          <div>
-            <strong>Creator Admin</strong>
-            <span>{offline ? "Offline Studio" : "Convex Studio"}</span>
-          </div>
-        </div>
-        <a className="studio-link" href="/">
-          Back to game
+        <a
+          aria-label="Back to game"
+          className="studio-link"
+          data-tooltip="Back to game"
+          href="/"
+        >
+          <SignOutIcon aria-hidden="true" size={22} weight="bold" />
         </a>
       </aside>
 
       <main className="studio-main">
-        <header className="studio-topbar">
-          <div className="studio-topbar__title">
-            <span className="studio-topbar__icon" aria-hidden="true">
-              {routeLabel.icon}
-            </span>
-            <div>
-              <p className="eyebrow">{routeLabel.kicker}</p>
-              <h2>{routeLabel.title}</h2>
-            </div>
-          </div>
-          <div className="studio-topbar__actions">
-            <label className="studio-search">
-              <span aria-hidden="true" />
-              <input type="search" placeholder="Search assets, maps..." />
-            </label>
-            <div className="studio-topbar__meta">
-              <span>Convex Library</span>
-              <strong>
-                {offline
-                  ? "Offline"
-                  : isLoading
-                  ? "Syncing"
-                  : `${generatedTerrains.length} terrain / ${sourceTextures.length} textures / ${plantSprites.length} plants / ${objectSprites.length} objects`}
-              </strong>
-            </div>
-            <a className="studio-playtest" href="/">
-              Playtest
-            </a>
-          </div>
-        </header>
-
         {route === "dashboard" ? (
           <DashboardView
             plantSpriteCount={plantSprites.length}
@@ -153,10 +138,7 @@ export function StudioShell({
           <PlantStudioView offline={offline} plantSprites={plantSprites} />
         ) : null}
         {route === "objects" ? (
-          <ObjectStudioView
-            objectSprites={objectSprites}
-            offline={offline}
-          />
+          <ObjectStudioView objectSprites={objectSprites} offline={offline} />
         ) : null}
         {route === "assets" ? <AssetsView setRoute={setRoute} /> : null}
       </main>

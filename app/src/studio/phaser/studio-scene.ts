@@ -897,7 +897,15 @@ export class StudioScene extends Phaser.Scene {
     this.lastPaintKey = stampKey;
 
     if (this.objectPaintMode === "erase") {
-      this.removeObjectAt(tileX, tileY);
+      const radius = Math.floor(this.brushSize / 2);
+
+      for (let y = tileY - radius; y <= tileY + radius; y += 1) {
+        for (let x = tileX - radius; x <= tileX + radius; x += 1) {
+          if (this.isInBounds(x, y)) {
+            this.removeObjectAt(x, y);
+          }
+        }
+      }
       this.updateStatus();
       return;
     }
@@ -972,14 +980,16 @@ export class StudioScene extends Phaser.Scene {
     const tileX = Math.floor(worldPoint.x / TILE_SIZE);
     const tileY = Math.floor(worldPoint.y / TILE_SIZE);
 
-    if (
-      !this.isFootprintInBounds(
-        tileX,
-        tileY,
-        this.objectFootprintWidth,
-        this.objectFootprintHeight
-      )
-    ) {
+    const previewWidth =
+      this.objectPaintMode === "erase"
+        ? this.brushSize
+        : this.objectFootprintWidth;
+    const previewHeight =
+      this.objectPaintMode === "erase"
+        ? this.brushSize
+        : this.objectFootprintHeight;
+
+    if (!this.isFootprintInBounds(tileX, tileY, previewWidth, previewHeight)) {
       this.hideObjectPreview();
       return;
     }
@@ -987,13 +997,10 @@ export class StudioScene extends Phaser.Scene {
     const border = this.ensureObjectPreviewBorder();
     border
       .setPosition(
-        tileX * TILE_SIZE + (this.objectFootprintWidth * TILE_SIZE) / 2,
-        tileY * TILE_SIZE + (this.objectFootprintHeight * TILE_SIZE) / 2
+        tileX * TILE_SIZE + (previewWidth * TILE_SIZE) / 2,
+        tileY * TILE_SIZE + (previewHeight * TILE_SIZE) / 2
       )
-      .setSize(
-        this.objectFootprintWidth * TILE_SIZE,
-        this.objectFootprintHeight * TILE_SIZE
-      )
+      .setSize(previewWidth * TILE_SIZE, previewHeight * TILE_SIZE)
       .setVisible(true);
 
     if (this.objectPaintMode === "erase") {
