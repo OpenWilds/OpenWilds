@@ -25,6 +25,7 @@ const MAX_CAMERA_ZOOM = 8;
 const WHEEL_PINCH_ZOOM_DIVISOR = 150;
 const DEFAULT_STUDIO_HELP =
   "Drag to paint. Right/middle drag or two-finger swipe pans. Pinch zooms.";
+const MAX_UNDO_HISTORY = 80;
 
 export const STUDIO_LAYER_OPTIONS = Array.from(
   { length: STUDIO_LAYER_COUNT },
@@ -97,6 +98,7 @@ type StudioLayer = TerrainGridLayer & {
 export type StudioSceneState = {
   width: number;
   height: number;
+  baseTerrain: TerrainVisualAssetId;
   toolMode: StudioToolMode;
   selectedLayer: number;
   selectedTerrain: TerrainVisualAssetId;
@@ -111,6 +113,7 @@ export type StudioSceneState = {
   activeLayerCellCount: number;
   objectCount: number;
   hasSelectedObjectPlacement: boolean;
+  canUndo: boolean;
   message: string;
 };
 
@@ -124,6 +127,12 @@ type StudioObjectPlacement = StudioObjectPlacementExport & {
 type TouchGestureState = {
   center: Phaser.Math.Vector2;
   distance: number;
+};
+
+type CameraViewportState = {
+  scrollX: number;
+  scrollY: number;
+  zoom: number;
 };
 
 export class StudioScene extends Phaser.Scene {
@@ -163,6 +172,8 @@ export class StudioScene extends Phaser.Scene {
   private selectedObjectPlacementKey: string | null = null;
   private isMovingObject = false;
   private objectMoveOffset: Phaser.Math.Vector2 | null = null;
+  private undoStack: StudioMapExport[] = [];
+  private pendingUndoSnapshot: StudioMapExport | null = null;
   private isReady = false;
   private readonly layers = new Map<
     number,
@@ -230,6 +241,7 @@ export class StudioScene extends Phaser.Scene {
   importMap(map: StudioMapExport) {
     validateStudioMap(map);
     this.applyMap(map);
+    this.clearUndoHistory();
   }
 
   async loadMap(map: StudioMapExport) {
@@ -251,9 +263,18 @@ export class StudioScene extends Phaser.Scene {
     await this.ensureTerrainAssetsLoaded(this.terrainAssets);
     await this.ensureObjectAssetsLoaded(this.objectAssets);
     this.applyMap(map);
+    this.clearUndoHistory();
   }
 
-  private applyMap(map: StudioMapExport) {
+  private applyMap(
+    map: StudioMapExport,
+    message = "Imported map JSON",
+    options: { preserveCamera?: boolean } = {}
+  ) {
+    const cameraViewport = options.preserveCamera
+      ? this.captureCameraViewport()
+      : null;
+
     this.widthTiles = map.width;
     this.heightTiles = map.height;
 
@@ -326,8 +347,11 @@ export class StudioScene extends Phaser.Scene {
     }
 
     this.updateCameraBounds();
+    if (cameraViewport) {
+      this.restoreCameraViewport(cameraViewport);
+    }
     this.drawGrid();
-    this.updateStatus("Imported map JSON");
+    this.updateStatus(message);
   }
 
   setSelectedTerrain(terrainId: TerrainVisualAssetId) {
@@ -408,6 +432,7 @@ export class StudioScene extends Phaser.Scene {
         return;
       }
 
+      const undoSnapshot = this.captureUndoSnapshot();
       selectedPlacement.width = footprintWidth;
       selectedPlacement.height = footprintHeight;
       this.objectFootprintWidth = footprintWidth;
@@ -415,6 +440,7 @@ export class StudioScene extends Phaser.Scene {
       this.refreshObjectPlacementDisplay(selectedPlacement);
       this.objectLayer.sort("depth");
       this.updateSelectedObjectBorder();
+      this.commitUndoSnapshot(undoSnapshot);
       this.updateStatus(
         `Resized ${this.getObjectPlacementLabel(
           selectedPlacement
@@ -473,15 +499,27 @@ export class StudioScene extends Phaser.Scene {
   }
 
   fillActiveLayer() {
+    const undoSnapshot = this.captureUndoSnapshot();
     this.fillSelectedLayer();
+    this.commitUndoSnapshot(undoSnapshot);
+    this.updateStatus(
+      `Filled layer ${this.selectedLayer} with ${terrainLabel(
+        this.selectedTerrain
+      )}`
+    );
   }
 
   clearActiveLayer() {
+    const undoSnapshot = this.captureUndoSnapshot();
     this.clearSelectedLayer();
+    this.commitUndoSnapshot(undoSnapshot);
+    this.updateStatus(`Cleared layer ${this.selectedLayer}`);
   }
 
   clearObjects() {
+    const undoSnapshot = this.captureUndoSnapshot();
     this.clearObjectPlacements();
+    this.commitUndoSnapshot(undoSnapshot);
     this.updateStatus("Cleared placed objects");
   }
 
@@ -494,7 +532,9 @@ export class StudioScene extends Phaser.Scene {
     }
 
     const label = this.getObjectPlacementLabel(selectedPlacement);
+    const undoSnapshot = this.captureUndoSnapshot();
     this.deleteObjectPlacement(key, selectedPlacement);
+    this.commitUndoSnapshot(undoSnapshot);
     this.updateStatus(`Deleted ${label}`);
   }
 
@@ -504,12 +544,28 @@ export class StudioScene extends Phaser.Scene {
       return false;
     }
 
+    const undoSnapshot = this.captureUndoSnapshot();
     this.resizeWorld(width, height);
+    this.commitUndoSnapshot(undoSnapshot);
+    this.updateStatus(`Resized to ${width}x${height}`);
     return true;
   }
 
   getExport(): StudioMapExport {
     return this.exportMap();
+  }
+
+  undo() {
+    const previousMap = this.undoStack.pop();
+    this.pendingUndoSnapshot = null;
+
+    if (!previousMap) {
+      this.updateStatus("Nothing to undo");
+      return false;
+    }
+
+    this.applyMap(previousMap, "Undid last action", { preserveCamera: true });
+    return true;
   }
 
   setBaseTerrain(terrainId: TerrainVisualAssetId) {
@@ -521,6 +577,11 @@ export class StudioScene extends Phaser.Scene {
       return false;
     }
 
+    if (terrainId === this.baseTerrain) {
+      return true;
+    }
+
+    const undoSnapshot = this.captureUndoSnapshot();
     this.baseTerrain = terrainId;
     this.paintableTerrains = this.getPaintableTerrainIds();
     this.selectedTerrain = this.paintableTerrains[0] ?? this.baseTerrain;
@@ -533,12 +594,16 @@ export class StudioScene extends Phaser.Scene {
       this.loadGeneratedTerrainTextures(terrainAsset, () => {
         if (this.baseTerrain === terrainId) {
           this.rebuildLayersForBaseTerrain(terrainId);
+          this.commitUndoSnapshot(undoSnapshot);
+          this.updateStatus(`Layer 0 set to ${terrainLabel(terrainId)}`);
         }
       });
       return true;
     }
 
     this.rebuildLayersForBaseTerrain(terrainId);
+    this.commitUndoSnapshot(undoSnapshot);
+    this.updateStatus(`Layer 0 set to ${terrainLabel(terrainId)}`);
     return true;
   }
 
@@ -653,6 +718,7 @@ export class StudioScene extends Phaser.Scene {
     return {
       width: this.widthTiles,
       height: this.heightTiles,
+      baseTerrain: this.baseTerrain,
       toolMode: this.toolMode,
       selectedLayer: this.selectedLayer,
       selectedTerrain: this.selectedTerrain,
@@ -670,6 +736,7 @@ export class StudioScene extends Phaser.Scene {
         this.selectedObjectPlacementKey &&
           this.objectPlacements.has(this.selectedObjectPlacementKey)
       ),
+      canUndo: this.undoStack.length > 0,
       message: DEFAULT_STUDIO_HELP,
     };
   }
@@ -830,6 +897,7 @@ export class StudioScene extends Phaser.Scene {
 
       this.isPainting = true;
       this.lastPaintKey = "";
+      this.beginUndoSnapshot();
       this.applyToolAtPointer(pointer);
     });
 
@@ -865,6 +933,8 @@ export class StudioScene extends Phaser.Scene {
       this.objectMoveOffset = null;
       this.touchGesture = null;
       this.lastPaintKey = "";
+      this.commitPendingUndoSnapshot();
+      this.updateStatus();
     });
 
     this.input.on("pointerout", () => {
@@ -1044,6 +1114,7 @@ export class StudioScene extends Phaser.Scene {
     this.isMovingObject = true;
     this.lastPaintKey = "";
     this.setSelectedObjectPlacement(key);
+    this.beginUndoSnapshot();
     this.updateStatus(
       `Selected ${asset?.label ?? objectLabel(object.assetId)} on layer ${
         object.layer
@@ -1657,12 +1728,32 @@ export class StudioScene extends Phaser.Scene {
     );
   }
 
+  private captureCameraViewport(): CameraViewportState {
+    const camera = this.cameras.main;
+
+    return {
+      scrollX: camera.scrollX,
+      scrollY: camera.scrollY,
+      zoom: camera.zoom,
+    };
+  }
+
+  private restoreCameraViewport(viewport: CameraViewportState) {
+    const camera = this.cameras.main;
+    camera.setZoom(
+      Phaser.Math.Clamp(viewport.zoom, MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM)
+    );
+    camera.setScroll(viewport.scrollX, viewport.scrollY);
+    camera.preRender();
+  }
+
   private updateStatus(message?: string) {
     const activeLayer = this.getLayer(this.selectedLayer, this.selectedTerrain);
     const cellCount = activeLayer?.cells.size ?? 0;
     this.options.onStateChange?.({
       width: this.widthTiles,
       height: this.heightTiles,
+      baseTerrain: this.baseTerrain,
       toolMode: this.toolMode,
       selectedLayer: this.selectedLayer,
       selectedTerrain: this.selectedTerrain,
@@ -1680,6 +1771,7 @@ export class StudioScene extends Phaser.Scene {
         this.selectedObjectPlacementKey &&
           this.objectPlacements.has(this.selectedObjectPlacementKey)
       ),
+      canUndo: this.undoStack.length > 0,
       message: message ?? DEFAULT_STUDIO_HELP,
     });
   }
@@ -1729,6 +1821,45 @@ export class StudioScene extends Phaser.Scene {
           .filter((layer) => layer.cells.length > 0);
       }),
     };
+  }
+
+  private captureUndoSnapshot() {
+    return this.exportMap();
+  }
+
+  private beginUndoSnapshot() {
+    if (!this.pendingUndoSnapshot) {
+      this.pendingUndoSnapshot = this.captureUndoSnapshot();
+    }
+  }
+
+  private commitPendingUndoSnapshot() {
+    const snapshot = this.pendingUndoSnapshot;
+    this.pendingUndoSnapshot = null;
+    this.commitUndoSnapshot(snapshot);
+  }
+
+  private commitUndoSnapshot(snapshot: StudioMapExport | null) {
+    if (!snapshot || areStudioMapExportsEqual(snapshot, this.exportMap())) {
+      return false;
+    }
+
+    const lastSnapshot = this.undoStack[this.undoStack.length - 1];
+    if (!lastSnapshot || !areStudioMapExportsEqual(lastSnapshot, snapshot)) {
+      this.undoStack.push(snapshot);
+    }
+
+    if (this.undoStack.length > MAX_UNDO_HISTORY) {
+      this.undoStack.shift();
+    }
+
+    return true;
+  }
+
+  private clearUndoHistory() {
+    this.undoStack = [];
+    this.pendingUndoSnapshot = null;
+    this.updateStatus();
   }
 
   private isInBounds(x: number, y: number) {
@@ -2152,6 +2283,13 @@ export function validateStudioMap(
       throw new Error("Map includes an invalid object placement.");
     }
   }
+}
+
+function areStudioMapExportsEqual(
+  left: StudioMapExport,
+  right: StudioMapExport
+) {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function isValidWorldSize(value: unknown): value is number {

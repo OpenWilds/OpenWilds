@@ -1315,6 +1315,39 @@ h1 {
   height: 100% !important;
 }
 
+.studio-canvas-undo {
+  position: absolute;
+  left: 18px;
+  top: 18px;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: 8px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.94);
+  color: #172033;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16);
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease,
+    transform 160ms ease;
+}
+
+.studio-canvas-undo:hover:not(:disabled),
+.studio-canvas-undo:focus-visible:not(:disabled) {
+  border-color: #93b9ff;
+  background: #ffffff;
+  color: #2563eb;
+  transform: translateY(-1px);
+}
+
+.studio-canvas-undo:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+
 .studio-floating-toolbar {
   position: absolute;
   left: 50%;

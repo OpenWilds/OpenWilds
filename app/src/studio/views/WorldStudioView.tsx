@@ -1,4 +1,5 @@
 import {
+  ArrowCounterClockwiseIcon,
   ArrowLeftIcon,
   BroomIcon,
   DotsThreeIcon,
@@ -295,6 +296,7 @@ export function WorldStudioView({
   const objectFootprintWidth = state?.objectFootprintWidth ?? 1;
   const objectFootprintHeight = state?.objectFootprintHeight ?? 1;
   const hasSelectedObjectPlacement = state?.hasSelectedObjectPlacement ?? false;
+  const canUndo = state?.canUndo ?? false;
   const brushSize = state?.brushSize ?? 1;
   const showGrid = state?.showGrid ?? true;
   const helpMessage =
@@ -323,6 +325,15 @@ export function WorldStudioView({
       setMapSize({ width: state.width, height: state.height });
     }
   }, [state?.width, state?.height]);
+
+  useEffect(() => {
+    if (!state?.baseTerrain || state.baseTerrain === baseTerrainId) {
+      return;
+    }
+
+    skipNextBaseSyncRef.current = true;
+    setBaseTerrainId(state.baseTerrain);
+  }, [baseTerrainId, state?.baseTerrain]);
 
   useEffect(() => {
     if (selectedObject) {
@@ -1096,6 +1107,20 @@ export function WorldStudioView({
           </aside>
 
           <div className="studio-canvas-shell studio-canvas-shell--world">
+            <button
+              aria-label="Undo"
+              className="studio-canvas-undo"
+              disabled={!canUndo || isWorldLoading}
+              onClick={() => sceneRef.current?.undo()}
+              title="Undo"
+              type="button"
+            >
+              <ArrowCounterClockwiseIcon
+                aria-hidden="true"
+                size={20}
+                weight="bold"
+              />
+            </button>
             <div className="studio-floating-toolbar" aria-label="Tool options">
               <div className="studio-floating-toolbar__panel studio-floating-toolbar__panel--mode">
                 {toolMode === "terrain" ? (
