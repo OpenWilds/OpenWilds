@@ -70,6 +70,7 @@ import { PlayerWorldProvisioner } from "./world-provisioning";
 import {
   PLAYER_SESSION_SCOPES_FULL_CONTROL,
   decodePlayerSession,
+  getBoltSessionTokenPda,
   getPlayerSessionPda,
   grantPlayerSessionInstruction,
   revokePlayerSessionInstruction,
@@ -121,8 +122,16 @@ const describeOnchainError = async (
 ) => {
   console.error(`[Open Wilds] ${label}`, error);
 
+  const rawMessage = error instanceof Error ? error.message : null;
+  if (rawMessage?.includes("Blockhash not found")) {
+    return "BOLT session transaction expired or was prepared against a different localnet RPC. Run open_wilds_prepare_session again, paste the fresh transaction, and submit it immediately.";
+  }
+  if (rawMessage?.includes("Attempt to load a program that does not exist")) {
+    return "Localnet is missing the BOLT/GPL session program. Run pnpm localnet:build-session, restart pnpm localnet:validator, then prepare a fresh BOLT session transaction.";
+  }
+
   if (!(error instanceof SendTransactionError)) {
-    return error instanceof Error ? error.message : null;
+    return rawMessage;
   }
 
   try {
@@ -3104,11 +3113,7 @@ export class LocalnetClient {
   }
 
   private async getBoltSessionToken(delegate: PublicKey) {
-    const { FindSessionTokenPda } = await loadBoltSdk();
-    return FindSessionTokenPda({
-      sessionSigner: delegate,
-      authority: this.wallet.publicKey,
-    });
+    return getBoltSessionTokenPda(delegate, this.wallet.publicKey);
   }
 
   private async hasBoltSession(delegate: PublicKey) {

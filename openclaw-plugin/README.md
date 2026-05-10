@@ -96,8 +96,9 @@ Use open_wilds_agent_setup, then open_wilds_prepare_session with my owner wallet
 - The plugin signs with the agent keypair, not the player wallet.
 - `open_wilds_agent_setup` never returns the secret key. It writes the secret
   key to the configured local file path only.
-- Gameplay transactions use BOLT `apply_with_session`: `authority` stays the
-  real player owner, while the local agent key signs as the BOLT session signer.
+- Gameplay transactions use BOLT `apply_with_session`: the local agent key
+  signs as the session signer, while the BOLT session token points back to the
+  real player owner authority.
 - Transactions are routed to the configured ER RPC with `skipPreflight: true`.
 - Revoking Open Wilds Agent Mode revokes game scopes. The BOLT session token may
   still exist until expiry or explicit session-program cleanup, but the Open

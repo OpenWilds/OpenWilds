@@ -2,7 +2,8 @@
 members = [
     "programs/*",
     "programs-ecs/components/*",
-    "programs-ecs/systems/*"
+    "programs-ecs/systems/*",
+    "vendor/session-keys"
 ]
 resolver = "2"
 

@@ -7,6 +7,12 @@ import { Buffer } from "buffer";
 import { PROGRAMS } from "./config";
 
 const PLAYER_SESSION_SEED = "player-session";
+const GPL_SESSION_PROGRAM_ID = new PublicKey(
+  "KeyspM2ssCJbqUhQ4k7sveSiY4WjnYsrXkC8oDbwde5"
+);
+const BOLT_WORLD_PROGRAM_ID = new PublicKey(
+  "WorLD15A7CrDwLcLy4fRqtaTb9fbd8o8iqiEMUDse2n"
+);
 
 export const PLAYER_SESSION_SCOPE_MOVE = 1 << 0;
 export const PLAYER_SESSION_SCOPE_SLEEP = 1 << 1;
@@ -52,6 +58,20 @@ export const getPlayerSessionPda = (
       delegate.toBuffer(),
     ],
     PROGRAMS.openWilds
+  )[0];
+
+export const getBoltSessionTokenPda = (
+  sessionSigner: PublicKey,
+  authority: PublicKey
+) =>
+  PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("session_token"),
+      BOLT_WORLD_PROGRAM_ID.toBuffer(),
+      sessionSigner.toBuffer(),
+      authority.toBuffer(),
+    ],
+    GPL_SESSION_PROGRAM_ID
   )[0];
 
 export const grantPlayerSessionInstruction = (args: {

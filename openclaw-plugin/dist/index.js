@@ -375,7 +375,7 @@ const applySystem = async (runtime, player, systemId, entities, args) => {
         throw new Error(`Missing BOLT session token ${boltSessionToken.toBase58()} for owner ${player.session.owner.toBase58()}. Run open_wilds_prepare_session and grant it in the game UI.`);
     }
     const result = (await ApplySystem({
-        authority: player.session.owner,
+        authority: runtime.agent.publicKey,
         systemId,
         world: player.worldPda,
         entities,

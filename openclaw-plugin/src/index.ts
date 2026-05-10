@@ -619,7 +619,7 @@ const applySystem = async (
   }
 
   const result = (await ApplySystem({
-    authority: player.session.owner,
+    authority: runtime.agent.publicKey,
     systemId,
     world: player.worldPda,
     entities,
