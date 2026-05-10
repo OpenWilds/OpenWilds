@@ -67,6 +67,13 @@ import {
 } from "./wallet";
 import { PlayerWorldProvisioner } from "./world-provisioning";
 import {
+  PLAYER_SESSION_SCOPES_MOVEMENT_ONLY,
+  decodePlayerSession,
+  getPlayerSessionPda,
+  grantPlayerSessionInstruction,
+  revokePlayerSessionInstruction,
+} from "./agent-session";
+import {
   OPEN_WILDS_ACCOUNT_SIZES,
   acceptTradeOfferInstruction,
   cancelTradeOfferInstruction,
@@ -83,6 +90,8 @@ import {
   getTradeAcceptancePda,
   initializeGoldConfigInstruction,
 } from "./gold";
+
+const AGENT_DELEGATE_STORAGE_KEY = "open-wilds-agent-delegate";
 
 const logOnchainError = async (
   label: string,
@@ -231,6 +240,8 @@ export class LocalnetClient {
     await Promise.all([this.refreshNetwork(), this.refreshBalance()]);
     await this.clearStaleLocalPlayersForChainReset();
     await this.refreshPlayerNftHud();
+    this.restoreAgentModeInput();
+    await this.refreshAgentModeStatus();
     this.startPlayerStateSync();
     await this.syncPlayerState({ announceLoaded: true });
     await this.ensureSelectedPlayerReady();
@@ -1169,6 +1180,25 @@ export class LocalnetClient {
       void this.commitPlayerState();
     });
 
+    this.hud.elements.agentModeToggle?.addEventListener("change", (event) => {
+      const enabled = (event.target as HTMLInputElement).checked;
+      void (enabled ? this.grantAgentSession() : this.revokeAgentSession());
+    });
+
+    this.hud.elements.agentDelegateInput?.addEventListener("input", () => {
+      const value = this.hud.elements.agentDelegateInput?.value.trim() ?? "";
+      if (value) {
+        window.localStorage.setItem(AGENT_DELEGATE_STORAGE_KEY, value);
+      } else {
+        window.localStorage.removeItem(AGENT_DELEGATE_STORAGE_KEY);
+      }
+      void this.refreshAgentModeStatus();
+    });
+
+    this.hud.elements.agentRevokeButton?.addEventListener("click", () => {
+      void this.revokeAgentSession();
+    });
+
     this.hud.elements.mintPlayerButton?.addEventListener("click", () => {
       void this.mintPlayerNft();
     });
@@ -1188,6 +1218,10 @@ export class LocalnetClient {
       this.wallet = readBurnerWallet();
       this.playerState = null;
       this.activePlayerNft = null;
+      if (this.hud.elements.agentDelegateInput) {
+        this.hud.elements.agentDelegateInput.value = "";
+      }
+      window.localStorage.removeItem(AGENT_DELEGATE_STORAGE_KEY);
       this.lastPlayerActionStateKey = null;
       this.lastInventoryState = null;
       this.lastInventoryStateKey = null;
@@ -1208,6 +1242,7 @@ export class LocalnetClient {
       });
       this.hud.renderWallet(this.wallet.publicKey);
       void this.refreshPlayerNftHud();
+      void this.refreshAgentModeStatus();
       this.emitGoldBalance(this.lastGoldBalanceState);
       this.emitTradeOffers([]);
       this.hud.setProgramStatus("Burner reset. Checking balance...");
@@ -2949,6 +2984,229 @@ export class LocalnetClient {
     if (this.activePlayerNft) {
       this.emitPlayerAppearance(this.activePlayerNft);
     }
+
+    await this.refreshAgentModeStatus();
+  }
+
+  private restoreAgentModeInput() {
+    const input = this.hud.elements.agentDelegateInput;
+
+    if (!input) {
+      return;
+    }
+
+    input.value = window.localStorage.getItem(AGENT_DELEGATE_STORAGE_KEY) ?? "";
+  }
+
+  private parseAgentDelegate(): PublicKey | null {
+    const value = this.hud.elements.agentDelegateInput?.value.trim();
+
+    if (!value) {
+      return null;
+    }
+
+    try {
+      return new PublicKey(value);
+    } catch {
+      return null;
+    }
+  }
+
+  private async refreshAgentModeStatus() {
+    const inputValue = this.hud.elements.agentDelegateInput?.value.trim() ?? "";
+
+    if (!this.activePlayerNft) {
+      this.hud.setAgentModeState({
+        checked: false,
+        active: false,
+        status: "Select or mint a player first.",
+      });
+      return;
+    }
+
+    if (!inputValue) {
+      this.hud.setAgentModeState({
+        checked: false,
+        active: false,
+        status: "Inactive",
+      });
+      return;
+    }
+
+    const delegate = this.parseAgentDelegate();
+
+    if (!delegate) {
+      this.hud.setAgentModeState({
+        checked: false,
+        active: false,
+        status: "Invalid OpenClaw key",
+      });
+      return;
+    }
+
+    const session = await this.fetchAgentSession(delegate);
+    const isActive =
+      Boolean(session) &&
+      !session!.revoked &&
+      (session!.scopes & PLAYER_SESSION_SCOPES_MOVEMENT_ONLY) ===
+        PLAYER_SESSION_SCOPES_MOVEMENT_ONLY;
+
+    this.hud.setAgentModeState({
+      checked: isActive,
+      active: isActive,
+      status: isActive ? "Active: movement + sleep" : "Inactive",
+    });
+  }
+
+  private async fetchAgentSession(delegate: PublicKey) {
+    if (!this.activePlayerNft) {
+      return null;
+    }
+
+    const account = await this.baseConnection.getAccountInfo(
+      getPlayerSessionPda(
+        this.activePlayerNft.mint,
+        this.wallet.publicKey,
+        delegate
+      )
+    );
+
+    if (!account?.owner.equals(PROGRAMS.openWilds)) {
+      return null;
+    }
+
+    const session = decodePlayerSession(account.data);
+
+    if (
+      !session ||
+      !session.playerMint.equals(this.activePlayerNft.mint) ||
+      !session.owner.equals(this.wallet.publicKey) ||
+      !session.delegate.equals(delegate)
+    ) {
+      return null;
+    }
+
+    return session;
+  }
+
+  private async grantAgentSession() {
+    const delegate = this.parseAgentDelegate();
+
+    if (!this.activePlayerNft) {
+      this.hud.setAgentModeState({
+        checked: false,
+        active: false,
+        status: "Select or mint a player first.",
+      });
+      return;
+    }
+
+    if (!delegate) {
+      this.hud.setAgentModeState({
+        checked: false,
+        active: false,
+        status: "Invalid OpenClaw key",
+      });
+      return;
+    }
+
+    try {
+      const existing = await this.fetchAgentSession(delegate);
+      if (
+        existing &&
+        !existing.revoked &&
+        (existing.scopes & PLAYER_SESSION_SCOPES_MOVEMENT_ONLY) ===
+          PLAYER_SESSION_SCOPES_MOVEMENT_ONLY
+      ) {
+        await this.refreshAgentModeStatus();
+        return;
+      }
+
+      this.hud.setAgentModeState({
+        checked: true,
+        active: false,
+        busy: true,
+        status: "Granting agent access...",
+      });
+      await this.sendSignedTransaction(
+        new Transaction().add(
+          grantPlayerSessionInstruction({
+            owner: this.wallet.publicKey,
+            playerMint: this.activePlayerNft.mint,
+            ownerTokenAccount: this.activePlayerNft.tokenAccount,
+            delegate,
+          })
+        ),
+        this.baseConnection
+      );
+      this.hud.setProgramStatus(
+        `Agent Mode enabled for ${shortAddress(delegate)}.`
+      );
+    } catch (error) {
+      const message = await describeOnchainError(
+        "grant agent session failed",
+        error,
+        this.baseConnection
+      );
+      this.hud.setProgramStatus(
+        message
+          ? `Agent Mode grant failed: ${message}`
+          : "Agent Mode grant failed."
+      );
+    } finally {
+      await this.refreshAgentModeStatus();
+    }
+  }
+
+  private async revokeAgentSession() {
+    const delegate = this.parseAgentDelegate();
+
+    if (!this.activePlayerNft || !delegate) {
+      await this.refreshAgentModeStatus();
+      return;
+    }
+
+    try {
+      const existing = await this.fetchAgentSession(delegate);
+      if (!existing) {
+        await this.refreshAgentModeStatus();
+        return;
+      }
+
+      this.hud.setAgentModeState({
+        checked: false,
+        active: true,
+        busy: true,
+        status: "Revoking agent access...",
+      });
+      await this.sendSignedTransaction(
+        new Transaction().add(
+          revokePlayerSessionInstruction({
+            owner: this.wallet.publicKey,
+            playerMint: this.activePlayerNft.mint,
+            ownerTokenAccount: this.activePlayerNft.tokenAccount,
+            delegate,
+          })
+        ),
+        this.baseConnection
+      );
+      this.hud.setProgramStatus(
+        `Agent Mode revoked for ${shortAddress(delegate)}.`
+      );
+    } catch (error) {
+      const message = await describeOnchainError(
+        "revoke agent session failed",
+        error,
+        this.baseConnection
+      );
+      this.hud.setProgramStatus(
+        message
+          ? `Agent Mode revoke failed: ${message}`
+          : "Agent Mode revoke failed."
+      );
+    } finally {
+      await this.refreshAgentModeStatus();
+    }
   }
 
   private async mintPlayerNft() {
@@ -3015,6 +3273,7 @@ export class LocalnetClient {
     await this.refreshPlayerNftHud();
     this.emitTradeOffers([]);
     this.hud.setProgramStatus(`Selected player ${shortAddress(mint)}.`);
+    await this.refreshAgentModeStatus();
     void this.ensureSelectedPlayerReady();
     void this.syncVisiblePlayers();
   }

@@ -1433,6 +1433,7 @@ dependencies = [
  "active_action",
  "bolt-lang",
  "energy",
+ "open-wilds",
  "player_owner",
  "position",
  "serde",
@@ -1956,6 +1957,7 @@ dependencies = [
  "active_action",
  "bolt-lang",
  "energy",
+ "open-wilds",
  "player_owner",
 ]
 

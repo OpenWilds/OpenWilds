@@ -1,8 +1,5 @@
 import type * as Phaser from "phaser";
-import {
-  objectSpriteKey,
-  type ObjectSpriteAssetId,
-} from "../assets/visual-assets";
+import type { ObjectSpriteAssetId } from "../assets/visual-assets";
 import { ItemId } from "./terrain";
 
 export const FarmKind = {
@@ -210,7 +207,7 @@ export const drawFarmPlaceholder = (
   y: number,
   scale = 1
 ) => {
-  const textureKey = objectSpriteKey(farm.spriteAssetId);
+  const textureKey = `object-sprite-${farm.spriteAssetId}`;
   if (scene.textures.exists(textureKey)) {
     const frame = farm.kind === FarmKind.tree ? 8 : 10;
     const image = scene.add

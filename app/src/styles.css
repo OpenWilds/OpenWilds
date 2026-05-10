@@ -157,6 +157,56 @@ h1 {
   cursor: pointer;
 }
 
+.agent-mode-panel {
+  display: grid;
+  grid-template-columns: 126px minmax(0, 1fr) minmax(118px, auto) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.agent-mode-toggle,
+.agent-key-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.agent-mode-toggle input {
+  width: 20px;
+  height: 20px;
+  accent-color: #9fd8bd;
+}
+
+.agent-key-field input,
+.agent-mode-panel button {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid rgba(247, 241, 229, 0.32);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #f7f1e5;
+  color: #17211e;
+  font: inherit;
+  font-weight: 800;
+}
+
+#agent-status {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(159, 216, 189, 0.42);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #ffe0a3;
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-mode-panel button {
+  cursor: pointer;
+}
+
 .action-progress[hidden] {
   display: none;
 }

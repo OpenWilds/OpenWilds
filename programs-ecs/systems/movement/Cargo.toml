@@ -22,6 +22,7 @@ custom-panic = []
 
 [dependencies]
 bolt-lang.workspace = true
+open-wilds = { version = "0.2.4", path = "../../../programs/open-wilds", features = ["cpi"] }
 player_owner = { path = "../../components/player_owner", features = ["cpi"] }
 active_action = { version = "0.2.4", path = "../../components/active_action", features = ["cpi"] }
 energy = { version = "0.2.4", path = "../../components/energy", features = ["cpi"] }

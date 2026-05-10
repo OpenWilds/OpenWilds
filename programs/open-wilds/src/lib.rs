@@ -10,11 +10,14 @@ pub const GOLD_MINT_SEED: &[u8] = b"gold-mint";
 pub const GOLD_MINT_AUTHORITY_SEED: &[u8] = b"gold-mint-authority";
 pub const PLAYER_GOLD_AUTHORITY_SEED: &[u8] = b"player-gold-authority";
 pub const PLAYER_NFT_REGISTRATION_SEED: &[u8] = b"player-nft";
+pub const PLAYER_SESSION_SEED: &[u8] = b"player-session";
 pub const STARTER_GOLD_CLAIM_SEED: &[u8] = b"starter-gold-claim-v2";
 pub const TRADE_OFFER_SEED: &[u8] = b"trade-offer";
 pub const TRADE_ACCEPTANCE_SEED: &[u8] = b"trade-acceptance";
 pub const DEFAULT_STARTER_GOLD: u64 = 100;
 pub const DEFAULT_GOLD_DECIMALS: u8 = 0;
+pub const PLAYER_SESSION_SCOPE_MOVE: u32 = 1 << 0;
+pub const PLAYER_SESSION_SCOPE_SLEEP: u32 = 1 << 1;
 
 #[program]
 pub mod open_wilds {
@@ -125,6 +128,47 @@ pub mod open_wilds {
         registration.name = name;
         registration.symbol = symbol;
         registration.bump = ctx.bumps.player_nft_registration;
+
+        Ok(())
+    }
+
+    pub fn grant_player_session(
+        ctx: Context<GrantPlayerSession>,
+        delegate: Pubkey,
+        scopes: u32,
+    ) -> Result<()> {
+        require!(
+            scopes & !(PLAYER_SESSION_SCOPE_MOVE | PLAYER_SESSION_SCOPE_SLEEP) == 0,
+            OpenWildsError::InvalidPlayerSessionScope
+        );
+        require!(scopes != 0, OpenWildsError::InvalidPlayerSessionScope);
+        require_player_nft_owner(
+            &ctx.accounts.owner,
+            &ctx.accounts.player_mint,
+            &ctx.accounts.owner_token_account,
+        )?;
+
+        let session = &mut ctx.accounts.player_session;
+        session.player_mint = ctx.accounts.player_mint.key();
+        session.owner = ctx.accounts.owner.key();
+        session.delegate = delegate;
+        session.scopes = scopes;
+        session.revoked = false;
+        session.created_at = Clock::get()?.unix_timestamp;
+        session.bump = ctx.bumps.player_session;
+
+        Ok(())
+    }
+
+    pub fn revoke_player_session(
+        ctx: Context<RevokePlayerSession>,
+        _delegate: Pubkey,
+    ) -> Result<()> {
+        require_player_nft_owner(
+            &ctx.accounts.owner,
+            &ctx.accounts.player_mint,
+            &ctx.accounts.owner_token_account,
+        )?;
 
         Ok(())
     }
@@ -394,6 +438,50 @@ pub struct RegisterPlayerNft<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(delegate: Pubkey)]
+pub struct GrantPlayerSession<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    pub player_mint: Account<'info, Mint>,
+    pub owner_token_account: Account<'info, TokenAccount>,
+    #[account(
+        init,
+        payer = owner,
+        space = PlayerSession::SPACE,
+        seeds = [
+            PLAYER_SESSION_SEED,
+            player_mint.key().as_ref(),
+            owner.key().as_ref(),
+            delegate.as_ref()
+        ],
+        bump
+    )]
+    pub player_session: Account<'info, PlayerSession>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(delegate: Pubkey)]
+pub struct RevokePlayerSession<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    pub player_mint: Account<'info, Mint>,
+    pub owner_token_account: Account<'info, TokenAccount>,
+    #[account(
+        mut,
+        close = owner,
+        seeds = [
+            PLAYER_SESSION_SEED,
+            player_mint.key().as_ref(),
+            owner.key().as_ref(),
+            delegate.as_ref()
+        ],
+        bump = player_session.bump
+    )]
+    pub player_session: Account<'info, PlayerSession>,
+}
+
+#[derive(Accounts)]
 #[instruction(offer_id: u64)]
 pub struct CreateTradeOffer<'info> {
     #[account(mut)]
@@ -516,6 +604,21 @@ impl PlayerNftRegistration {
 }
 
 #[account]
+pub struct PlayerSession {
+    pub player_mint: Pubkey,
+    pub owner: Pubkey,
+    pub delegate: Pubkey,
+    pub scopes: u32,
+    pub revoked: bool,
+    pub created_at: i64,
+    pub bump: u8,
+}
+
+impl PlayerSession {
+    pub const SPACE: usize = 8 + 32 + 32 + 32 + 4 + 1 + 8 + 1;
+}
+
+#[account]
 pub struct TradeOffer {
     pub offer_id: u64,
     pub buyer: Pubkey,
@@ -588,4 +691,33 @@ pub enum OpenWildsError {
     InvalidTradeAcceptance,
     #[msg("Player NFT must be a one-of-one SPL token owned by the signer.")]
     InvalidPlayerNft,
+    #[msg("Player session scope is invalid.")]
+    InvalidPlayerSessionScope,
+}
+
+fn require_player_nft_owner(
+    owner: &Signer,
+    player_mint: &Account<Mint>,
+    owner_token_account: &Account<TokenAccount>,
+) -> Result<()> {
+    require!(
+        player_mint.decimals == 0 && player_mint.supply == 1,
+        OpenWildsError::InvalidPlayerNft
+    );
+    require_keys_eq!(
+        owner_token_account.owner,
+        owner.key(),
+        OpenWildsError::InvalidPlayerOwner
+    );
+    require_keys_eq!(
+        owner_token_account.mint,
+        player_mint.key(),
+        OpenWildsError::InvalidPlayerMint
+    );
+    require!(
+        owner_token_account.amount == 1,
+        OpenWildsError::InvalidPlayerNft
+    );
+
+    Ok(())
 }

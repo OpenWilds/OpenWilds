@@ -13,6 +13,10 @@ export type HudElements = {
   gameTimeStatus: HTMLElement | null;
   playerNftSelect: HTMLSelectElement | null;
   playerColorSelect: HTMLSelectElement | null;
+  agentModeToggle: HTMLInputElement | null;
+  agentDelegateInput: HTMLInputElement | null;
+  agentStatus: HTMLElement | null;
+  agentRevokeButton: HTMLButtonElement | null;
   mintPlayerButton: HTMLButtonElement | null;
   airdropButton: HTMLButtonElement | null;
   sleepButton: HTMLButtonElement | null;
@@ -32,6 +36,16 @@ export const getHudElements = (): HudElements => ({
   playerColorSelect: document.getElementById(
     "player-color-select"
   ) as HTMLSelectElement,
+  agentModeToggle: document.getElementById(
+    "agent-mode-toggle"
+  ) as HTMLInputElement,
+  agentDelegateInput: document.getElementById(
+    "agent-delegate-input"
+  ) as HTMLInputElement,
+  agentStatus: document.getElementById("agent-status"),
+  agentRevokeButton: document.getElementById(
+    "agent-revoke-button"
+  ) as HTMLButtonElement,
   mintPlayerButton: document.getElementById(
     "mint-player-button"
   ) as HTMLButtonElement,
@@ -44,11 +58,15 @@ export const getHudElements = (): HudElements => ({
 export class HudController {
   private sleepAvailable = true;
   private actionBusy = false;
+  private agentBusy = false;
   private gameTimeInterval: number | null = null;
 
   constructor(readonly elements: HudElements) {
     this.renderGameTime();
-    this.gameTimeInterval = window.setInterval(() => this.renderGameTime(), 1000);
+    this.gameTimeInterval = window.setInterval(
+      () => this.renderGameTime(),
+      1000
+    );
   }
 
   renderWallet(walletAddress: PublicKey) {
@@ -204,6 +222,39 @@ export class HudController {
   setActionBusy(isBusy: boolean) {
     this.actionBusy = isBusy;
     this.setSleepBusy(false);
+  }
+
+  setAgentModeState(args: {
+    checked?: boolean;
+    status?: string;
+    active?: boolean;
+    busy?: boolean;
+  }) {
+    this.agentBusy = args.busy ?? false;
+
+    if (this.elements.agentModeToggle) {
+      if (args.checked !== undefined) {
+        this.elements.agentModeToggle.checked = args.checked;
+      }
+
+      this.elements.agentModeToggle.disabled = this.agentBusy;
+    }
+
+    if (this.elements.agentDelegateInput) {
+      this.elements.agentDelegateInput.disabled = this.agentBusy;
+    }
+
+    if (this.elements.agentStatus && args.status !== undefined) {
+      this.elements.agentStatus.textContent = args.status;
+    }
+
+    if (this.elements.agentRevokeButton) {
+      this.elements.agentRevokeButton.hidden = !args.active;
+      this.elements.agentRevokeButton.disabled = this.agentBusy;
+      this.elements.agentRevokeButton.textContent = this.agentBusy
+        ? "Updating..."
+        : "Revoke";
+    }
   }
 
   private setSleepAvailable(isAvailable: boolean) {

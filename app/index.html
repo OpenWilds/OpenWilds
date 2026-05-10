@@ -45,6 +45,26 @@
             </label>
             <button id="mint-player-button" type="button">Mint Player</button>
           </div>
+          <div class="agent-mode-panel">
+            <label class="agent-mode-toggle">
+              <span class="status-label">Agent Mode</span>
+              <input id="agent-mode-toggle" type="checkbox" />
+            </label>
+            <label class="agent-key-field">
+              <span class="status-label">OpenClaw Key</span>
+              <input
+                id="agent-delegate-input"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Agent wallet public key"
+              />
+            </label>
+            <span id="agent-status">Inactive</span>
+            <button id="agent-revoke-button" type="button" hidden>
+              Revoke
+            </button>
+          </div>
           <div class="action-progress" id="action-progress" hidden>
             <div class="action-progress__meta">
               <span id="action-progress-label">Action</span>

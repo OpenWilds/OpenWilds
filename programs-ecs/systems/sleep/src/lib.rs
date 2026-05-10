@@ -1,6 +1,7 @@
 use active_action::ActiveAction;
 use bolt_lang::*;
 use energy::Energy;
+use open_wilds::{PlayerSession, PLAYER_SESSION_SCOPE_SLEEP, PLAYER_SESSION_SEED};
 use player_owner::PlayerOwner;
 
 declare_id!("AHpcKdhujpiTq8oGbxbCknEfmQQwya6cmvywFL89iZUs");
@@ -20,6 +21,7 @@ pub mod sleep {
                     ctx.accounts.energy.bolt_metadata.authority,
                     ctx.accounts.active_action.bolt_metadata.authority,
                 ],
+                ctx.remaining_accounts,
             ),
             SleepError::InvalidPlayerAuthority
         );
@@ -52,11 +54,64 @@ fn is_player_authority(
     player_owner: &PlayerOwner,
     signer: Pubkey,
     component_authorities: &[Pubkey],
+    remaining_accounts: &[AccountInfo],
 ) -> bool {
-    player_owner.owner == signer
-        && component_authorities
-            .iter()
-            .all(|component_authority| *component_authority == signer)
+    let components_belong_to_owner = component_authorities
+        .iter()
+        .all(|component_authority| *component_authority == player_owner.owner);
+
+    components_belong_to_owner
+        && (player_owner.owner == signer
+            || has_valid_player_session(
+                player_owner,
+                signer,
+                PLAYER_SESSION_SCOPE_SLEEP,
+                remaining_accounts,
+            ))
+}
+
+fn has_valid_player_session(
+    player_owner: &PlayerOwner,
+    signer: Pubkey,
+    required_scope: u32,
+    remaining_accounts: &[AccountInfo],
+) -> bool {
+    remaining_accounts.iter().any(|account| {
+        if *account.owner != open_wilds::ID {
+            return false;
+        }
+
+        let expected = Pubkey::find_program_address(
+            &[
+                PLAYER_SESSION_SEED,
+                player_owner.player_mint.as_ref(),
+                player_owner.owner.as_ref(),
+                signer.as_ref(),
+            ],
+            &open_wilds::ID,
+        )
+        .0;
+
+        if account.key() != expected {
+            return false;
+        }
+
+        let data = match account.try_borrow_data() {
+            Ok(data) => data,
+            Err(_) => return false,
+        };
+        let mut data_ref: &[u8] = &data;
+        let session = match PlayerSession::try_deserialize(&mut data_ref) {
+            Ok(session) => session,
+            Err(_) => return false,
+        };
+
+        session.player_mint == player_owner.player_mint
+            && session.owner == player_owner.owner
+            && session.delegate == signer
+            && !session.revoked
+            && session.scopes & required_scope == required_scope
+    })
 }
 
 #[error_code]
