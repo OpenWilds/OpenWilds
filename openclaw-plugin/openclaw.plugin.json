@@ -4,11 +4,49 @@
   "description": "Exposes Open Wilds game state and control tools to OpenClaw agents.",
   "version": "0.1.0",
   "contracts": {
-    "tools": ["open_wilds_get_game_state"]
+    "tools": [
+      "open_wilds_agent_setup",
+      "open_wilds_agent_status",
+      "open_wilds_list_players",
+      "open_wilds_get_player_state",
+      "open_wilds_move",
+      "open_wilds_sleep",
+      "open_wilds_farm_action",
+      "open_wilds_inventory_action",
+      "open_wilds_trade_or_spend",
+      "open_wilds_play_turn"
+    ]
   },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
-    "properties": {}
+    "required": [
+      "agentKeypairPath",
+      "baseRpcUrl",
+      "erRpcUrl",
+      "worldManifestPathOrUrl"
+    ],
+    "properties": {
+      "agentKeypairPath": {
+        "type": "string",
+        "description": "Path to the local keypair JSON OpenClaw uses to sign agent transactions."
+      },
+      "baseRpcUrl": {
+        "type": "string",
+        "description": "Base Solana RPC URL."
+      },
+      "erRpcUrl": {
+        "type": "string",
+        "description": "MagicBlock Ephemeral Rollup RPC URL."
+      },
+      "worldManifestPathOrUrl": {
+        "type": "string",
+        "description": "Path or URL for app/public/game-world.localnet.json or the devnet equivalent."
+      },
+      "defaultPlayerMint": {
+        "type": "string",
+        "description": "Optional player NFT mint to prefer when multiple sessions exist."
+      }
+    }
   }
 }

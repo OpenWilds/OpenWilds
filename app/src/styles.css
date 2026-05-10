@@ -159,13 +159,14 @@ h1 {
 
 .agent-mode-panel {
   display: grid;
-  grid-template-columns: 126px minmax(0, 1fr) minmax(118px, auto) auto;
+  grid-template-columns: 126px minmax(0, 1fr) 136px minmax(118px, auto) auto;
   gap: 8px;
   align-items: end;
 }
 
 .agent-mode-toggle,
-.agent-key-field {
+.agent-key-field,
+.agent-scope-field {
   display: grid;
   gap: 4px;
   min-width: 0;
@@ -178,6 +179,7 @@ h1 {
 }
 
 .agent-key-field input,
+.agent-scope-field select,
 .agent-mode-panel button {
   min-width: 0;
   width: 100%;

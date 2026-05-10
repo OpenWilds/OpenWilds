@@ -1,0 +1,7 @@
+{
+  "agentKeypairPath": "~/.config/open-wilds/openclaw-agent.json",
+  "baseRpcUrl": "http://127.0.0.1:8899",
+  "erRpcUrl": "http://127.0.0.1:7799",
+  "worldManifestPathOrUrl": "../app/public/game-world.localnet.json",
+  "defaultPlayerMint": ""
+}

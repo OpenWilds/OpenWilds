@@ -1,6 +1,6 @@
 use bolt_lang::*;
 use inventory::Inventory;
-use open_wilds::{TradeAcceptance, TradeOffer, TradeStatus};
+use open_wilds::{TradeAcceptance, TradeOffer, TradeStatus, PLAYER_SESSION_SCOPE_TRADE};
 use player_owner::PlayerOwner;
 use position::Position;
 use serde::Deserialize;
@@ -14,17 +14,20 @@ pub mod accept_trade {
     pub fn execute(ctx: Context<Components>, args: Vec<u8>) -> Result<Components> {
         let args: AcceptTradeArgs =
             serde_json::from_slice(&args).map_err(|_| error!(AcceptTradeError::InvalidArgs))?;
-        let buyer = ctx.accounts.authority.key();
+        let buyer_signer = ctx.accounts.authority.key();
+        let buyer = ctx.accounts.buyer_owner.owner;
         let now = Clock::get()?.unix_timestamp;
 
         require!(
             is_player_authority(
                 &ctx.accounts.buyer_owner,
-                buyer,
+                buyer_signer,
                 &[
                     ctx.accounts.buyer_position.bolt_metadata.authority,
                     ctx.accounts.buyer_inventory.bolt_metadata.authority,
                 ],
+                ctx.remaining_accounts,
+                PLAYER_SESSION_SCOPE_TRADE,
             ),
             AcceptTradeError::InvalidBuyerAuthority
         );
@@ -162,11 +165,22 @@ fn is_player_authority(
     player_owner: &PlayerOwner,
     signer: Pubkey,
     component_authorities: &[Pubkey],
+    remaining_accounts: &[AccountInfo],
+    required_scope: u32,
 ) -> bool {
-    player_owner.owner == signer
-        && component_authorities
-            .iter()
-            .all(|component_authority| *component_authority == signer)
+    let components_belong_to_owner = component_authorities
+        .iter()
+        .all(|component_authority| *component_authority == player_owner.owner);
+
+    components_belong_to_owner
+        && (player_owner.owner == signer
+            || open_wilds::has_valid_player_session(
+                player_owner.player_mint,
+                player_owner.owner,
+                signer,
+                required_scope,
+                remaining_accounts,
+            ))
 }
 
 fn players_are_in_range(buyer: &Position, seller: &Position) -> bool {
@@ -225,7 +239,7 @@ fn require_finalize_instruction(
 pub enum AcceptTradeError {
     #[msg("Accept trade expected JSON args with trade and token account pubkeys.")]
     InvalidArgs,
-    #[msg("Buyer components must belong to the transaction authority.")]
+    #[msg("Buyer components must belong to the player owner or an authorized agent session.")]
     InvalidBuyerAuthority,
     #[msg("Seller components must belong to the seller recorded in player owner.")]
     InvalidSellerAuthority,

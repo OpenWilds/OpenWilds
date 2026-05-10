@@ -67,7 +67,7 @@ import {
 } from "./wallet";
 import { PlayerWorldProvisioner } from "./world-provisioning";
 import {
-  PLAYER_SESSION_SCOPES_MOVEMENT_ONLY,
+  PLAYER_SESSION_SCOPES_FULL_CONTROL,
   decodePlayerSession,
   getPlayerSessionPda,
   grantPlayerSessionInstruction,
@@ -3048,13 +3048,13 @@ export class LocalnetClient {
     const isActive =
       Boolean(session) &&
       !session!.revoked &&
-      (session!.scopes & PLAYER_SESSION_SCOPES_MOVEMENT_ONLY) ===
-        PLAYER_SESSION_SCOPES_MOVEMENT_ONLY;
+      (session!.scopes & PLAYER_SESSION_SCOPES_FULL_CONTROL) ===
+        PLAYER_SESSION_SCOPES_FULL_CONTROL;
 
     this.hud.setAgentModeState({
       checked: isActive,
       active: isActive,
-      status: isActive ? "Active: movement + sleep" : "Inactive",
+      status: isActive ? "Active: full control" : "Inactive",
     });
   }
 
@@ -3115,8 +3115,8 @@ export class LocalnetClient {
       if (
         existing &&
         !existing.revoked &&
-        (existing.scopes & PLAYER_SESSION_SCOPES_MOVEMENT_ONLY) ===
-          PLAYER_SESSION_SCOPES_MOVEMENT_ONLY
+        (existing.scopes & PLAYER_SESSION_SCOPES_FULL_CONTROL) ===
+          PLAYER_SESSION_SCOPES_FULL_CONTROL
       ) {
         await this.refreshAgentModeStatus();
         return;
@@ -3135,6 +3135,7 @@ export class LocalnetClient {
             playerMint: this.activePlayerNft.mint,
             ownerTokenAccount: this.activePlayerNft.tokenAccount,
             delegate,
+            scopes: PLAYER_SESSION_SCOPES_FULL_CONTROL,
           })
         ),
         this.baseConnection

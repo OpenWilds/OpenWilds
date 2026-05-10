@@ -10,8 +10,19 @@ const PLAYER_SESSION_SEED = "player-session";
 
 export const PLAYER_SESSION_SCOPE_MOVE = 1 << 0;
 export const PLAYER_SESSION_SCOPE_SLEEP = 1 << 1;
-export const PLAYER_SESSION_SCOPES_MOVEMENT_ONLY =
-  PLAYER_SESSION_SCOPE_MOVE | PLAYER_SESSION_SCOPE_SLEEP;
+export const PLAYER_SESSION_SCOPE_FARM = 1 << 2;
+export const PLAYER_SESSION_SCOPE_HARVEST = 1 << 3;
+export const PLAYER_SESSION_SCOPE_INVENTORY = 1 << 4;
+export const PLAYER_SESSION_SCOPE_TRADE = 1 << 5;
+export const PLAYER_SESSION_SCOPE_SPEND = 1 << 6;
+export const PLAYER_SESSION_SCOPES_FULL_CONTROL =
+  PLAYER_SESSION_SCOPE_MOVE |
+  PLAYER_SESSION_SCOPE_SLEEP |
+  PLAYER_SESSION_SCOPE_FARM |
+  PLAYER_SESSION_SCOPE_HARVEST |
+  PLAYER_SESSION_SCOPE_INVENTORY |
+  PLAYER_SESSION_SCOPE_TRADE |
+  PLAYER_SESSION_SCOPE_SPEND;
 
 const PLAYER_SESSION_SIZE = 118;
 const PLAYER_SESSION_DISCRIMINATOR = Buffer.from([
@@ -66,7 +77,7 @@ export const grantPlayerSessionInstruction = (args: {
     data: Buffer.concat([
       Buffer.from([192, 112, 248, 25, 109, 213, 103, 39]),
       args.delegate.toBuffer(),
-      u32(args.scopes ?? PLAYER_SESSION_SCOPES_MOVEMENT_ONLY),
+      u32(args.scopes ?? PLAYER_SESSION_SCOPES_FULL_CONTROL),
     ]),
   });
 

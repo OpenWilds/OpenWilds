@@ -18,6 +18,18 @@ pub const DEFAULT_STARTER_GOLD: u64 = 100;
 pub const DEFAULT_GOLD_DECIMALS: u8 = 0;
 pub const PLAYER_SESSION_SCOPE_MOVE: u32 = 1 << 0;
 pub const PLAYER_SESSION_SCOPE_SLEEP: u32 = 1 << 1;
+pub const PLAYER_SESSION_SCOPE_FARM: u32 = 1 << 2;
+pub const PLAYER_SESSION_SCOPE_HARVEST: u32 = 1 << 3;
+pub const PLAYER_SESSION_SCOPE_INVENTORY: u32 = 1 << 4;
+pub const PLAYER_SESSION_SCOPE_TRADE: u32 = 1 << 5;
+pub const PLAYER_SESSION_SCOPE_SPEND: u32 = 1 << 6;
+pub const PLAYER_SESSION_SCOPE_ALL: u32 = PLAYER_SESSION_SCOPE_MOVE
+    | PLAYER_SESSION_SCOPE_SLEEP
+    | PLAYER_SESSION_SCOPE_FARM
+    | PLAYER_SESSION_SCOPE_HARVEST
+    | PLAYER_SESSION_SCOPE_INVENTORY
+    | PLAYER_SESSION_SCOPE_TRADE
+    | PLAYER_SESSION_SCOPE_SPEND;
 
 #[program]
 pub mod open_wilds {
@@ -138,7 +150,7 @@ pub mod open_wilds {
         scopes: u32,
     ) -> Result<()> {
         require!(
-            scopes & !(PLAYER_SESSION_SCOPE_MOVE | PLAYER_SESSION_SCOPE_SLEEP) == 0,
+            scopes & !PLAYER_SESSION_SCOPE_ALL == 0,
             OpenWildsError::InvalidPlayerSessionScope
         );
         require!(scopes != 0, OpenWildsError::InvalidPlayerSessionScope);
@@ -616,6 +628,51 @@ pub struct PlayerSession {
 
 impl PlayerSession {
     pub const SPACE: usize = 8 + 32 + 32 + 32 + 4 + 1 + 8 + 1;
+}
+
+pub fn has_valid_player_session(
+    player_mint: Pubkey,
+    owner: Pubkey,
+    signer: Pubkey,
+    required_scope: u32,
+    remaining_accounts: &[AccountInfo],
+) -> bool {
+    remaining_accounts.iter().any(|account| {
+        if *account.owner != ID {
+            return false;
+        }
+
+        let expected = Pubkey::find_program_address(
+            &[
+                PLAYER_SESSION_SEED,
+                player_mint.as_ref(),
+                owner.as_ref(),
+                signer.as_ref(),
+            ],
+            &ID,
+        )
+        .0;
+
+        if account.key() != expected {
+            return false;
+        }
+
+        let data = match account.try_borrow_data() {
+            Ok(data) => data,
+            Err(_) => return false,
+        };
+        let mut data_ref: &[u8] = &data;
+        let session = match PlayerSession::try_deserialize(&mut data_ref) {
+            Ok(session) => session,
+            Err(_) => return false,
+        };
+
+        session.player_mint == player_mint
+            && session.owner == owner
+            && session.delegate == signer
+            && !session.revoked
+            && session.scopes & required_scope == required_scope
+    })
 }
 
 #[account]

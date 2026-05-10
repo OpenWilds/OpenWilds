@@ -3,6 +3,7 @@ use bolt_lang::*;
 use energy::Energy;
 use farm_type::FarmType;
 use inventory::Inventory;
+use open_wilds::PLAYER_SESSION_SCOPE_HARVEST;
 use player_owner::PlayerOwner;
 use position::Position;
 use serde::Deserialize;
@@ -33,6 +34,8 @@ pub mod harvest_tile {
                     ctx.accounts.tile_farm.bolt_metadata.authority,
                     ctx.accounts.inventory.bolt_metadata.authority,
                 ],
+                ctx.remaining_accounts,
+                PLAYER_SESSION_SCOPE_HARVEST,
             ),
             HarvestTileError::InvalidPlayerAuthority
         );
@@ -133,11 +136,22 @@ fn is_player_authority(
     player_owner: &PlayerOwner,
     signer: Pubkey,
     component_authorities: &[Pubkey],
+    remaining_accounts: &[AccountInfo],
+    required_scope: u32,
 ) -> bool {
-    player_owner.owner == signer
-        && component_authorities
-            .iter()
-            .all(|component_authority| *component_authority == signer)
+    let components_belong_to_owner = component_authorities
+        .iter()
+        .all(|component_authority| *component_authority == player_owner.owner);
+
+    components_belong_to_owner
+        && (player_owner.owner == signer
+            || open_wilds::has_valid_player_session(
+                player_owner.player_mint,
+                player_owner.owner,
+                signer,
+                required_scope,
+                remaining_accounts,
+            ))
 }
 
 #[error_code]
@@ -162,6 +176,6 @@ pub enum HarvestTileError {
     MissingValidationAccount,
     #[msg("Farm type validation account is invalid.")]
     InvalidFarmTypeAccount,
-    #[msg("Player inventory/action components must belong to the transaction authority.")]
+    #[msg("Player inventory/action components must belong to the player owner or an authorized agent session.")]
     InvalidPlayerAuthority,
 }

@@ -23,6 +23,7 @@ custom-panic = []
 active_action = { version = "0.2.4", path = "../../components/active_action", features = ["cpi"] }
 bolt-lang.workspace = true
 player_owner = { path = "../../components/player_owner", features = ["cpi"] }
+open-wilds = { path = "../../../programs/open-wilds", features = ["cpi"] }
 energy = { version = "0.2.4", path = "../../components/energy", features = ["cpi"] }
 position = { version = "0.2.4", path = "../../components/position", features = ["cpi"] }
 terrain_type = { version = "0.2.4", path = "../../components/terrain_type", features = ["cpi"] }

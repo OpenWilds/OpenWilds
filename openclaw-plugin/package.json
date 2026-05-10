@@ -1,7 +1,7 @@
 {
   "name": "@open-wilds/openclaw-plugin",
   "version": "0.1.0",
-  "description": "OpenClaw plugin for exposing Open Wilds game state tools.",
+  "description": "OpenClaw plugin for delegated Open Wilds agents.",
   "type": "module",
   "private": true,
   "main": "./dist/index.js",
@@ -12,6 +12,7 @@
     "dist",
     "src",
     "openclaw.plugin.json",
+    "open-wilds.config.example.json",
     "README.md"
   ],
   "scripts": {
@@ -35,6 +36,8 @@
     }
   },
   "dependencies": {
+    "@magicblock-labs/bolt-sdk": "latest",
+    "@solana/web3.js": "^1.98.4",
     "@sinclair/typebox": "^0.34.41"
   },
   "devDependencies": {
