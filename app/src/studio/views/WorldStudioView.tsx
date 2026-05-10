@@ -10,6 +10,7 @@ import {
   MinusCircleIcon,
   PlusCircleIcon,
   ResizeIcon,
+  TrashIcon,
   UploadSimpleIcon,
 } from "@phosphor-icons/react";
 import Phaser from "phaser";
@@ -57,7 +58,7 @@ type OpenWorld =
 type WorldStudioSettings = {
   autoSave: boolean;
   brushSize: number;
-  objectPaintMode: "place" | "erase";
+  objectPaintMode: "place" | "erase" | "select";
   objectFootprintHeight: number;
   objectFootprintWidth: number;
   paintMode: "paint" | "erase";
@@ -88,6 +89,7 @@ export function WorldStudioView({
   const sceneRef = useRef<StudioScene | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const objectPaletteRef = useRef<HTMLDivElement | null>(null);
   const gameHostIdRef = useRef(
     `world-studio-game-${Math.random().toString(36).slice(2)}`
   );
@@ -292,6 +294,7 @@ export function WorldStudioView({
   const objectPaintMode = state?.objectPaintMode ?? "place";
   const objectFootprintWidth = state?.objectFootprintWidth ?? 1;
   const objectFootprintHeight = state?.objectFootprintHeight ?? 1;
+  const hasSelectedObjectPlacement = state?.hasSelectedObjectPlacement ?? false;
   const brushSize = state?.brushSize ?? 1;
   const showGrid = state?.showGrid ?? true;
   const helpMessage =
@@ -326,6 +329,33 @@ export function WorldStudioView({
       setObjectCategoryFilter(selectedObject.category);
     }
   }, [selectedObject?.category]);
+
+  useEffect(() => {
+    const palette = objectPaletteRef.current;
+    if (!palette || !selectedObjectId) {
+      return;
+    }
+
+    const animationFrameId = window.requestAnimationFrame(() => {
+      const selectedOption = Array.from(
+        palette.querySelectorAll<HTMLButtonElement>(
+          "[data-object-palette-option]"
+        )
+      ).find(
+        (option) =>
+          option.dataset.objectId === selectedObjectId &&
+          option.dataset.objectFrame === String(selectedObjectFrame)
+      );
+
+      selectedOption?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+        inline: "nearest",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(animationFrameId);
+  }, [objectCategoryFilter, selectedObjectFrame, selectedObjectId]);
 
   useEffect(() => {
     const worldKey = openWorld?.id ?? openWorld?.name;
@@ -601,6 +631,72 @@ export function WorldStudioView({
       );
     }
   };
+
+  const renderObjectFootprintStepper = (disabled = false) => (
+    <div className="studio-footprint-stepper">
+      <span className="studio-footprint-stepper__title">Footprint</span>
+      <span className="studio-footprint-stepper__axis">W:</span>
+      <div className="studio-footprint-stepper__control">
+        <button
+          aria-label="Decrease footprint width"
+          disabled={disabled || objectFootprintWidth <= MIN_OBJECT_FOOTPRINT}
+          onClick={() =>
+            sceneRef.current?.setObjectFootprint(
+              objectFootprintWidth - 1,
+              objectFootprintHeight
+            )
+          }
+          type="button"
+        >
+          <MinusCircleIcon aria-hidden="true" size={31} weight="fill" />
+        </button>
+        <strong>{objectFootprintWidth}</strong>
+        <button
+          aria-label="Increase footprint width"
+          disabled={disabled || objectFootprintWidth >= MAX_OBJECT_FOOTPRINT}
+          onClick={() =>
+            sceneRef.current?.setObjectFootprint(
+              objectFootprintWidth + 1,
+              objectFootprintHeight
+            )
+          }
+          type="button"
+        >
+          <PlusCircleIcon aria-hidden="true" size={31} weight="fill" />
+        </button>
+      </div>
+      <span className="studio-footprint-stepper__axis">H:</span>
+      <div className="studio-footprint-stepper__control">
+        <button
+          aria-label="Decrease footprint height"
+          disabled={disabled || objectFootprintHeight <= MIN_OBJECT_FOOTPRINT}
+          onClick={() =>
+            sceneRef.current?.setObjectFootprint(
+              objectFootprintWidth,
+              objectFootprintHeight - 1
+            )
+          }
+          type="button"
+        >
+          <MinusCircleIcon aria-hidden="true" size={31} weight="fill" />
+        </button>
+        <strong>{objectFootprintHeight}</strong>
+        <button
+          aria-label="Increase footprint height"
+          disabled={disabled || objectFootprintHeight >= MAX_OBJECT_FOOTPRINT}
+          onClick={() =>
+            sceneRef.current?.setObjectFootprint(
+              objectFootprintWidth,
+              objectFootprintHeight + 1
+            )
+          }
+          type="button"
+        >
+          <PlusCircleIcon aria-hidden="true" size={31} weight="fill" />
+        </button>
+      </div>
+    </div>
+  );
 
   if (!openWorld) {
     return (
@@ -941,7 +1037,10 @@ export function WorldStudioView({
                   )}
                 />
                 {filteredObjectAssets.length > 0 ? (
-                  <div className="studio-world-palette-grid studio-world-palette-grid--objects">
+                  <div
+                    className="studio-world-palette-grid studio-world-palette-grid--objects"
+                    ref={objectPaletteRef}
+                  >
                     {filteredObjectAssets.map((asset) =>
                       Array.from(
                         { length: asset.rows * asset.columns },
@@ -954,6 +1053,9 @@ export function WorldStudioView({
                                 ? ""
                                 : undefined
                             }
+                            data-object-frame={frame}
+                            data-object-id={asset.id}
+                            data-object-palette-option=""
                             disabled={isWorldLoading}
                             key={`${asset.id}-${frame}`}
                             onClick={() => {
@@ -1028,6 +1130,7 @@ export function WorldStudioView({
                     options={
                       [
                         { label: "Place", value: "place" },
+                        { label: "Select", value: "select" },
                         { label: "Erase", value: "erase" },
                       ] as const
                     }
@@ -1065,6 +1168,20 @@ export function WorldStudioView({
                       }))}
                     />
                   </>
+                ) : objectPaintMode === "select" ? (
+                  hasSelectedObjectPlacement ? (
+                    <div className="studio-selected-object-controls">
+                      {renderObjectFootprintStepper()}
+                      <button
+                        aria-label="Delete selected object"
+                        className="studio-selected-object-delete"
+                        onClick={() => sceneRef.current?.deleteSelectedObject()}
+                        type="button"
+                      >
+                        <TrashIcon aria-hidden="true" size={18} weight="bold" />
+                      </button>
+                    </div>
+                  ) : null
                 ) : objectPaintMode === "erase" ? (
                   <>
                     <span className="studio-floating-toolbar__label">
@@ -1083,87 +1200,7 @@ export function WorldStudioView({
                     />
                   </>
                 ) : (
-                  <div className="studio-footprint-stepper">
-                    <span className="studio-footprint-stepper__title">
-                      Footprint
-                    </span>
-                    <span className="studio-footprint-stepper__axis">W:</span>
-                    <div className="studio-footprint-stepper__control">
-                      <button
-                        aria-label="Decrease footprint width"
-                        disabled={objectFootprintWidth <= MIN_OBJECT_FOOTPRINT}
-                        onClick={() =>
-                          sceneRef.current?.setObjectFootprint(
-                            objectFootprintWidth - 1,
-                            objectFootprintHeight
-                          )
-                        }
-                        type="button"
-                      >
-                        <MinusCircleIcon
-                          aria-hidden="true"
-                          size={31}
-                          weight="fill"
-                        />
-                      </button>
-                      <strong>{objectFootprintWidth}</strong>
-                      <button
-                        aria-label="Increase footprint width"
-                        disabled={objectFootprintWidth >= MAX_OBJECT_FOOTPRINT}
-                        onClick={() =>
-                          sceneRef.current?.setObjectFootprint(
-                            objectFootprintWidth + 1,
-                            objectFootprintHeight
-                          )
-                        }
-                        type="button"
-                      >
-                        <PlusCircleIcon
-                          aria-hidden="true"
-                          size={31}
-                          weight="fill"
-                        />
-                      </button>
-                    </div>
-                    <span className="studio-footprint-stepper__axis">H:</span>
-                    <div className="studio-footprint-stepper__control">
-                      <button
-                        aria-label="Decrease footprint height"
-                        disabled={objectFootprintHeight <= MIN_OBJECT_FOOTPRINT}
-                        onClick={() =>
-                          sceneRef.current?.setObjectFootprint(
-                            objectFootprintWidth,
-                            objectFootprintHeight - 1
-                          )
-                        }
-                        type="button"
-                      >
-                        <MinusCircleIcon
-                          aria-hidden="true"
-                          size={31}
-                          weight="fill"
-                        />
-                      </button>
-                      <strong>{objectFootprintHeight}</strong>
-                      <button
-                        aria-label="Increase footprint height"
-                        disabled={objectFootprintHeight >= MAX_OBJECT_FOOTPRINT}
-                        onClick={() =>
-                          sceneRef.current?.setObjectFootprint(
-                            objectFootprintWidth,
-                            objectFootprintHeight + 1
-                          )
-                        }
-                        type="button"
-                      >
-                        <PlusCircleIcon
-                          aria-hidden="true"
-                          size={31}
-                          weight="fill"
-                        />
-                      </button>
-                    </div>
-                  </div>
+                  renderObjectFootprintStepper()
                 )}
               </div>
             </div>

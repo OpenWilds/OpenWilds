@@ -33,7 +33,7 @@ export const STUDIO_LAYER_OPTIONS = Array.from(
 
 type PaintMode = "paint" | "erase";
 type StudioToolMode = "terrain" | "object";
-type ObjectPaintMode = "place" | "erase";
+type ObjectPaintMode = "place" | "erase" | "select";
 
 export type StudioObjectCategory = "plants" | "buildings" | "objects";
 
@@ -110,6 +110,7 @@ export type StudioSceneState = {
   showGrid: boolean;
   activeLayerCellCount: number;
   objectCount: number;
+  hasSelectedObjectPlacement: boolean;
   message: string;
 };
 
@@ -152,12 +153,16 @@ export class StudioScene extends Phaser.Scene {
   private objectPreviewLayer!: Phaser.GameObjects.Container;
   private objectPreviewImage: Phaser.GameObjects.Image | null = null;
   private objectPreviewBorder: Phaser.GameObjects.Rectangle | null = null;
+  private selectedObjectBorder: Phaser.GameObjects.Rectangle | null = null;
   private gridGraphics!: Phaser.GameObjects.Graphics;
   private terrainAssets: TerrainVisualAsset[];
   private objectAssets: StudioObjectSpriteAsset[];
   private paintableTerrains: TerrainVisualAssetId[];
   private objectPlacements = new Map<string, StudioObjectPlacement>();
   private nextObjectPlacementId = 0;
+  private selectedObjectPlacementKey: string | null = null;
+  private isMovingObject = false;
+  private objectMoveOffset: Phaser.Math.Vector2 | null = null;
   private isReady = false;
   private readonly layers = new Map<
     number,
@@ -339,6 +344,9 @@ export class StudioScene extends Phaser.Scene {
       return;
     }
 
+    if (layer !== this.selectedLayer) {
+      this.setSelectedObjectPlacement(null);
+    }
     this.selectedLayer = layer;
     this.updateStatus();
   }
@@ -359,17 +367,64 @@ export class StudioScene extends Phaser.Scene {
 
   setToolMode(mode: StudioToolMode) {
     this.toolMode = mode;
+    if (mode !== "object") {
+      this.setSelectedObjectPlacement(null);
+    }
     this.updateStatus();
   }
 
   setObjectPaintMode(mode: ObjectPaintMode) {
     this.objectPaintMode = mode;
+    this.isMovingObject = false;
+    this.objectMoveOffset = null;
+    this.lastPaintKey = "";
+    if (mode !== "select") {
+      this.setSelectedObjectPlacement(null);
+    } else {
+      this.hideObjectPreview();
+      this.updateSelectedObjectBorder();
+    }
     this.updateStatus();
   }
 
   setObjectFootprint(width: number, height: number) {
-    this.objectFootprintWidth = normalizeFootprintSize(width);
-    this.objectFootprintHeight = normalizeFootprintSize(height);
+    const footprintWidth = normalizeFootprintSize(width);
+    const footprintHeight = normalizeFootprintSize(height);
+    const selectedPlacement =
+      this.objectPaintMode === "select"
+        ? this.getSelectedObjectPlacement()
+        : null;
+
+    if (selectedPlacement) {
+      if (
+        !this.isFootprintInBounds(
+          selectedPlacement.x,
+          selectedPlacement.y,
+          footprintWidth,
+          footprintHeight
+        )
+      ) {
+        this.updateStatus("Selected object footprint does not fit here");
+        return;
+      }
+
+      selectedPlacement.width = footprintWidth;
+      selectedPlacement.height = footprintHeight;
+      this.objectFootprintWidth = footprintWidth;
+      this.objectFootprintHeight = footprintHeight;
+      this.refreshObjectPlacementDisplay(selectedPlacement);
+      this.objectLayer.sort("depth");
+      this.updateSelectedObjectBorder();
+      this.updateStatus(
+        `Resized ${this.getObjectPlacementLabel(
+          selectedPlacement
+        )} to ${footprintWidth}x${footprintHeight}`
+      );
+      return;
+    }
+
+    this.objectFootprintWidth = footprintWidth;
+    this.objectFootprintHeight = footprintHeight;
     this.refreshObjectPreview();
     this.updateStatus();
   }
@@ -428,6 +483,19 @@ export class StudioScene extends Phaser.Scene {
   clearObjects() {
     this.clearObjectPlacements();
     this.updateStatus("Cleared placed objects");
+  }
+
+  deleteSelectedObject() {
+    const key = this.selectedObjectPlacementKey;
+    const selectedPlacement = this.getSelectedObjectPlacement();
+    if (!key || !selectedPlacement) {
+      this.updateStatus("No object selected");
+      return;
+    }
+
+    const label = this.getObjectPlacementLabel(selectedPlacement);
+    this.deleteObjectPlacement(key, selectedPlacement);
+    this.updateStatus(`Deleted ${label}`);
   }
 
   resizeMap(width: number, height: number) {
@@ -598,6 +666,10 @@ export class StudioScene extends Phaser.Scene {
       showGrid: this.showGrid,
       activeLayerCellCount: activeLayer?.cells.size ?? 0,
       objectCount: this.objectPlacements.size,
+      hasSelectedObjectPlacement: Boolean(
+        this.selectedObjectPlacementKey &&
+          this.objectPlacements.has(this.selectedObjectPlacementKey)
+      ),
       message: DEFAULT_STUDIO_HELP,
     };
   }
@@ -751,6 +823,11 @@ export class StudioScene extends Phaser.Scene {
         return;
       }
 
+      if (this.toolMode === "object" && this.objectPaintMode === "select") {
+        this.startObjectMove(pointer);
+        return;
+      }
+
       this.isPainting = true;
       this.lastPaintKey = "";
       this.applyToolAtPointer(pointer);
@@ -769,6 +846,11 @@ export class StudioScene extends Phaser.Scene {
         return;
       }
 
+      if (this.isMovingObject) {
+        this.moveSelectedObjectAtPointer(pointer);
+        return;
+      }
+
       this.updateObjectPreviewAtPointer(pointer);
 
       if (this.isPainting) {
@@ -779,6 +861,8 @@ export class StudioScene extends Phaser.Scene {
     this.input.on("pointerup", () => {
       this.isPainting = false;
       this.isPanning = false;
+      this.isMovingObject = false;
+      this.objectMoveOffset = null;
       this.touchGesture = null;
       this.lastPaintKey = "";
     });
@@ -838,6 +922,9 @@ export class StudioScene extends Phaser.Scene {
 
   private applyToolAtPointer(pointer: Phaser.Input.Pointer) {
     if (this.toolMode === "object") {
+      if (this.objectPaintMode === "select") {
+        return;
+      }
       this.placeObjectAtPointer(pointer);
       return;
     }
@@ -922,6 +1009,81 @@ export class StudioScene extends Phaser.Scene {
     this.updateStatus();
   }
 
+  private startObjectMove(pointer: Phaser.Input.Pointer) {
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const tileX = Math.floor(worldPoint.x / TILE_SIZE);
+    const tileY = Math.floor(worldPoint.y / TILE_SIZE);
+
+    if (!this.isInBounds(tileX, tileY)) {
+      this.setSelectedObjectPlacement(null);
+      this.updateStatus("No object selected");
+      return;
+    }
+
+    const placement = this.findObjectPlacementAt(tileX, tileY);
+    if (!placement) {
+      this.setSelectedObjectPlacement(null);
+      this.updateStatus("No object selected");
+      return;
+    }
+
+    const [key, object] = placement;
+    const asset = this.objectAssets.find(
+      (candidate) => candidate.id === object.assetId
+    );
+
+    this.selectedLayer = object.layer;
+    this.selectedObject = object.assetId;
+    this.selectedObjectFrame = object.frame;
+    this.objectFootprintWidth = object.width;
+    this.objectFootprintHeight = object.height;
+    this.objectMoveOffset = new Phaser.Math.Vector2(
+      tileX - object.x,
+      tileY - object.y
+    );
+    this.isMovingObject = true;
+    this.lastPaintKey = "";
+    this.setSelectedObjectPlacement(key);
+    this.updateStatus(
+      `Selected ${asset?.label ?? objectLabel(object.assetId)} on layer ${
+        object.layer
+      }`
+    );
+  }
+
+  private moveSelectedObjectAtPointer(pointer: Phaser.Input.Pointer) {
+    const key = this.selectedObjectPlacementKey;
+    const object = this.getSelectedObjectPlacement();
+    if (!key || !object || !this.objectMoveOffset) {
+      return;
+    }
+
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const tileX = Math.floor(worldPoint.x / TILE_SIZE);
+    const tileY = Math.floor(worldPoint.y / TILE_SIZE);
+    const nextX = tileX - this.objectMoveOffset.x;
+    const nextY = tileY - this.objectMoveOffset.y;
+
+    if (!this.isFootprintInBounds(nextX, nextY, object.width, object.height)) {
+      return;
+    }
+
+    const moveKey = `${key},${nextX},${nextY}`;
+    if (moveKey === this.lastPaintKey) {
+      return;
+    }
+    this.lastPaintKey = moveKey;
+
+    object.x = nextX;
+    object.y = nextY;
+    this.positionObjectPlacement(object);
+    this.objectLayer.sort("depth");
+    this.updateSelectedObjectBorder();
+    this.updateStatus(
+      `Moved ${this.getObjectPlacementLabel(object)} to ${nextX},${nextY}`
+    );
+  }
+
   private applyPaintAt(x: number, y: number) {
     const changedLayers: StudioLayer[] = [];
     const key = cellKey(x, y);
@@ -962,6 +1124,8 @@ export class StudioScene extends Phaser.Scene {
   private startPan(pointer: Phaser.Input.Pointer) {
     this.isPanning = true;
     this.isPainting = false;
+    this.isMovingObject = false;
+    this.objectMoveOffset = null;
     this.touchGesture = null;
     this.panStart = new Phaser.Math.Vector2(pointer.x, pointer.y);
     this.cameraStart = new Phaser.Math.Vector2(
@@ -971,7 +1135,7 @@ export class StudioScene extends Phaser.Scene {
   }
 
   private updateObjectPreviewAtPointer(pointer: Phaser.Input.Pointer) {
-    if (this.toolMode !== "object") {
+    if (this.toolMode !== "object" || this.objectPaintMode === "select") {
       this.hideObjectPreview();
       return;
     }
@@ -1077,6 +1241,40 @@ export class StudioScene extends Phaser.Scene {
     return this.objectPreviewImage;
   }
 
+  private updateSelectedObjectBorder() {
+    const object = this.getSelectedObjectPlacement();
+    if (
+      !object ||
+      this.toolMode !== "object" ||
+      this.objectPaintMode !== "select"
+    ) {
+      this.selectedObjectBorder?.setVisible(false);
+      return;
+    }
+
+    const border = this.ensureSelectedObjectBorder();
+    border
+      .setPosition(
+        object.x * TILE_SIZE + (object.width * TILE_SIZE) / 2,
+        object.y * TILE_SIZE + (object.height * TILE_SIZE) / 2
+      )
+      .setSize(object.width * TILE_SIZE, object.height * TILE_SIZE)
+      .setVisible(true);
+  }
+
+  private ensureSelectedObjectBorder() {
+    if (!this.selectedObjectBorder) {
+      this.selectedObjectBorder = this.add
+        .rectangle(0, 0, TILE_SIZE, TILE_SIZE)
+        .setStrokeStyle(2, 0xf59e0b, 0.98)
+        .setFillStyle(0xfbbf24, 0.1)
+        .setVisible(false);
+      this.objectPreviewLayer.add(this.selectedObjectBorder);
+    }
+
+    return this.selectedObjectBorder;
+  }
+
   private panCamera(pointer: Phaser.Input.Pointer) {
     if (!this.panStart || !this.cameraStart) {
       return;
@@ -1103,6 +1301,8 @@ export class StudioScene extends Phaser.Scene {
 
     this.isPainting = false;
     this.isPanning = false;
+    this.isMovingObject = false;
+    this.objectMoveOffset = null;
     this.lastPaintKey = "";
     this.hideObjectPreview();
     this.touchGesture = metrics;
@@ -1272,11 +1472,60 @@ export class StudioScene extends Phaser.Scene {
     this.objectLayer.sort("depth");
   }
 
+  private positionObjectPlacement(object: StudioObjectPlacement) {
+    object.image
+      .setPosition(
+        object.x * TILE_SIZE + (object.width * TILE_SIZE) / 2,
+        object.y * TILE_SIZE + (object.height * TILE_SIZE) / 2
+      )
+      .setDepth(getObjectRenderDepth(object.layer, object.y, object.height));
+  }
+
+  private refreshObjectPlacementDisplay(object: StudioObjectPlacement) {
+    const asset = this.objectAssets.find(
+      (candidate) => candidate.id === object.assetId
+    );
+    if (
+      !asset ||
+      !this.textures ||
+      !this.textures.exists(studioObjectSpriteKey(asset.id))
+    ) {
+      this.positionObjectPlacement(object);
+      return;
+    }
+
+    const frameSize = this.applyObjectFrameTexture(
+      object.image,
+      asset,
+      object.frame
+    );
+    const displaySize = getObjectFrameDisplaySize(
+      asset,
+      object.frame,
+      frameSize,
+      object.width,
+      object.height
+    );
+    object.image
+      .setOrigin(0.5, 0.5)
+      .setDisplaySize(displaySize.width, displaySize.height);
+    this.positionObjectPlacement(object);
+  }
+
   private removeObjectAt(x: number, y: number) {
-    const placement = [...this.objectPlacements]
+    const placement = this.findObjectPlacementAt(x, y, this.selectedLayer);
+
+    if (placement) {
+      const [key, object] = placement;
+      this.deleteObjectPlacement(key, object);
+    }
+  }
+
+  private findObjectPlacementAt(x: number, y: number, layer?: number) {
+    return [...this.objectPlacements]
       .filter(
         ([, candidate]) =>
-          candidate.layer === this.selectedLayer &&
+          (layer === undefined || candidate.layer === layer) &&
           pointIntersectsPlacement(x, y, candidate)
       )
       .sort(
@@ -1285,12 +1534,44 @@ export class StudioScene extends Phaser.Scene {
           this.objectLayer.getIndex(b.image) -
             this.objectLayer.getIndex(a.image)
       )[0];
+  }
 
-    if (placement) {
-      const [key, object] = placement;
-      object.image.destroy();
-      this.objectPlacements.delete(key);
+  private getSelectedObjectPlacement() {
+    if (!this.selectedObjectPlacementKey) {
+      return null;
     }
+
+    const object = this.objectPlacements.get(this.selectedObjectPlacementKey);
+    if (!object) {
+      this.setSelectedObjectPlacement(null);
+      return null;
+    }
+
+    return object;
+  }
+
+  private setSelectedObjectPlacement(key: string | null) {
+    this.selectedObjectPlacementKey = key;
+    if (!key) {
+      this.isMovingObject = false;
+      this.objectMoveOffset = null;
+    }
+    this.updateSelectedObjectBorder();
+  }
+
+  private deleteObjectPlacement(key: string, object: StudioObjectPlacement) {
+    object.image.destroy();
+    this.objectPlacements.delete(key);
+    if (this.selectedObjectPlacementKey === key) {
+      this.setSelectedObjectPlacement(null);
+    }
+  }
+
+  private getObjectPlacementLabel(object: StudioObjectPlacement) {
+    return (
+      this.objectAssets.find((asset) => asset.id === object.assetId)?.label ??
+      objectLabel(object.assetId)
+    );
   }
 
   private createObjectPlacementKey() {
@@ -1305,6 +1586,7 @@ export class StudioScene extends Phaser.Scene {
 
     this.objectPlacements.clear();
     this.nextObjectPlacementId = 0;
+    this.setSelectedObjectPlacement(null);
   }
 
   private resizeWorld(width: number, height: number) {
@@ -1333,8 +1615,7 @@ export class StudioScene extends Phaser.Scene {
           placement.height
         )
       ) {
-        placement.image.destroy();
-        this.objectPlacements.delete(key);
+        this.deleteObjectPlacement(key, placement);
       }
     }
     this.updateCameraBounds();
@@ -1395,6 +1676,10 @@ export class StudioScene extends Phaser.Scene {
       showGrid: this.showGrid,
       activeLayerCellCount: cellCount,
       objectCount: this.objectPlacements.size,
+      hasSelectedObjectPlacement: Boolean(
+        this.selectedObjectPlacementKey &&
+          this.objectPlacements.has(this.selectedObjectPlacementKey)
+      ),
       message: message ?? DEFAULT_STUDIO_HELP,
     });
   }

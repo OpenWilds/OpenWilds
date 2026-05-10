@@ -1377,7 +1377,7 @@ h1 {
 }
 
 .studio-floating-toolbar .studio-floating-mode {
-  min-width: 170px;
+  min-width: 240px;
 }
 
 .studio-brush-size-control {
@@ -1462,6 +1462,45 @@ h1 {
   font-weight: 900;
   line-height: 1;
   text-align: center;
+}
+
+.studio-selected-object-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.studio-selected-object-delete {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(254, 202, 202, 0.95);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #dc2626;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.studio-selected-object-delete:hover {
+  border-color: #fca5a5;
+  background: #fef2f2;
+  transform: translateY(-1px);
+}
+
+.studio-selected-object-delete:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.studio-selected-object-delete:disabled:hover {
+  border-color: rgba(254, 202, 202, 0.95);
+  background: #ffffff;
+  transform: none;
 }
 
 .studio-world-status-overlay {
@@ -2564,6 +2603,10 @@ h1 {
 
   .studio-footprint-stepper {
     grid-template-columns: auto auto;
+  }
+
+  .studio-selected-object-controls {
+    flex-wrap: wrap;
   }
 
   .studio-footprint-stepper__title {
