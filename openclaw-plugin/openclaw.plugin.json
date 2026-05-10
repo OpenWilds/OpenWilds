@@ -1,0 +1,14 @@
+{
+  "id": "open-wilds",
+  "name": "Open Wilds",
+  "description": "Exposes Open Wilds game state and control tools to OpenClaw agents.",
+  "version": "0.1.0",
+  "contracts": {
+    "tools": ["open_wilds_get_game_state"]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

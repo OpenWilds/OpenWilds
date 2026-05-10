@@ -1,0 +1,20 @@
+{
+  "name": "open-wilds",
+  "interface": {
+    "displayName": "Open Wilds Plugins"
+  },
+  "plugins": [
+    {
+      "name": "open-wilds",
+      "source": {
+        "source": "local",
+        "path": "./openclaw-plugin"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Games"
+    }
+  ]
+}
