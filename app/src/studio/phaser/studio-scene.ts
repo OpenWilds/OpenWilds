@@ -26,6 +26,15 @@ const WHEEL_PINCH_ZOOM_DIVISOR = 150;
 const DEFAULT_STUDIO_HELP =
   "Drag to paint. Right/middle drag or two-finger swipe pans. Pinch zooms.";
 const MAX_UNDO_HISTORY = 80;
+const OBJECT_FOOTPRINT_KEY_DELTAS: Record<
+  string,
+  { width: number; height: number }
+> = {
+  ArrowDown: { width: 0, height: -1 },
+  ArrowLeft: { width: -1, height: 0 },
+  ArrowRight: { width: 1, height: 0 },
+  ArrowUp: { width: 0, height: 1 },
+};
 
 export const STUDIO_LAYER_OPTIONS = Array.from(
   { length: STUDIO_LAYER_COUNT },
@@ -217,6 +226,7 @@ export class StudioScene extends Phaser.Scene {
     this.objectLayer = this.add.container(0, 0).setDepth(420);
     this.objectPreviewLayer = this.add.container(0, 0).setDepth(470);
     this.gridGraphics = this.add.graphics().setDepth(GRID_DEPTH);
+    this.game.canvas.tabIndex = -1;
     this.isReady = true;
 
     this.createLayers();
@@ -404,6 +414,11 @@ export class StudioScene extends Phaser.Scene {
     this.lastPaintKey = "";
     if (mode !== "select") {
       this.setSelectedObjectPlacement(null);
+      if (mode === "place") {
+        this.refreshObjectPreview();
+        this.refreshObjectPreviewAtActivePointer();
+        this.focusCanvasForKeyboardInput();
+      }
     } else {
       this.hideObjectPreview();
       this.updateSelectedObjectBorder();
@@ -452,6 +467,7 @@ export class StudioScene extends Phaser.Scene {
     this.objectFootprintWidth = footprintWidth;
     this.objectFootprintHeight = footprintHeight;
     this.refreshObjectPreview();
+    this.refreshObjectPreviewAtActivePointer();
     this.updateStatus();
   }
 
@@ -880,6 +896,8 @@ export class StudioScene extends Phaser.Scene {
     }
 
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      this.focusCanvasForKeyboardInput();
+
       if (pointer.wasTouch && this.getActiveTouchPointers().length >= 2) {
         this.startTouchGesture();
         return;
@@ -941,6 +959,10 @@ export class StudioScene extends Phaser.Scene {
       this.hideObjectPreview();
     });
 
+    this.input.keyboard?.on("keydown", (event: KeyboardEvent) => {
+      this.handleObjectPlacementFootprintKeydown(event);
+    });
+
     this.input.on(
       "wheel",
       (
@@ -966,6 +988,41 @@ export class StudioScene extends Phaser.Scene {
         this.panCameraByWheel(deltaX, deltaY);
       }
     );
+  }
+
+  private handleObjectPlacementFootprintKeydown(event: KeyboardEvent) {
+    const delta = OBJECT_FOOTPRINT_KEY_DELTAS[event.key];
+    if (!delta || !this.canAdjustObjectPlacementFootprintWithKeyboard(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    this.lastPaintKey = "";
+    this.setObjectFootprint(
+      this.objectFootprintWidth + delta.width,
+      this.objectFootprintHeight + delta.height
+    );
+  }
+
+  private canAdjustObjectPlacementFootprintWithKeyboard(event: KeyboardEvent) {
+    return (
+      this.toolMode === "object" &&
+      this.objectPaintMode === "place" &&
+      this.input.isOver &&
+      !isEditableKeyboardTarget(event.target)
+    );
+  }
+
+  private focusCanvasForKeyboardInput() {
+    this.game.canvas.focus({ preventScroll: true });
+  }
+
+  private refreshObjectPreviewAtActivePointer() {
+    if (!this.input.isOver) {
+      return;
+    }
+
+    this.updateObjectPreviewAtPointer(this.input.activePointer);
   }
 
   private zoomAtPointer(pointer: Phaser.Input.Pointer, nextZoom: number) {
@@ -2330,6 +2387,19 @@ function pointIntersectsPlacement(
     y >= placement.y &&
     x < placement.x + placement.width &&
     y < placement.y + placement.height
+  );
+}
+
+function isEditableKeyboardTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return (
+    target.isContentEditable ||
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement
   );
 }
 
