@@ -170,6 +170,15 @@ export function WorldStudioView({
       height: STUDIO_HEIGHT,
       backgroundColor: "#17211e",
       scene,
+      input: {
+        activePointers: 2,
+        mouse: {
+          preventDefaultWheel: true,
+        },
+        touch: {
+          capture: true,
+        },
+      },
       scale: {
         mode: Phaser.Scale.RESIZE,
       },

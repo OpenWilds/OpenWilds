@@ -440,6 +440,15 @@ export const bootStudio = (app: HTMLElement) => {
     height: STUDIO_HEIGHT,
     backgroundColor: "#17211e",
     scene,
+    input: {
+      activePointers: 2,
+      mouse: {
+        preventDefaultWheel: true,
+      },
+      touch: {
+        capture: true,
+      },
+    },
     scale: {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -1275,7 +1284,7 @@ const escapeHtml = (value: string) =>
   });
 
 const DEFAULT_STUDIO_HELP =
-  "Drag to paint. Right/middle drag pans. Wheel zooms.";
+  "Drag to paint. Right/middle drag or two-finger swipe pans. Pinch zooms.";
 const LAYERED_STUDIO_HELP =
   "Paint replaces terrain inside the active numeric layer. Erase clears that layer at the tile. Different layers stack.";
 

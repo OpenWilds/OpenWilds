@@ -20,6 +20,11 @@ const DEFAULT_WORLD_SIZE = 40;
 const TILE_SIZE = 32;
 const GRID_DEPTH = 500;
 const STUDIO_LAYER_COUNT = 5;
+const MIN_CAMERA_ZOOM = 0.15;
+const MAX_CAMERA_ZOOM = 8;
+const WHEEL_PINCH_ZOOM_DIVISOR = 150;
+const DEFAULT_STUDIO_HELP =
+  "Drag to paint. Right/middle drag or two-finger swipe pans. Pinch zooms.";
 
 export const STUDIO_LAYER_OPTIONS = Array.from(
   { length: STUDIO_LAYER_COUNT },
@@ -115,6 +120,11 @@ type StudioObjectPlacement = StudioObjectPlacementExport & {
   height: number;
 };
 
+type TouchGestureState = {
+  center: Phaser.Math.Vector2;
+  distance: number;
+};
+
 export class StudioScene extends Phaser.Scene {
   private readonly options: StudioSceneOptions;
   private widthTiles = DEFAULT_WORLD_SIZE;
@@ -135,6 +145,7 @@ export class StudioScene extends Phaser.Scene {
   private isPanning = false;
   private panStart: Phaser.Math.Vector2 | null = null;
   private cameraStart: Phaser.Math.Vector2 | null = null;
+  private touchGesture: TouchGestureState | null = null;
   private lastPaintKey = "";
   private worldLayer!: Phaser.GameObjects.Container;
   private objectLayer!: Phaser.GameObjects.Container;
@@ -587,7 +598,7 @@ export class StudioScene extends Phaser.Scene {
       showGrid: this.showGrid,
       activeLayerCellCount: activeLayer?.cells.size ?? 0,
       objectCount: this.objectPlacements.size,
-      message: "Drag to paint. Right/middle drag pans. Wheel zooms.",
+      message: DEFAULT_STUDIO_HELP,
     };
   }
 
@@ -725,7 +736,16 @@ export class StudioScene extends Phaser.Scene {
   }
 
   private registerInput() {
+    if (!this.input.pointer2) {
+      this.input.addPointer(1);
+    }
+
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      if (pointer.wasTouch && this.getActiveTouchPointers().length >= 2) {
+        this.startTouchGesture();
+        return;
+      }
+
       if (pointer.middleButtonDown() || pointer.rightButtonDown()) {
         this.startPan(pointer);
         return;
@@ -737,6 +757,13 @@ export class StudioScene extends Phaser.Scene {
     });
 
     this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
+      if (pointer.wasTouch && this.getActiveTouchPointers().length >= 2) {
+        this.updateTouchGesture();
+        return;
+      }
+
+      this.touchGesture = null;
+
       if (this.isPanning) {
         this.panCamera(pointer);
         return;
@@ -752,6 +779,7 @@ export class StudioScene extends Phaser.Scene {
     this.input.on("pointerup", () => {
       this.isPainting = false;
       this.isPanning = false;
+      this.touchGesture = null;
       this.lastPaintKey = "";
     });
 
@@ -764,28 +792,46 @@ export class StudioScene extends Phaser.Scene {
       (
         pointer: Phaser.Input.Pointer,
         _objects: unknown,
-        _dx: number,
+        deltaX: number,
         deltaY: number
       ) => {
-        const nextZoom = Phaser.Math.Clamp(
-          this.cameras.main.zoom * (deltaY > 0 ? 0.88 : 1.16),
-          0.15,
-          8
-        );
+        const event = pointer.event as WheelEvent | undefined;
 
-        this.zoomAtPointer(pointer, nextZoom);
+        if (event?.ctrlKey || event?.metaKey) {
+          const nextZoom = Phaser.Math.Clamp(
+            this.cameras.main.zoom *
+              Math.pow(2, -deltaY / WHEEL_PINCH_ZOOM_DIVISOR),
+            MIN_CAMERA_ZOOM,
+            MAX_CAMERA_ZOOM
+          );
+
+          this.zoomAtPointer(pointer, nextZoom);
+          return;
+        }
+
+        this.panCameraByWheel(deltaX, deltaY);
       }
     );
   }
 
   private zoomAtPointer(pointer: Phaser.Input.Pointer, nextZoom: number) {
-    const camera = this.cameras.main;
-    const worldPointBeforeZoom = camera.getWorldPoint(pointer.x, pointer.y);
+    this.zoomAtScreenPoint(pointer.x, pointer.y, nextZoom);
+  }
 
-    camera.setZoom(nextZoom);
+  private zoomAtScreenPoint(
+    screenX: number,
+    screenY: number,
+    nextZoom: number
+  ) {
+    const camera = this.cameras.main;
+    const worldPointBeforeZoom = camera.getWorldPoint(screenX, screenY);
+
+    camera.setZoom(
+      Phaser.Math.Clamp(nextZoom, MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM)
+    );
     camera.preRender();
 
-    const worldPointAfterZoom = camera.getWorldPoint(pointer.x, pointer.y);
+    const worldPointAfterZoom = camera.getWorldPoint(screenX, screenY);
     camera.scrollX += worldPointBeforeZoom.x - worldPointAfterZoom.x;
     camera.scrollY += worldPointBeforeZoom.y - worldPointAfterZoom.y;
   }
@@ -907,6 +953,8 @@ export class StudioScene extends Phaser.Scene {
 
   private startPan(pointer: Phaser.Input.Pointer) {
     this.isPanning = true;
+    this.isPainting = false;
+    this.touchGesture = null;
     this.panStart = new Phaser.Math.Vector2(pointer.x, pointer.y);
     this.cameraStart = new Phaser.Math.Vector2(
       this.cameras.main.scrollX,
@@ -1032,6 +1080,82 @@ export class StudioScene extends Phaser.Scene {
       this.cameraStart.x - (pointer.x - this.panStart.x) / camera.zoom;
     camera.scrollY =
       this.cameraStart.y - (pointer.y - this.panStart.y) / camera.zoom;
+  }
+
+  private panCameraByWheel(deltaX: number, deltaY: number) {
+    const camera = this.cameras.main;
+    camera.scrollX += deltaX / camera.zoom;
+    camera.scrollY += deltaY / camera.zoom;
+  }
+
+  private startTouchGesture() {
+    const metrics = this.getTouchGestureMetrics();
+    if (!metrics) {
+      return;
+    }
+
+    this.isPainting = false;
+    this.isPanning = false;
+    this.lastPaintKey = "";
+    this.hideObjectPreview();
+    this.touchGesture = metrics;
+  }
+
+  private updateTouchGesture() {
+    const metrics = this.getTouchGestureMetrics();
+    if (!metrics) {
+      this.touchGesture = null;
+      return;
+    }
+
+    if (!this.touchGesture) {
+      this.startTouchGesture();
+      return;
+    }
+
+    const camera = this.cameras.main;
+    camera.scrollX -=
+      (metrics.center.x - this.touchGesture.center.x) / camera.zoom;
+    camera.scrollY -=
+      (metrics.center.y - this.touchGesture.center.y) / camera.zoom;
+
+    if (this.touchGesture.distance > 0 && metrics.distance > 0) {
+      this.zoomAtScreenPoint(
+        metrics.center.x,
+        metrics.center.y,
+        camera.zoom * (metrics.distance / this.touchGesture.distance)
+      );
+    }
+
+    this.touchGesture = metrics;
+  }
+
+  private getTouchGestureMetrics(): TouchGestureState | null {
+    const pointers = this.getActiveTouchPointers();
+    if (pointers.length < 2) {
+      return null;
+    }
+
+    const pointerA = pointers[0];
+    const pointerB = pointers[1];
+    return {
+      center: new Phaser.Math.Vector2(
+        (pointerA.x + pointerB.x) / 2,
+        (pointerA.y + pointerB.y) / 2
+      ),
+      distance: Phaser.Math.Distance.Between(
+        pointerA.x,
+        pointerA.y,
+        pointerB.x,
+        pointerB.y
+      ),
+    };
+  }
+
+  private getActiveTouchPointers() {
+    return this.input.manager.pointers.filter(
+      (pointer) => pointer.wasTouch && pointer.isDown
+    );
   }
 
   private fillSelectedLayer() {
@@ -1264,7 +1388,7 @@ export class StudioScene extends Phaser.Scene {
       showGrid: this.showGrid,
       activeLayerCellCount: cellCount,
       objectCount: this.objectPlacements.size,
-      message: message ?? "Drag to paint. Right/middle drag pans. Wheel zooms.",
+      message: message ?? DEFAULT_STUDIO_HELP,
     });
   }
 

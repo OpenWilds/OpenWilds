@@ -564,6 +564,8 @@ h1 {
   min-width: 0;
   aspect-ratio: 1280 / 820;
   overflow: hidden;
+  overscroll-behavior: contain;
+  touch-action: none;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   background: #17211e;
@@ -573,6 +575,7 @@ h1 {
 #studio-game canvas,
 .studio-game-host canvas {
   display: block;
+  touch-action: none;
 }
 
 .studio-page[hidden] {
