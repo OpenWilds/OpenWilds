@@ -16,6 +16,7 @@ export type HudElements = {
   agentModeToggle: HTMLInputElement | null;
   agentDelegateInput: HTMLInputElement | null;
   agentScopeSelect: HTMLSelectElement | null;
+  agentSessionTransactionInput: HTMLTextAreaElement | null;
   agentStatus: HTMLElement | null;
   agentRevokeButton: HTMLButtonElement | null;
   mintPlayerButton: HTMLButtonElement | null;
@@ -46,6 +47,9 @@ export const getHudElements = (): HudElements => ({
   agentScopeSelect: document.getElementById(
     "agent-scope-select"
   ) as HTMLSelectElement,
+  agentSessionTransactionInput: document.getElementById(
+    "agent-session-transaction-input"
+  ) as HTMLTextAreaElement,
   agentStatus: document.getElementById("agent-status"),
   agentRevokeButton: document.getElementById(
     "agent-revoke-button"
@@ -250,6 +254,10 @@ export class HudController {
 
     if (this.elements.agentScopeSelect) {
       this.elements.agentScopeSelect.disabled = this.agentBusy;
+    }
+
+    if (this.elements.agentSessionTransactionInput) {
+      this.elements.agentSessionTransactionInput.disabled = this.agentBusy;
     }
 
     if (this.elements.agentStatus && args.status !== undefined) {

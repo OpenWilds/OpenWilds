@@ -8,6 +8,7 @@ import {
   SendTransactionError,
   Transaction,
 } from "@solana/web3.js";
+import { Buffer } from "buffer";
 import type {
   ActiveActionState,
   EnergyState,
@@ -1220,6 +1221,9 @@ export class LocalnetClient {
       this.activePlayerNft = null;
       if (this.hud.elements.agentDelegateInput) {
         this.hud.elements.agentDelegateInput.value = "";
+      }
+      if (this.hud.elements.agentSessionTransactionInput) {
+        this.hud.elements.agentSessionTransactionInput.value = "";
       }
       window.localStorage.removeItem(AGENT_DELEGATE_STORAGE_KEY);
       this.lastPlayerActionStateKey = null;
@@ -3044,17 +3048,27 @@ export class LocalnetClient {
       return;
     }
 
-    const session = await this.fetchAgentSession(delegate);
+    const [session, boltSessionActive] = await Promise.all([
+      this.fetchAgentSession(delegate),
+      this.hasBoltSession(delegate),
+    ]);
     const isActive =
       Boolean(session) &&
       !session!.revoked &&
       (session!.scopes & PLAYER_SESSION_SCOPES_FULL_CONTROL) ===
         PLAYER_SESSION_SCOPES_FULL_CONTROL;
+    const isReady = isActive && boltSessionActive;
 
     this.hud.setAgentModeState({
-      checked: isActive,
+      checked: isReady,
       active: isActive,
-      status: isActive ? "Active: full control" : "Inactive",
+      status: isReady
+        ? "Active: full control + BOLT session"
+        : isActive
+        ? "Missing BOLT session"
+        : boltSessionActive
+        ? "BOLT session active"
+        : "Inactive",
     });
   }
 
@@ -3089,6 +3103,75 @@ export class LocalnetClient {
     return session;
   }
 
+  private async getBoltSessionToken(delegate: PublicKey) {
+    const { FindSessionTokenPda } = await loadBoltSdk();
+    return FindSessionTokenPda({
+      sessionSigner: delegate,
+      authority: this.wallet.publicKey,
+    });
+  }
+
+  private async hasBoltSession(delegate: PublicKey) {
+    const sessionToken = await this.getBoltSessionToken(delegate);
+    const account =
+      (await this.erConnection.getAccountInfo(sessionToken)) ??
+      (await this.baseConnection.getAccountInfo(sessionToken));
+
+    return Boolean(account);
+  }
+
+  private parsePreparedBoltSessionTransaction() {
+    const input = this.hud.elements.agentSessionTransactionInput;
+    const value = input?.value.trim();
+
+    if (!value) {
+      return null;
+    }
+
+    try {
+      return Transaction.from(Buffer.from(value, "base64"));
+    } catch {
+      throw new Error("Invalid BOLT session transaction");
+    }
+  }
+
+  private async ensureBoltSession(delegate: PublicKey) {
+    if (await this.hasBoltSession(delegate)) {
+      return;
+    }
+
+    const transaction = this.parsePreparedBoltSessionTransaction();
+
+    if (!transaction) {
+      throw new Error(
+        "Missing BOLT session. Ask OpenClaw to run open_wilds_prepare_session with this owner wallet, paste the returned transaction, then grant again."
+      );
+    }
+
+    const sessionToken = await this.getBoltSessionToken(delegate);
+    const mentionsToken = transaction.instructions.some((instruction) =>
+      instruction.keys.some((key) => key.pubkey.equals(sessionToken))
+    );
+
+    if (!mentionsToken) {
+      throw new Error(
+        "Prepared BOLT session transaction does not match this owner and OpenClaw key."
+      );
+    }
+
+    this.hud.setAgentModeState({
+      checked: true,
+      active: false,
+      busy: true,
+      status: "Creating BOLT session...",
+    });
+
+    await this.sendSignedTransaction(transaction, this.baseConnection);
+    if (this.hud.elements.agentSessionTransactionInput) {
+      this.hud.elements.agentSessionTransactionInput.value = "";
+    }
+  }
+
   private async grantAgentSession() {
     const delegate = this.parseAgentDelegate();
 
@@ -3118,6 +3201,7 @@ export class LocalnetClient {
         (existing.scopes & PLAYER_SESSION_SCOPES_FULL_CONTROL) ===
           PLAYER_SESSION_SCOPES_FULL_CONTROL
       ) {
+        await this.ensureBoltSession(delegate);
         await this.refreshAgentModeStatus();
         return;
       }
@@ -3126,7 +3210,14 @@ export class LocalnetClient {
         checked: true,
         active: false,
         busy: true,
-        status: "Granting agent access...",
+        status: "Preparing agent session...",
+      });
+      await this.ensureBoltSession(delegate);
+      this.hud.setAgentModeState({
+        checked: true,
+        active: false,
+        busy: true,
+        status: "Granting game access...",
       });
       await this.sendSignedTransaction(
         new Transaction().add(
@@ -3192,7 +3283,9 @@ export class LocalnetClient {
         this.baseConnection
       );
       this.hud.setProgramStatus(
-        `Agent Mode revoked for ${shortAddress(delegate)}.`
+        `Agent Mode revoked for ${shortAddress(
+          delegate
+        )}. The BOLT session may remain, but Open Wilds scopes now block gameplay.`
       );
     } catch (error) {
       const message = await describeOnchainError(

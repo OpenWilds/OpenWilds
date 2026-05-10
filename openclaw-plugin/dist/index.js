@@ -149,18 +149,56 @@ const getAgentStatus = async (api) => {
             worldPda: manifest.worldPda,
             source: config.worldManifestPathOrUrl,
         },
-        sessions: runtime
-            ? (await listSessions(runtime)).map((session) => ({
-                session: session.publicKey.toBase58(),
-                playerMint: session.playerMint.toBase58(),
-                owner: session.owner.toBase58(),
-                scopes: session.scopes,
-                scopeLabels: scopeLabels(session.scopes),
-            }))
-            : [],
+        sessions: runtime ? await describeSessions(runtime) : [],
         nextStep: agent
-            ? "Paste this publicKey into the Open Wilds Agent Mode panel and grant Full control."
+            ? "Run open_wilds_prepare_session with the player owner wallet, paste the returned transaction into Open Wilds, then grant Full control."
             : "Create the agent keypair with open_wilds_agent_setup createIfMissing=true.",
+    };
+};
+const describeSessions = async (runtime) => {
+    const sessions = await listSessions(runtime);
+    return Promise.all(sessions.map(async (session) => {
+        const boltSessionToken = await deriveBoltSessionToken(runtime.agent.publicKey, session.owner);
+        return {
+            session: session.publicKey.toBase58(),
+            playerMint: session.playerMint.toBase58(),
+            owner: session.owner.toBase58(),
+            delegate: session.delegate.toBase58(),
+            scopes: session.scopes,
+            scopeLabels: scopeLabels(session.scopes),
+            boltSessionToken: boltSessionToken.toBase58(),
+            boltSessionActive: Boolean(await getAccount(runtime, boltSessionToken)),
+        };
+    }));
+};
+const prepareBoltSession = async (runtime, input) => {
+    const owner = new PublicKey(input.ownerPublicKey);
+    const bolt = await import("@magicblock-labs/bolt-sdk");
+    const validity = input.validUntilUnixSeconds === undefined
+        ? undefined
+        : new bolt.BN(input.validUntilUnixSeconds);
+    const result = await bolt.CreateSession({
+        sessionSigner: runtime.agent,
+        authority: owner,
+        validity,
+    });
+    const latest = await runtime.baseConnection.getLatestBlockhash("confirmed");
+    result.transaction.feePayer = owner;
+    result.transaction.recentBlockhash = latest.blockhash;
+    result.transaction.partialSign(runtime.agent);
+    return {
+        agentPublicKey: runtime.agent.publicKey.toBase58(),
+        sessionSignerPublicKey: runtime.agent.publicKey.toBase58(),
+        owner: owner.toBase58(),
+        sessionToken: result.session.token.toBase58(),
+        validUntilUnixSeconds: input.validUntilUnixSeconds ?? null,
+        partiallySignedTransaction: result.transaction
+            .serialize({
+            requireAllSignatures: false,
+            verifySignatures: false,
+        })
+            .toString("base64"),
+        nextStep: "Paste partiallySignedTransaction into the Open Wilds Agent Mode BOLT Session Tx field, then enable Agent Mode. The game owner wallet will co-sign and send it.",
     };
 };
 const loadManifest = async (pathOrUrl) => {
@@ -304,6 +342,10 @@ const readPlayerState = async (runtime, player) => {
 };
 const getAccount = async (runtime, pubkey) => (await runtime.erConnection.getAccountInfo(pubkey)) ??
     (await runtime.baseConnection.getAccountInfo(pubkey));
+const deriveBoltSessionToken = async (sessionSigner, authority) => {
+    const { FindSessionTokenPda } = await import("@magicblock-labs/bolt-sdk");
+    return FindSessionTokenPda({ sessionSigner, authority });
+};
 const scopeLabels = (scopes) => [
     [PLAYER_SESSION_SCOPE_MOVE, "MOVE"],
     [PLAYER_SESSION_SCOPE_SLEEP, "SLEEP"],
@@ -326,12 +368,18 @@ const getNearbyTiles = async (runtime, positionAccount) => {
         .slice(0, 9);
 };
 const applySystem = async (runtime, player, systemId, entities, args) => {
-    const { ApplySystem } = await import("@magicblock-labs/bolt-sdk");
+    const { ApplySystem, Session } = await import("@magicblock-labs/bolt-sdk");
+    const boltSessionToken = await deriveBoltSessionToken(runtime.agent.publicKey, player.session.owner);
+    const hasSession = await getAccount(runtime, boltSessionToken);
+    if (!hasSession) {
+        throw new Error(`Missing BOLT session token ${boltSessionToken.toBase58()} for owner ${player.session.owner.toBase58()}. Run open_wilds_prepare_session and grant it in the game UI.`);
+    }
     const result = (await ApplySystem({
-        authority: runtime.agent.publicKey,
+        authority: player.session.owner,
         systemId,
         world: player.worldPda,
         entities,
+        session: new Session(runtime.agent, boltSessionToken),
         extraAccounts: [
             { pubkey: player.session.publicKey, isSigner: false, isWritable: false },
         ],
@@ -499,8 +547,22 @@ export default definePluginEntry({
                 return toolResponse({
                     ...keypair,
                     secretExported: false,
-                    nextStep: "Paste publicKey into the Open Wilds Agent Mode panel, grant Full control, then run open_wilds_agent_status.",
+                    sessionSignerPublicKey: keypair.publicKey,
+                    nextStep: "Ask OpenClaw to run open_wilds_prepare_session with the player owner wallet. Paste the returned transaction into Open Wilds, then grant Full control.",
                 });
+            },
+        });
+        api.registerTool({
+            name: "open_wilds_prepare_session",
+            label: "Prepare Open Wilds BOLT Session",
+            description: "Create an agent-signed BOLT session transaction for the player owner to co-sign in the Open Wilds Agent Mode panel.",
+            parameters: Type.Object({
+                ownerPublicKey: Type.String(),
+                validUntilUnixSeconds: Type.Optional(Type.Number()),
+            }),
+            async execute(_toolCallId, params, signal) {
+                signal?.throwIfAborted();
+                return toolResponse(await prepareBoltSession(await runtimeFromApi(api), params));
             },
         });
         api.registerTool({
@@ -521,16 +583,9 @@ export default definePluginEntry({
             async execute(_toolCallId, _params, signal) {
                 signal?.throwIfAborted();
                 const runtime = await runtimeFromApi(api);
-                const sessions = await listSessions(runtime);
                 return toolResponse({
                     agent: runtime.agent.publicKey.toBase58(),
-                    players: sessions.map((session) => ({
-                        session: session.publicKey.toBase58(),
-                        playerMint: session.playerMint.toBase58(),
-                        owner: session.owner.toBase58(),
-                        scopes: session.scopes,
-                        scopeLabels: scopeLabels(session.scopes),
-                    })),
+                    players: await describeSessions(runtime),
                 });
             },
         });

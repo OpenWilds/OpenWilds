@@ -6,6 +6,7 @@
   "contracts": {
     "tools": [
       "open_wilds_agent_setup",
+      "open_wilds_prepare_session",
       "open_wilds_agent_status",
       "open_wilds_list_players",
       "open_wilds_get_player_state",

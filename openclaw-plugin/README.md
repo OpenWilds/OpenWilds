@@ -8,8 +8,11 @@ Open Wilds state, and sends gameplay transactions to the MagicBlock ER.
 
 - `open_wilds_agent_setup`: create or load the local agent keypair and return
   the public key to paste into the game UI.
+- `open_wilds_prepare_session`: create a BOLT/GPL session transaction that is
+  already signed by the agent key. Paste this transaction into the game UI so
+  the player owner can co-sign it.
 - `open_wilds_agent_status`: check keypair, manifest, RPC config, and granted
-  sessions.
+  sessions, including expected BOLT session tokens.
 - `open_wilds_list_players`: list delegated players for the agent wallet.
 - `open_wilds_get_player_state`: read player position, energy, action state,
   inventory, nearby tiles, and session scopes.
@@ -44,8 +47,18 @@ Use open_wilds_agent_setup with createIfMissing=true.
 ```
 
 The tool creates the keypair with `0600` file permissions and returns only the
-public key. Paste that public key into the in-game Agent Mode panel and grant
-`Full control`.
+public key.
+
+Then ask OpenClaw to prepare the BOLT session for the player owner wallet:
+
+```text
+Use open_wilds_prepare_session with ownerPublicKey=<player owner wallet>.
+```
+
+Paste the returned `partiallySignedTransaction` into the in-game Agent Mode
+`BOLT Session Tx` field, paste the agent public key into `OpenClaw Key`, and
+enable Agent Mode. The game wallet co-signs the BOLT session transaction and
+then creates the Open Wilds `PlayerSession`.
 
 ## Local Install
 
@@ -75,7 +88,7 @@ Then mint/select a player, grant Agent Mode to the OpenClaw key, and ask
 OpenClaw to run:
 
 ```text
-Use open_wilds_agent_setup, then open_wilds_agent_status, then open_wilds_list_players, then open_wilds_get_player_state, then open_wilds_play_turn.
+Use open_wilds_agent_setup, then open_wilds_prepare_session with my owner wallet, then open_wilds_agent_status, then open_wilds_list_players, then open_wilds_get_player_state, then open_wilds_play_turn.
 ```
 
 ## Notes
@@ -83,7 +96,9 @@ Use open_wilds_agent_setup, then open_wilds_agent_status, then open_wilds_list_p
 - The plugin signs with the agent keypair, not the player wallet.
 - `open_wilds_agent_setup` never returns the secret key. It writes the secret
   key to the configured local file path only.
+- Gameplay transactions use BOLT `apply_with_session`: `authority` stays the
+  real player owner, while the local agent key signs as the BOLT session signer.
 - Transactions are routed to the configured ER RPC with `skipPreflight: true`.
-- The `PlayerSession` account must be visible to the ER for delegate checks to
-  pass there. For dev demos, make sure session/permission sync is included in
-  the deployment flow before relying on ER-only execution.
+- Revoking Open Wilds Agent Mode revokes game scopes. The BOLT session token may
+  still exist until expiry or explicit session-program cleanup, but the Open
+  Wilds systems will reject gameplay without an active `PlayerSession`.

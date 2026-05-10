@@ -137,6 +137,10 @@ export type BoltSdk = {
     componentPda: PublicKey;
   }) => TransactionInstruction;
   FindRegistryPda: (args: { programId?: PublicKey }) => PublicKey;
+  FindSessionTokenPda: (args: {
+    sessionSigner: PublicKey;
+    authority: PublicKey;
+  }) => PublicKey;
   InitializeComponent: (args: {
     payer: PublicKey;
     entity: PublicKey;

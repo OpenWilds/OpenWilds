@@ -159,14 +159,17 @@ h1 {
 
 .agent-mode-panel {
   display: grid;
-  grid-template-columns: 126px minmax(0, 1fr) 136px minmax(118px, auto) auto;
+  grid-template-columns:
+    126px minmax(0, 1fr) 136px minmax(0, 1.25fr) minmax(118px, auto)
+    auto;
   gap: 8px;
   align-items: end;
 }
 
 .agent-mode-toggle,
 .agent-key-field,
-.agent-scope-field {
+.agent-scope-field,
+.agent-session-tx-field {
   display: grid;
   gap: 4px;
   min-width: 0;
@@ -180,6 +183,7 @@ h1 {
 
 .agent-key-field input,
 .agent-scope-field select,
+.agent-session-tx-field textarea,
 .agent-mode-panel button {
   min-width: 0;
   width: 100%;
@@ -190,6 +194,11 @@ h1 {
   color: #17211e;
   font: inherit;
   font-weight: 800;
+}
+
+.agent-session-tx-field textarea {
+  height: 38px;
+  resize: vertical;
 }
 
 #agent-status {
