@@ -45,9 +45,7 @@ export const createTopRightStatus = (
     clockWidth,
     artworkClipHeight
   );
-  const artwork = scene.add
-    .image(0, 0, artworkTextureKey)
-    .setOrigin(0);
+  const artwork = scene.add.image(0, 0, artworkTextureKey).setOrigin(0);
   const frame = scene.add
     .image(frameX, 0, UI_ASSETS.dateTimeHalfcircleFrame.key)
     .setDisplaySize(frameWidth, frameHeight)
@@ -61,27 +59,22 @@ export const createTopRightStatus = (
     .setDisplaySize(clockWidth, clockPanelHeight)
     .setOrigin(0.5);
   const label = scene.add
-    .text(
-      labelInset,
-      clockPanelY + clockPanelHeight / 2 + 1,
-      "",
-      {
-        align: "center",
-        color: "#3b2414",
-        fixedWidth: clockWidth - labelInset * 2,
-        fontFamily: "Trebuchet MS, Verdana, system-ui, sans-serif",
-        fontSize: "30px",
-        fontStyle: "700",
-        shadow: {
-          color: "#f7e7c3",
-          fill: true,
-          offsetX: 0,
-          offsetY: 2,
-        },
-        stroke: "#f8e8c2",
-        strokeThickness: 3,
-      }
-    )
+    .text(labelInset, clockPanelY + clockPanelHeight / 2 + 1, "", {
+      align: "center",
+      color: "#3b2414",
+      fixedWidth: clockWidth - labelInset * 2,
+      fontFamily: "Trebuchet MS, Verdana, system-ui, sans-serif",
+      fontSize: "30px",
+      fontStyle: "700",
+      shadow: {
+        color: "#f7e7c3",
+        fill: true,
+        offsetX: 0,
+        offsetY: 2,
+      },
+      stroke: "#f8e8c2",
+      strokeThickness: 3,
+    })
     .setOrigin(0, 0.5)
     .setScrollFactor(0);
   const buttons = scene.add.container(buttonsX, buttonRowTop);
@@ -105,16 +98,26 @@ export const createTopRightStatus = (
 
   clock.setPosition(clockX, 0);
   clock.add([artwork, frame, panel, label]);
-  buttons.add([
-    makeSystemButton(scene, 0, "settings", onSettingsClick),
-    makeSystemButton(scene, buttonWidth + buttonGap, "map", () => undefined),
-    makeSystemButton(
-      scene,
-      (buttonWidth + buttonGap) * 2,
-      "journal",
-      () => undefined
-    ),
-  ]);
+  const settingsButton = makeSystemButton(
+    scene,
+    0,
+    "settings",
+    onSettingsClick
+  );
+  const mapButton = makeSystemButton(
+    scene,
+    buttonWidth + buttonGap,
+    "map",
+    () => undefined
+  );
+  const journalButton = makeSystemButton(
+    scene,
+    (buttonWidth + buttonGap) * 2,
+    "journal",
+    () => undefined
+  );
+
+  buttons.add([settingsButton, mapButton, journalButton]);
   playerText.setAlign("center");
   container.add([clock, buttons, playerBg, playerText]);
 
@@ -167,16 +170,40 @@ export const createTopRightStatus = (
     container,
     width,
     height,
+    containsPoint(x: number, y: number) {
+      return x >= 0 && x <= width && y >= 0 && y <= height;
+    },
+    handlePointerDown(x: number, y: number) {
+      const buttonIndex = Math.floor(
+        (x - buttonsX) / (buttonWidth + buttonGap)
+      );
+      const buttonOffsetX =
+        x - buttonsX - buttonIndex * (buttonWidth + buttonGap);
+      const isButtonRowClick =
+        y >= buttonRowTop &&
+        y <= buttonRowTop + 56 &&
+        buttonIndex >= 0 &&
+        buttonIndex <= 2 &&
+        buttonOffsetX >= 0 &&
+        buttonOffsetX <= buttonWidth;
+
+      if (!isButtonRowClick) {
+        return this.containsPoint(x, y);
+      }
+
+      if (buttonIndex === 0) {
+        onSettingsClick();
+        return true;
+      }
+      return true;
+    },
     setTime(_text: string) {
       syncTime();
     },
     setPlayerStatus(text: string) {
       playerText.setText(text);
     },
-    resize(args: {
-      screenWidth: number;
-      screenHeight: number;
-    }) {
+    resize(args: { screenWidth: number; screenHeight: number }) {
       shade
         .setPosition(0, 0)
         .setDisplaySize(args.screenWidth, args.screenHeight);

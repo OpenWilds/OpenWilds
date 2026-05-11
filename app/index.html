@@ -26,7 +26,9 @@
             </div>
             <div class="status-line">
               <span class="status-label">Status</span>
-              <span id="gate-program-status">Checking deployed programs...</span>
+              <span id="gate-program-status"
+                >Checking deployed programs...</span
+              >
             </div>
           </div>
 
@@ -39,10 +41,7 @@
               Mint Player
             </button>
           </div>
-          <div
-            id="gate-player-color-choices"
-            class="player-card-grid"
-          ></div>
+          <div id="gate-player-color-choices" class="player-card-grid"></div>
 
           <div class="player-gate__section">
             <label>
@@ -54,6 +53,42 @@
             </button>
           </div>
           <div id="gate-owned-player-choices" class="player-card-grid"></div>
+
+          <div class="player-gate__section player-gate__section--stack">
+            <label class="agent-mode-toggle">
+              <span class="status-label">Agent Mode</span>
+              <input id="gate-agent-mode-toggle" type="checkbox" />
+            </label>
+            <label>
+              <span class="status-label">OpenClaw Key</span>
+              <input
+                id="gate-agent-delegate-input"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Agent wallet public key"
+              />
+            </label>
+            <label>
+              <span class="status-label">Scope</span>
+              <select id="gate-agent-scope-select">
+                <option value="full">Full control</option>
+              </select>
+            </label>
+            <label>
+              <span class="status-label">BOLT Session Tx</span>
+              <textarea
+                id="gate-agent-session-transaction-input"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Paste open_wilds_prepare_session transaction"
+              ></textarea>
+            </label>
+            <span id="gate-agent-status">Inactive</span>
+            <button id="gate-agent-revoke-button" type="button" hidden>
+              Revoke
+            </button>
+          </div>
         </div>
       </section>
       <div id="game" hidden></div>

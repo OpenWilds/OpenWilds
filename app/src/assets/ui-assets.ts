@@ -38,6 +38,7 @@ import panelTabLabelActiveGreenUrl from "./ui/panel/panel_tab_label_active_green
 import panelTabLabelInactiveUrl from "./ui/panel/panel_tab_label_inactive.png?url";
 import panelTabStandUrl from "./ui/panel/panel_tab_stand.png?url";
 import panelUrl from "./ui/panel/panel.png?url";
+import iconAgentUrl from "./ui/Icons/agent.png?url";
 import iconAxeUrl from "./ui/Icons/axe.png?url";
 import iconDigUrl from "./ui/Icons/dig.png?url";
 import iconDropUrl from "./ui/Icons/drop.png?url";
@@ -144,6 +145,7 @@ export const UI_ASSETS = {
 } as const;
 
 export const UI_ICONS = {
+  agent: { key: "ui-icon-agent", url: iconAgentUrl },
   axe: { key: "ui-icon-axe", url: iconAxeUrl },
   dig: { key: "ui-icon-dig", url: iconDigUrl },
   drop: { key: "ui-icon-drop", url: iconDropUrl },

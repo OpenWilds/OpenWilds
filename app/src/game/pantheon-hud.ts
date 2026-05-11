@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import type { HudController } from "../client/hud";
 import { createActionProgressHud } from "./hud/action-progress";
+import { createAgentModeButton } from "./hud/agent-mode-button";
 import { createEnergyPanel } from "./hud/energy-panel";
 import { createMinimap } from "./hud/minimap";
 import { createStatusPanel } from "./hud/status-panel";
@@ -27,6 +28,7 @@ export const createPantheonHud = (
   const energyPanel = createEnergyPanel(scene);
   const minimap = createMinimap(scene);
   const topRight = createTopRightStatus(scene, toggleSettingsPanel);
+  const agentModeButton = createAgentModeButton(scene, toggleAgentMode);
   const toolInventory = createToolInventory(scene, {
     onToolChange: options.onToolChange,
     onContextActionChange: options.onContextActionChange,
@@ -49,12 +51,14 @@ export const createPantheonHud = (
     topRight.container,
     toolInventory.container,
     actionProgress.container,
+    agentModeButton.container,
     tradePanel.container,
   ]);
 
   const unsubscribe = hud.subscribe((snapshot) => {
     statusPanel.update(snapshot);
     topRight.setTime(snapshot.gameTimeStatus);
+    agentModeButton.setActive(snapshot.agentActive);
   });
   const closeSettingsButton = document.getElementById("settings-close-button");
   const closeSettingsPanel = () => {
@@ -103,6 +107,17 @@ export const createPantheonHud = (
       return toolInventory.getSelectedContextAction();
     },
     handlePointerMove(pointer: Phaser.Input.Pointer) {
+      const agentPoint = getAgentModeButtonLocalPoint(pointer);
+
+      if (
+        agentPoint &&
+        agentModeButton.containsPoint(agentPoint.x, agentPoint.y)
+      ) {
+        agentModeButton.handlePointerMove(agentPoint.x, agentPoint.y);
+      } else {
+        agentModeButton.clearPointerHover();
+      }
+
       const point = getContainerLocalPoint(pointer, toolInventory.container);
 
       if (point && toolInventory.containsPoint(point.x, point.y)) {
@@ -112,6 +127,24 @@ export const createPantheonHud = (
       }
     },
     handlePointerDown(pointer: Phaser.Input.Pointer) {
+      const agentPoint = getAgentModeButtonLocalPoint(pointer);
+
+      if (
+        agentPoint &&
+        agentModeButton.containsPoint(agentPoint.x, agentPoint.y)
+      ) {
+        return agentModeButton.handlePointerDown(agentPoint.x, agentPoint.y);
+      }
+
+      const topRightPoint = getContainerLocalPoint(pointer, topRight.container);
+
+      if (
+        topRightPoint &&
+        topRight.containsPoint(topRightPoint.x, topRightPoint.y)
+      ) {
+        return topRight.handlePointerDown(topRightPoint.x, topRightPoint.y);
+      }
+
       const inventoryPoint = getContainerLocalPoint(
         pointer,
         toolInventory.container
@@ -140,6 +173,24 @@ export const createPantheonHud = (
       return false;
     },
     blocksPointer(pointer: Phaser.Input.Pointer) {
+      const agentPoint = getAgentModeButtonLocalPoint(pointer);
+
+      if (
+        agentPoint &&
+        agentModeButton.containsPoint(agentPoint.x, agentPoint.y)
+      ) {
+        return true;
+      }
+
+      const topRightPoint = getContainerLocalPoint(pointer, topRight.container);
+
+      if (
+        topRightPoint &&
+        topRight.containsPoint(topRightPoint.x, topRightPoint.y)
+      ) {
+        return true;
+      }
+
       const inventoryPoint = getContainerLocalPoint(
         pointer,
         toolInventory.container
@@ -210,9 +261,13 @@ export const createPantheonHud = (
       screenWidth: width,
       screenHeight: height,
     });
-    toolInventory.container.setPosition(
-      Math.max(12, (width - toolInventory.width) / 2),
-      height - toolInventory.height - 16
+    const inventoryX = Math.max(12, (width - toolInventory.width) / 2);
+    const inventoryY = height - toolInventory.height - 16;
+
+    toolInventory.container.setPosition(inventoryX, inventoryY);
+    agentModeButton.container.setPosition(
+      hudEdgeInset,
+      height - agentModeButton.height - hudEdgeInset
     );
     actionProgress.container.setPosition(
       Math.max(18, (width - actionProgress.width) / 2) -
@@ -304,11 +359,47 @@ export const createPantheonHud = (
       : null;
   }
 
+  function getAgentModeButtonLocalPoint(pointer: Phaser.Input.Pointer) {
+    const rootPoint = getContainerLocalPoint(
+      pointer,
+      agentModeButton.container
+    );
+
+    if (agentModeButton.containsPoint(rootPoint.x, rootPoint.y)) {
+      return rootPoint;
+    }
+
+    const directPoint = {
+      x:
+        (pointer.x - agentModeButton.container.x) /
+        (agentModeButton.container.scaleX || 1),
+      y:
+        (pointer.y - agentModeButton.container.y) /
+        (agentModeButton.container.scaleY || 1),
+    };
+
+    return agentModeButton.containsPoint(directPoint.x, directPoint.y)
+      ? directPoint
+      : null;
+  }
+
   function toggleSettingsPanel() {
     const panel = document.getElementById("solana-settings-panel");
 
     if (panel) {
       panel.hidden = !panel.hidden;
     }
+  }
+
+  function toggleAgentMode() {
+    const toggle = document.getElementById(
+      "agent-mode-toggle"
+    ) as HTMLInputElement | null;
+
+    if (!toggle || toggle.disabled) {
+      return;
+    }
+
+    toggle.click();
   }
 };

@@ -25,6 +25,12 @@ export type HudElements = {
   gatePlayerColorChoices: HTMLElement | null;
   gateOwnedPlayerChoices: HTMLElement | null;
   gateMintPlayerButton: HTMLButtonElement | null;
+  gateAgentModeToggle: HTMLInputElement | null;
+  gateAgentDelegateInput: HTMLInputElement | null;
+  gateAgentScopeSelect: HTMLSelectElement | null;
+  gateAgentSessionTransactionInput: HTMLTextAreaElement | null;
+  gateAgentStatus: HTMLElement | null;
+  gateAgentRevokeButton: HTMLButtonElement | null;
   agentModeToggle: HTMLInputElement | null;
   agentDelegateInput: HTMLInputElement | null;
   agentScopeSelect: HTMLSelectElement | null;
@@ -76,14 +82,26 @@ export const getHudElements = (): HudElements => ({
   gatePlayerColorSelect: document.getElementById(
     "gate-player-color-select"
   ) as HTMLSelectElement,
-  gatePlayerColorChoices: document.getElementById(
-    "gate-player-color-choices"
-  ),
-  gateOwnedPlayerChoices: document.getElementById(
-    "gate-owned-player-choices"
-  ),
+  gatePlayerColorChoices: document.getElementById("gate-player-color-choices"),
+  gateOwnedPlayerChoices: document.getElementById("gate-owned-player-choices"),
   gateMintPlayerButton: document.getElementById(
     "gate-mint-player-button"
+  ) as HTMLButtonElement,
+  gateAgentModeToggle: document.getElementById(
+    "gate-agent-mode-toggle"
+  ) as HTMLInputElement,
+  gateAgentDelegateInput: document.getElementById(
+    "gate-agent-delegate-input"
+  ) as HTMLInputElement,
+  gateAgentScopeSelect: document.getElementById(
+    "gate-agent-scope-select"
+  ) as HTMLSelectElement,
+  gateAgentSessionTransactionInput: document.getElementById(
+    "gate-agent-session-transaction-input"
+  ) as HTMLTextAreaElement,
+  gateAgentStatus: document.getElementById("gate-agent-status"),
+  gateAgentRevokeButton: document.getElementById(
+    "gate-agent-revoke-button"
   ) as HTMLButtonElement,
   agentModeToggle: document.getElementById(
     "agent-mode-toggle"
@@ -505,36 +523,68 @@ export class HudController {
         args.active !== undefined ? args.active : this.snapshot.agentActive,
     });
 
-    if (this.elements.agentModeToggle) {
-      if (args.checked !== undefined) {
-        this.elements.agentModeToggle.checked = args.checked;
+    for (const toggle of [
+      this.elements.agentModeToggle,
+      this.elements.gateAgentModeToggle,
+    ]) {
+      if (!toggle) {
+        continue;
       }
 
-      this.elements.agentModeToggle.disabled = this.agentBusy;
+      if (args.checked !== undefined) {
+        toggle.checked = args.checked;
+      }
+
+      toggle.disabled = this.agentBusy;
     }
 
-    if (this.elements.agentDelegateInput) {
-      this.elements.agentDelegateInput.disabled = this.agentBusy;
+    for (const input of [
+      this.elements.agentDelegateInput,
+      this.elements.gateAgentDelegateInput,
+    ]) {
+      if (input) {
+        input.disabled = this.agentBusy;
+      }
     }
 
-    if (this.elements.agentScopeSelect) {
-      this.elements.agentScopeSelect.disabled = this.agentBusy;
+    for (const select of [
+      this.elements.agentScopeSelect,
+      this.elements.gateAgentScopeSelect,
+    ]) {
+      if (select) {
+        select.disabled = this.agentBusy;
+      }
     }
 
-    if (this.elements.agentSessionTransactionInput) {
-      this.elements.agentSessionTransactionInput.disabled = this.agentBusy;
+    for (const textarea of [
+      this.elements.agentSessionTransactionInput,
+      this.elements.gateAgentSessionTransactionInput,
+    ]) {
+      if (textarea) {
+        textarea.disabled = this.agentBusy;
+      }
     }
 
-    if (this.elements.agentStatus && args.status !== undefined) {
-      this.elements.agentStatus.textContent = args.status;
+    if (args.status !== undefined) {
+      for (const status of [
+        this.elements.agentStatus,
+        this.elements.gateAgentStatus,
+      ]) {
+        if (status) {
+          status.textContent = args.status;
+        }
+      }
     }
 
-    if (this.elements.agentRevokeButton) {
-      this.elements.agentRevokeButton.hidden = !args.active;
-      this.elements.agentRevokeButton.disabled = this.agentBusy;
-      this.elements.agentRevokeButton.textContent = this.agentBusy
-        ? "Updating..."
-        : "Revoke";
+    for (const button of [
+      this.elements.agentRevokeButton,
+      this.elements.gateAgentRevokeButton,
+    ]) {
+      if (button) {
+        button.hidden = !args.active;
+        button.disabled = this.agentBusy;
+        button.textContent = this.agentBusy ? "Updating..." : "Revoke";
+      }
     }
   }
 

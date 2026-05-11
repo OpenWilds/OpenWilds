@@ -1221,24 +1221,37 @@ export class LocalnetClient {
       void this.commitPlayerState();
     });
 
-    this.hud.elements.agentModeToggle?.addEventListener("change", (event) => {
-      const enabled = (event.target as HTMLInputElement).checked;
-      void (enabled ? this.grantAgentSession() : this.revokeAgentSession());
-    });
+    for (const toggle of this.agentModeToggles()) {
+      toggle.addEventListener("change", (event) => {
+        const enabled = (event.target as HTMLInputElement).checked;
+        void (enabled ? this.grantAgentSession() : this.revokeAgentSession());
+      });
+    }
 
-    this.hud.elements.agentDelegateInput?.addEventListener("input", () => {
-      const value = this.hud.elements.agentDelegateInput?.value.trim() ?? "";
-      if (value) {
-        window.localStorage.setItem(AGENT_DELEGATE_STORAGE_KEY, value);
-      } else {
-        window.localStorage.removeItem(AGENT_DELEGATE_STORAGE_KEY);
-      }
-      void this.refreshAgentModeStatus();
-    });
+    for (const input of this.agentDelegateInputs()) {
+      input.addEventListener("input", () => {
+        this.syncAgentDelegateInputs(input.value);
+        const value = input.value.trim();
+        if (value) {
+          window.localStorage.setItem(AGENT_DELEGATE_STORAGE_KEY, value);
+        } else {
+          window.localStorage.removeItem(AGENT_DELEGATE_STORAGE_KEY);
+        }
+        void this.refreshAgentModeStatus();
+      });
+    }
 
-    this.hud.elements.agentRevokeButton?.addEventListener("click", () => {
-      void this.revokeAgentSession();
-    });
+    for (const input of this.agentSessionTransactionInputs()) {
+      input.addEventListener("input", () => {
+        this.syncAgentSessionTransactionInputs(input.value);
+      });
+    }
+
+    for (const button of this.agentRevokeButtons()) {
+      button.addEventListener("click", () => {
+        void this.revokeAgentSession();
+      });
+    }
 
     this.hud.elements.mintPlayerButton?.addEventListener("click", () => {
       void this.mintPlayerNft();
@@ -1274,12 +1287,8 @@ export class LocalnetClient {
       this.wallet = readBurnerWallet();
       this.playerState = null;
       this.activePlayerNft = null;
-      if (this.hud.elements.agentDelegateInput) {
-        this.hud.elements.agentDelegateInput.value = "";
-      }
-      if (this.hud.elements.agentSessionTransactionInput) {
-        this.hud.elements.agentSessionTransactionInput.value = "";
-      }
+      this.syncAgentDelegateInputs("");
+      this.syncAgentSessionTransactionInputs("");
       window.localStorage.removeItem(AGENT_DELEGATE_STORAGE_KEY);
       this.clearCachedPlayerActionState();
       this.lastInventoryState = null;
@@ -3082,17 +3091,69 @@ export class LocalnetClient {
   }
 
   private restoreAgentModeInput() {
-    const input = this.hud.elements.agentDelegateInput;
+    this.syncAgentDelegateInputs(
+      window.localStorage.getItem(AGENT_DELEGATE_STORAGE_KEY) ?? ""
+    );
+  }
 
-    if (!input) {
-      return;
+  private agentModeToggles() {
+    return [
+      this.hud.elements.agentModeToggle,
+      this.hud.elements.gateAgentModeToggle,
+    ].filter((input): input is HTMLInputElement => Boolean(input));
+  }
+
+  private agentDelegateInputs() {
+    return [
+      this.hud.elements.agentDelegateInput,
+      this.hud.elements.gateAgentDelegateInput,
+    ].filter((input): input is HTMLInputElement => Boolean(input));
+  }
+
+  private agentSessionTransactionInputs() {
+    return [
+      this.hud.elements.agentSessionTransactionInput,
+      this.hud.elements.gateAgentSessionTransactionInput,
+    ].filter((input): input is HTMLTextAreaElement => Boolean(input));
+  }
+
+  private agentRevokeButtons() {
+    return [
+      this.hud.elements.agentRevokeButton,
+      this.hud.elements.gateAgentRevokeButton,
+    ].filter((button): button is HTMLButtonElement => Boolean(button));
+  }
+
+  private syncAgentDelegateInputs(value: string) {
+    for (const input of this.agentDelegateInputs()) {
+      input.value = value;
     }
+  }
 
-    input.value = window.localStorage.getItem(AGENT_DELEGATE_STORAGE_KEY) ?? "";
+  private syncAgentSessionTransactionInputs(value: string) {
+    for (const input of this.agentSessionTransactionInputs()) {
+      input.value = value;
+    }
+  }
+
+  private currentAgentDelegateValue() {
+    return (
+      this.hud.elements.agentDelegateInput?.value.trim() ||
+      this.hud.elements.gateAgentDelegateInput?.value.trim() ||
+      ""
+    );
+  }
+
+  private currentAgentSessionTransactionValue() {
+    return (
+      this.hud.elements.agentSessionTransactionInput?.value.trim() ||
+      this.hud.elements.gateAgentSessionTransactionInput?.value.trim() ||
+      ""
+    );
   }
 
   private parseAgentDelegate(): PublicKey | null {
-    const value = this.hud.elements.agentDelegateInput?.value.trim();
+    const value = this.currentAgentDelegateValue();
 
     if (!value) {
       return null;
@@ -3106,7 +3167,7 @@ export class LocalnetClient {
   }
 
   private async refreshAgentModeStatus() {
-    const inputValue = this.hud.elements.agentDelegateInput?.value.trim() ?? "";
+    const inputValue = this.currentAgentDelegateValue();
 
     if (!this.activePlayerNft) {
       this.hud.setAgentModeState({
@@ -3235,8 +3296,7 @@ export class LocalnetClient {
   }
 
   private parsePreparedBoltSessionTransaction() {
-    const input = this.hud.elements.agentSessionTransactionInput;
-    const value = input?.value.trim();
+    const value = this.currentAgentSessionTransactionValue();
 
     if (!value) {
       return null;
@@ -3297,9 +3357,7 @@ export class LocalnetClient {
     }
 
     await this.sendSignedTransaction(transaction, this.baseConnection);
-    if (this.hud.elements.agentSessionTransactionInput) {
-      this.hud.elements.agentSessionTransactionInput.value = "";
-    }
+    this.syncAgentSessionTransactionInputs("");
   }
 
   private async grantAgentSession() {

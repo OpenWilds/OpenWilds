@@ -222,6 +222,7 @@ h1 {
 #program-status,
 #game-time-status,
 #player-position,
+#gate-agent-status,
 #agent-status {
   min-width: 0;
   overflow: hidden;
@@ -232,6 +233,7 @@ h1 {
 
 #wallet-balance,
 #game-time-status,
+#gate-agent-status,
 #agent-status {
   color: #f6efd7;
 }
@@ -285,6 +287,10 @@ textarea:disabled {
   width: 22px;
   height: 22px;
   accent-color: #f1d38b;
+}
+
+.player-gate__section--stack {
+  grid-template-columns: 1fr;
 }
 
 .action-progress {
