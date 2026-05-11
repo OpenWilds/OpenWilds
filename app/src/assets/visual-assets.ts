@@ -16,6 +16,10 @@ import routeberrySpriteUrl from "./object-sprites/routeberry/routeberry-sprite-s
 import stonepineSpriteUrl from "./object-sprites/stonepine/stonepine-sprite-sheet.png?url";
 import sungrainSpriteUrl from "./object-sprites/sungrain/sungrain-sprite-sheet.png?url";
 import playerSpriteUrl from "./object-sprites/player/player-sprite-sheet.png?url";
+import player2SpriteUrl from "./object-sprites/player2/player2-sprite-sheet.png?url";
+import player3SpriteUrl from "./object-sprites/player3/player3-sprite-sheet.png?url";
+import player4SpriteUrl from "./object-sprites/player4/player4-sprite-sheet.png?url";
+import player5SpriteUrl from "./object-sprites/player5/player5-sprite-sheet.png?url";
 
 export type BuiltInTerrainVisualAssetId =
   | "uniswap-dirt"
@@ -85,9 +89,29 @@ export type ObjectSpriteAssetId =
   | "applewood"
   | "city-clover"
   | "player"
+  | "player2"
+  | "player3"
+  | "player4"
+  | "player5"
   | "routeberry"
   | "stonepine"
   | "sungrain";
+
+export type PlayerSpriteAssetId = Extract<
+  ObjectSpriteAssetId,
+  "player" | "player2" | "player3" | "player4" | "player5"
+>;
+
+export const PLAYER_SPRITE_SHEET_URLS: Record<PlayerSpriteAssetId, string> = {
+  player: playerSpriteUrl,
+  player2: player2SpriteUrl,
+  player3: player3SpriteUrl,
+  player4: player4SpriteUrl,
+  player5: player5SpriteUrl,
+};
+
+export const getPlayerSpriteSheetUrl = (assetId: PlayerSpriteAssetId) =>
+  PLAYER_SPRITE_SHEET_URLS[assetId];
 
 export type ObjectSpriteAsset = {
   id: ObjectSpriteAssetId;
@@ -118,6 +142,34 @@ export const OBJECT_SPRITE_ASSETS: Record<
   player: {
     id: "player",
     imageUrl: playerSpriteUrl,
+    frameSize: 256,
+    rows: 4,
+    columns: 4,
+  },
+  player2: {
+    id: "player2",
+    imageUrl: player2SpriteUrl,
+    frameSize: 256,
+    rows: 4,
+    columns: 4,
+  },
+  player3: {
+    id: "player3",
+    imageUrl: player3SpriteUrl,
+    frameSize: 256,
+    rows: 4,
+    columns: 4,
+  },
+  player4: {
+    id: "player4",
+    imageUrl: player4SpriteUrl,
+    frameSize: 256,
+    rows: 4,
+    columns: 4,
+  },
+  player5: {
+    id: "player5",
+    imageUrl: player5SpriteUrl,
     frameSize: 256,
     rows: 4,
     columns: 4,

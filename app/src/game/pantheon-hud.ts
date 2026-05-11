@@ -51,9 +51,8 @@ export const createPantheonHud = (
     topRight.container,
     toolInventory.container,
     actionProgress.container,
+    tradePanel.container,
   ]);
-
-  tradePanel.container.setVisible(false);
 
   const unsubscribe = hud.subscribe((snapshot) => {
     statusPanel.update(snapshot);
@@ -106,7 +105,7 @@ export const createPantheonHud = (
       return toolInventory.getSelectedContextAction();
     },
     handlePointerMove(pointer: Phaser.Input.Pointer) {
-      const point = getToolInventoryLocalPoint(pointer);
+      const point = getContainerLocalPoint(pointer, toolInventory.container);
 
       if (point && toolInventory.containsPoint(point.x, point.y)) {
         toolInventory.setPointerPosition(point.x, point.y);
@@ -115,18 +114,41 @@ export const createPantheonHud = (
       }
     },
     handlePointerDown(pointer: Phaser.Input.Pointer) {
-      const point = getToolInventoryLocalPoint(pointer);
-
-      return Boolean(
-        point &&
-          toolInventory.containsPoint(point.x, point.y) &&
-          toolInventory.handlePointerDown(point.x, point.y)
+      const inventoryPoint = getContainerLocalPoint(
+        pointer,
+        toolInventory.container
       );
+
+      if (
+        inventoryPoint &&
+        toolInventory.containsPoint(inventoryPoint.x, inventoryPoint.y)
+      ) {
+        return toolInventory.handlePointerDown(
+          inventoryPoint.x,
+          inventoryPoint.y
+        );
+      }
+
+      const tradePoint = getContainerLocalPoint(pointer, tradePanel.container);
+
+      return Boolean(tradePoint && tradePanelContainsPoint(tradePoint));
     },
     blocksPointer(pointer: Phaser.Input.Pointer) {
-      const point = getToolInventoryLocalPoint(pointer);
+      const inventoryPoint = getContainerLocalPoint(
+        pointer,
+        toolInventory.container
+      );
 
-      return Boolean(point && toolInventory.containsPoint(point.x, point.y));
+      if (
+        inventoryPoint &&
+        toolInventory.containsPoint(inventoryPoint.x, inventoryPoint.y)
+      ) {
+        return true;
+      }
+
+      const tradePoint = getContainerLocalPoint(pointer, tradePanel.container);
+
+      return Boolean(tradePoint && tradePanelContainsPoint(tradePoint));
     },
     updateEnergy(energy: EnergyState, deltaMs: number) {
       energyPanel.update(energy, deltaMs);
@@ -208,16 +230,28 @@ export const createPantheonHud = (
     );
   }
 
-  function getToolInventoryLocalPoint(pointer: Phaser.Input.Pointer) {
+  function getContainerLocalPoint(
+    pointer: Phaser.Input.Pointer,
+    container: Phaser.GameObjects.Container
+  ) {
     const scaleX = root.scaleX || 1;
     const scaleY = root.scaleY || 1;
     const rootLocalX = (pointer.x - root.x) / scaleX;
     const rootLocalY = (pointer.y - root.y) / scaleY;
 
     return {
-      x: rootLocalX - toolInventory.container.x,
-      y: rootLocalY - toolInventory.container.y,
+      x: rootLocalX - container.x,
+      y: rootLocalY - container.y,
     };
+  }
+
+  function tradePanelContainsPoint(point: { x: number; y: number }) {
+    return (
+      point.x >= 0 &&
+      point.x <= tradePanel.width &&
+      point.y >= 0 &&
+      point.y <= tradePanel.height
+    );
   }
 
   function toggleSettingsPanel() {

@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import type { PlayerSpriteAssetId } from "../../assets/visual-assets";
 
 export type RenderableObject = Phaser.GameObjects.GameObject &
   Phaser.GameObjects.Components.Transform &
@@ -26,6 +27,7 @@ export type RectComponent = {
 };
 
 export type PlayerSpriteComponent = {
+  assetId: PlayerSpriteAssetId;
   sprite: Phaser.GameObjects.Sprite;
   shadow: Phaser.GameObjects.Ellipse;
   displaySize: number;

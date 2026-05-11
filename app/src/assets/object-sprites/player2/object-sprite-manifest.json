@@ -1,0 +1,242 @@
+{
+  "generatedAt": "2026-05-01T20:57:20.409Z",
+  "request": {
+    "spriteKind": "player",
+    "objectId": "player2",
+    "objectName": "Player 2",
+    "objectPrompt": "a different playable character: a cheerful desert gardener-explorer with short dark curls, teal scarf, cream work shirt, rust-red sash, charcoal trousers, sturdy boots, fingerless gloves, and a small canvas satchel; distinct from the original player while matching Pantheon farming adventure readability; readable as a small top-down farming/adventure game player character",
+    "stylePrompt": "cozy hand-painted 2D game character sprite, three-quarter top-down view, crisp readable silhouette, soft natural edges, consistent outfit and proportions, no outlines heavier than the terrain art, transparent background",
+    "styleReferencePath": "/Users/ajand/Projects/Pantheon/apps/game/src/assets/autotiles/vibrant-grass/autotile-blob-7x7.png",
+    "styleReferenceCell": {
+      "row": 1,
+      "column": 1,
+      "cellSize": 256
+    },
+    "imageModel": "openai/gpt-5.4-image-2",
+    "reasoningEffort": "high",
+    "states": [
+      {
+        "id": "idle_1",
+        "title": "Idle 1",
+        "prompt": "first idle transition for each direction; feet planted, relaxed hands, calm breathing posture"
+      },
+      {
+        "id": "idle_2",
+        "title": "Idle 2",
+        "prompt": "second idle transition for each direction; opposite weight shift from idle_1, feet still planted"
+      },
+      {
+        "id": "move_1",
+        "title": "Move 1",
+        "prompt": "first walking contact pose for each direction; left foot leads, opposite arm swing"
+      },
+      {
+        "id": "move_2",
+        "title": "Move 2",
+        "prompt": "second walking contact pose for each direction; right foot leads, opposite arm swing"
+      }
+    ],
+    "columns": 4,
+    "columnLabels": [
+      "down",
+      "side",
+      "up",
+      "action"
+    ],
+    "cellSize": 128,
+    "background": "transparent",
+    "outputDir": "generated/object-sprites/player2"
+  },
+  "imageModel": "openai/gpt-5.4-image-2",
+  "rows": 4,
+  "columns": 4,
+  "cellSize": 128,
+  "atlasWidth": 512,
+  "atlasHeight": 512,
+  "image": {
+    "id": "player2-sprite-sheet",
+    "title": "Player 2 sprite sheet",
+    "prompt": "Create a game object sprite sheet for Player 2.\nObject brief: a different playable character: a cheerful desert gardener-explorer with short dark curls, teal scarf, cream work shirt, rust-red sash, charcoal trousers, sturdy boots, fingerless gloves, and a small canvas satchel; distinct from the original player while matching Pantheon farming adventure readability; readable as a small top-down farming/adventure game player character.\n\nReference image 1 is a checkerboard layout guide. Use it as the exact composition template with exact sizes, all cells are square all equal size.\nPreserve its 4:4 sheet ratio and its 4 columns by 4 rows of equal square cells.\nThe exact guide has also been saved locally at generated/object-sprites/player2/object-sprite-layout-guide.png for verification.\nPlace exactly one frame in the center of each checkerboard cell.\nAlign the center of each object frame to the center of its cell.\nKeep every frame fully inside its own cell, with consistent margins and no overlap into neighboring cells.\nKeep the checkerboard grid visible in the final image so the generated frames can be verified against the grid.\nPreserve the alternating white and gray cell backgrounds from the guide.\nDraw the object frames on top of the provided checkerboard cells.\n\nTarget runtime atlas metadata: 512x512 logical units, arranged as 4 rows by 4 columns.\nEach logical grid cell is 128x128 units. The generated image may be higher resolution, but it must keep the same 4:4 grid ratio.\nKeep the object scale, anchor point, perspective, and lighting consistent across cells.\nDo not crop any object. Leave enough breathing room inside each cell for animation motion.\nDo not draw labels, text, numbers, watermarks, decorative borders, or UI.\nUse a transparent background for every cell.\n\nRows, top to bottom:\nRow 0: Idle 1 (idle_1) - first idle transition for each direction; feet planted, relaxed hands, calm breathing posture\nRow 1: Idle 2 (idle_2) - second idle transition for each direction; opposite weight shift from idle_1, feet still planted\nRow 2: Move 1 (move_1) - first walking contact pose for each direction; left foot leads, opposite arm swing\nRow 3: Move 2 (move_2) - second walking contact pose for each direction; right foot leads, opposite arm swing\n\nColumns, left to right:\nColumn 0: down.\nColumn 1: side.\nColumn 2: up.\nColumn 3: action.\n\nColumn behavior:\nThis is a square 4x4 player animation sheet.\nRows are animation states: row 0 idle_1, row 1 idle_2, row 2 move_1, row 3 move_2.\nColumns 0-2 are facing directions: column 0 down, column 1 side/right, column 2 up.\nColumn 3 is for reusable action/interact poses. These poses must work for foraging, digging, grabbing, picking up, planting, harvesting, and using something near the ground.\nAction column rows 0-2 are the same generic action pose in each direction: down, side/right, and up. Row 3 column 3 is a side sleeping/resting pose.\nSide-facing cells must face right; the game will mirror them for left movement.\nEach cell must use the exact state and direction for its row and column.\nKeep the player's feet or ground contact point consistent inside each direction column so movement does not wobble.\nUse the same character design, outfit, proportions, and equipment silhouette in every cell.\nExact cell poses:\nRow 0 column 0, idle_1 down: head faces camera/down, torso faces down, weight slightly on left foot, left shoulder a little lower, hands relaxed low.\nRow 0 column 1, idle_1 side: character faces right, head in right profile, weight on rear/left foot, front/right foot light, hands relaxed.\nRow 0 column 2, idle_1 up: head faces away/up, back of head visible, torso faces away, weight slightly on left foot, hands relaxed low.\nRow 0 column 3, generic action down: character faces camera/down while interacting with the ground. Knees bent in a stable crouch, torso leaning forward, head lowered, both hands reaching down in front of the feet as if foraging, digging, grabbing, planting, or picking something up.\nRow 1 column 0, idle_2 down: head faces camera/down, torso faces down, weight slightly on right foot, right shoulder a little lower, hands shifted subtly from idle_1.\nRow 1 column 1, idle_2 side: character faces right, head in right profile, weight on front/right foot, rear/left foot light, head and shoulders subtly bobbed from idle_1.\nRow 1 column 2, idle_2 up: head faces away/up, back of head visible, torso faces away, weight slightly on right foot, hands shifted subtly from idle_1.\nRow 1 column 3, generic action side: character faces right in profile while interacting with the ground. Knees bent in a stable crouch, torso leaning forward, head angled down, front/right hand reaching down and forward, rear/left hand supporting balance near the body. This must read as foraging, digging, grabbing, planting, or picking something up from the side.\nRow 2 column 0, move_1 down: head faces camera/down. Left leg is the forward/front/contact leg, with left foot lower in the cell. Right leg is the rear/back leg, with right foot higher in the cell. Right hand swings forward/down; left hand swings back/up.\nRow 2 column 1, move_1 side: character faces right. RIGHT leg is the forward/front/contact leg, with right foot visibly in front of the body and farther to the right. LEFT leg is the rear/back leg, with left foot visibly behind the body and farther to the left. RIGHT hand swings back/left behind the torso. LEFT hand swings forward/right in front of the torso.\nRow 2 column 2, move_1 up: head faces away/up. Left leg is the forward/front/contact leg, with left foot higher in the cell. Right leg is the rear/back leg, with right foot lower in the cell. Right hand swings forward/up; left hand swings back/down.\nRow 2 column 3, generic action up: character faces away/up while interacting with the ground. Back of head visible, knees bent in a stable crouch, torso leaning forward away from camera, shoulders rounded, both hands reaching down above/away from the body as if foraging, digging, grabbing, planting, or picking something up.\nRow 3 column 0, move_2 down: head faces camera/down. Right leg is the forward/front/contact leg, with right foot lower in the cell. Left leg is the rear/back leg, with left foot higher in the cell. Left hand swings forward/down; right hand swings back/up. This must visibly swap the front and back legs from row 2 column 0.\nRow 3 column 1, move_2 side: character faces right. LEFT leg is the forward/front/contact leg, with left foot visibly in front of the body and farther to the right. RIGHT leg is the rear/back leg, with right foot visibly behind the body and farther to the left. RIGHT hand swings forward/right in front of the torso. LEFT hand swings back/left behind the torso. This must be the exact reverse of row 2 column 1: the front leg, back leg, front hand, and back hand all swap sides. Do not reuse the same side-walk silhouette.\nRow 3 column 2, move_2 up: head faces away/up. Right leg is the forward/front/contact leg, with right foot higher in the cell. Left leg is the rear/back leg, with left foot lower in the cell. Left hand swings forward/up; right hand swings back/down. This must visibly swap the front and back legs from row 2 column 2.\nRow 3 column 3, side sleeping/resting: character lies on their side facing right, curled or relaxed sleeping pose, head resting low, knees slightly bent, arms tucked near torso.\n\nStyle direction:\ncozy hand-painted 2D game character sprite, three-quarter top-down view, crisp readable silhouette, soft natural edges, consistent outfit and proportions, no outlines heavier than the terrain art, transparent background\nReference image 2 is a style reference. Use it for palette, rendering texture, edge softness, contrast, and game-art finish. Do not copy its subject unless it matches the object brief.\n\nReturn one PNG containing the full sprite sheet only.",
+    "model": "openai/gpt-5.4-image-2",
+    "contentType": "image/png",
+    "filePath": "generated/object-sprites/player2/player2-sprite-sheet.png"
+  },
+  "cells": [
+    {
+      "stateId": "idle_1",
+      "stateTitle": "Idle 1",
+      "columnLabel": "down",
+      "row": 0,
+      "column": 0,
+      "x": 0,
+      "y": 0,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "stateId": "idle_1",
+      "stateTitle": "Idle 1",
+      "columnLabel": "side",
+      "row": 0,
+      "column": 1,
+      "x": 128,
+      "y": 0,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "stateId": "idle_1",
+      "stateTitle": "Idle 1",
+      "columnLabel": "up",
+      "row": 0,
+      "column": 2,
+      "x": 256,
+      "y": 0,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "stateId": "idle_1",
+      "stateTitle": "Idle 1",
+      "columnLabel": "action",
+      "row": 0,
+      "column": 3,
+      "x": 384,
+      "y": 0,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "stateId": "idle_2",
+      "stateTitle": "Idle 2",
+      "columnLabel": "down",
+      "row": 1,
+      "column": 0,
+      "x": 0,
+      "y": 128,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "stateId": "idle_2",
+      "stateTitle": "Idle 2",
+      "columnLabel": "side",
+      "row": 1,
+      "column": 1,
+      "x": 128,
+      "y": 128,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "stateId": "idle_2",
+      "stateTitle": "Idle 2",
+      "columnLabel": "up",
+      "row": 1,
+      "column": 2,
+      "x": 256,
+      "y": 128,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "stateId": "idle_2",
+      "stateTitle": "Idle 2",
+      "columnLabel": "action",
+      "row": 1,
+      "column": 3,
+      "x": 384,
+      "y": 128,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "stateId": "move_1",
+      "stateTitle": "Move 1",
+      "columnLabel": "down",
+      "row": 2,
+      "column": 0,
+      "x": 0,
+      "y": 256,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "stateId": "move_1",
+      "stateTitle": "Move 1",
+      "columnLabel": "side",
+      "row": 2,
+      "column": 1,
+      "x": 128,
+      "y": 256,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "stateId": "move_1",
+      "stateTitle": "Move 1",
+      "columnLabel": "up",
+      "row": 2,
+      "column": 2,
+      "x": 256,
+      "y": 256,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "stateId": "move_1",
+      "stateTitle": "Move 1",
+      "columnLabel": "action",
+      "row": 2,
+      "column": 3,
+      "x": 384,
+      "y": 256,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "stateId": "move_2",
+      "stateTitle": "Move 2",
+      "columnLabel": "down",
+      "row": 3,
+      "column": 0,
+      "x": 0,
+      "y": 384,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "stateId": "move_2",
+      "stateTitle": "Move 2",
+      "columnLabel": "side",
+      "row": 3,
+      "column": 1,
+      "x": 128,
+      "y": 384,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "stateId": "move_2",
+      "stateTitle": "Move 2",
+      "columnLabel": "up",
+      "row": 3,
+      "column": 2,
+      "x": 256,
+      "y": 384,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "stateId": "move_2",
+      "stateTitle": "Move 2",
+      "columnLabel": "action",
+      "row": 3,
+      "column": 3,
+      "x": 384,
+      "y": 384,
+      "width": 128,
+      "height": 128
+    }
+  ]
+}

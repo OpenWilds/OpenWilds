@@ -8,7 +8,55 @@
   </head>
   <body>
     <main id="app">
-      <div id="game"></div>
+      <section id="player-gate" class="player-gate">
+        <div class="player-gate__panel">
+          <div>
+            <p class="eyebrow">Open Wilds</p>
+            <h1>Select Player</h1>
+          </div>
+
+          <div class="player-gate__status">
+            <div class="status-line">
+              <span class="status-label">Burner</span>
+              <span id="gate-wallet-address">Creating wallet...</span>
+            </div>
+            <div class="status-line">
+              <span class="status-label">Balance</span>
+              <strong id="gate-wallet-balance">Balance unavailable</strong>
+            </div>
+            <div class="status-line">
+              <span class="status-label">Status</span>
+              <span id="gate-program-status">Checking deployed programs...</span>
+            </div>
+          </div>
+
+          <div class="player-gate__section">
+            <label>
+              <span class="status-label">Mint Player Number</span>
+              <select id="gate-player-color-select"></select>
+            </label>
+            <button id="gate-mint-player-button" type="button">
+              Mint Player
+            </button>
+          </div>
+          <div
+            id="gate-player-color-choices"
+            class="player-card-grid"
+          ></div>
+
+          <div class="player-gate__section">
+            <label>
+              <span class="status-label">Wallet Player</span>
+              <select id="gate-player-nft-select"></select>
+            </label>
+            <button id="start-game-button" type="button" disabled>
+              Start Game
+            </button>
+          </div>
+          <div id="gate-owned-player-choices" class="player-card-grid"></div>
+        </div>
+      </section>
+      <div id="game" hidden></div>
       <aside id="solana-settings-panel" class="settings-panel" hidden>
         <div class="settings-panel__header">
           <div>
@@ -51,7 +99,7 @@
             <select id="player-nft-select"></select>
           </label>
           <label>
-            <span class="status-label">Color</span>
+            <span class="status-label">Player Number</span>
             <select id="player-color-select"></select>
           </label>
           <button id="mint-player-button" type="button">Mint Player</button>

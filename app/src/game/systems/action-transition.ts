@@ -47,7 +47,8 @@ const copyConfirmedState = (
 export const beginActionTransition = (
   world: World,
   player: number,
-  state: PlayerActionState
+  state: PlayerActionState,
+  options: { snap?: boolean } = {}
 ) => {
   const now = Date.now() / 1000;
   const activeAction = world.requireComponent<ActiveActionState>(
@@ -60,6 +61,12 @@ export const beginActionTransition = (
   );
 
   copyActiveAction(activeAction, state.activeAction);
+
+  if (options.snap) {
+    transition.active = false;
+    copyConfirmedState(world, player, state);
+    return;
+  }
 
   if (state.activeAction.endsAt <= now || state.activeAction.kind === "idle") {
     transition.active = false;

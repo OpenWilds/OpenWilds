@@ -23,8 +23,9 @@ export const createPlayerEntity = (
   world: World,
   scene: Phaser.Scene,
   position: GridPoint,
-  appearance: Pick<PlayerAppearance, "fill" | "stroke"> = {
+  appearance: Pick<PlayerAppearance, "fill" | "spriteAssetId" | "stroke"> = {
     fill: 0xe24a55,
+    spriteAssetId: "player",
     stroke: 0x84242b,
   },
   isLocalPlayer = true
@@ -35,7 +36,12 @@ export const createPlayerEntity = (
     .ellipse(0, 0, 99.4, 31.1, 0x071018, 0.24)
     .setStrokeStyle(2, appearance.stroke, isLocalPlayer ? 0.5 : 0.25);
   const sprite = scene.add
-    .sprite(0, playerVisualFootOffsetY, objectSpriteKey("player"), 0)
+    .sprite(
+      0,
+      playerVisualFootOffsetY,
+      objectSpriteKey(appearance.spriteAssetId),
+      0
+    )
     .setOrigin(0.5, 1)
     .setDisplaySize(playerDisplaySize, playerDisplaySize);
 
@@ -82,6 +88,7 @@ export const createPlayerEntity = (
     offsetY: CELL_SIZE / 2,
   });
   world.addComponent<PlayerSpriteComponent>(entity, Components.playerSprite, {
+    assetId: appearance.spriteAssetId,
     sprite,
     shadow,
     displaySize: playerDisplaySize,

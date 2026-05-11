@@ -109,6 +109,7 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
     private unsubscribeTileItems: (() => void) | null = null;
     private pantheonHud: ReturnType<typeof createPantheonHud> | null = null;
     private activePlayerEntity: number | null = null;
+    private hasAppliedInitialPlayerState = false;
     private farmActionPending = false;
     private farmTileRenderElapsedMs = 0;
     private actionContextPoint: GridPoint | null = null;
@@ -531,7 +532,10 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
     }
 
     private applyPlayerActionState(player: number, state: PlayerActionState) {
-      beginActionTransition(this.world, player, state);
+      beginActionTransition(this.world, player, state, {
+        snap: !this.hasAppliedInitialPlayerState,
+      });
+      this.hasAppliedInitialPlayerState = true;
       this.pantheonHud?.updateLocalPosition(state.position);
     }
 
@@ -544,6 +548,10 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
         Components.playerSprite
       );
 
+      if (sprite && sprite.assetId !== appearance.spriteAssetId) {
+        sprite.assetId = appearance.spriteAssetId;
+        sprite.sprite.setTexture(objectSpriteKey(appearance.spriteAssetId));
+      }
       sprite?.shadow.setStrokeStyle(2, appearance.stroke, 0.5);
     }
 

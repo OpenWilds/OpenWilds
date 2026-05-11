@@ -4,6 +4,10 @@ import { shortAddress } from "./format";
 import type { PlayerNft } from "./player-nft";
 import { PLAYER_COLORS, getPlayerColorStyle } from "./player-nft";
 import { formatGameTime } from "../game/game-time";
+import {
+  getPlayerSpriteSheetUrl,
+  type PlayerSpriteAssetId,
+} from "../assets/visual-assets";
 
 export type HudElements = {
   networkStatus: HTMLElement | null;
@@ -13,6 +17,14 @@ export type HudElements = {
   gameTimeStatus: HTMLElement | null;
   playerNftSelect: HTMLSelectElement | null;
   playerColorSelect: HTMLSelectElement | null;
+  gateWalletAddress: HTMLElement | null;
+  gateWalletBalance: HTMLElement | null;
+  gateProgramStatus: HTMLElement | null;
+  gatePlayerNftSelect: HTMLSelectElement | null;
+  gatePlayerColorSelect: HTMLSelectElement | null;
+  gatePlayerColorChoices: HTMLElement | null;
+  gateOwnedPlayerChoices: HTMLElement | null;
+  gateMintPlayerButton: HTMLButtonElement | null;
   agentModeToggle: HTMLInputElement | null;
   agentDelegateInput: HTMLInputElement | null;
   agentScopeSelect: HTMLSelectElement | null;
@@ -55,6 +67,24 @@ export const getHudElements = (): HudElements => ({
   playerColorSelect: document.getElementById(
     "player-color-select"
   ) as HTMLSelectElement,
+  gateWalletAddress: document.getElementById("gate-wallet-address"),
+  gateWalletBalance: document.getElementById("gate-wallet-balance"),
+  gateProgramStatus: document.getElementById("gate-program-status"),
+  gatePlayerNftSelect: document.getElementById(
+    "gate-player-nft-select"
+  ) as HTMLSelectElement,
+  gatePlayerColorSelect: document.getElementById(
+    "gate-player-color-select"
+  ) as HTMLSelectElement,
+  gatePlayerColorChoices: document.getElementById(
+    "gate-player-color-choices"
+  ),
+  gateOwnedPlayerChoices: document.getElementById(
+    "gate-owned-player-choices"
+  ),
+  gateMintPlayerButton: document.getElementById(
+    "gate-mint-player-button"
+  ) as HTMLButtonElement,
   agentModeToggle: document.getElementById(
     "agent-mode-toggle"
   ) as HTMLInputElement,
@@ -107,6 +137,9 @@ export class HudController {
       () => this.renderGameTime(),
       1000
     );
+    this.elements.gatePlayerColorSelect?.addEventListener("change", () =>
+      this.renderPlayerColorChoices()
+    );
   }
 
   subscribe(listener: HudSnapshotListener) {
@@ -133,61 +166,204 @@ export class HudController {
     if (this.elements.walletAddress) {
       this.elements.walletAddress.textContent = walletAddress.toBase58();
     }
+
+    if (this.elements.gateWalletAddress) {
+      this.elements.gateWalletAddress.textContent = walletAddress.toBase58();
+    }
   }
 
   renderPlayerNfts(players: PlayerNft[], activePlayer: PlayerNft | null) {
-    if (this.elements.playerColorSelect) {
-      this.elements.playerColorSelect.innerHTML = "";
+    for (const colorSelect of [
+      this.elements.playerColorSelect,
+      this.elements.gatePlayerColorSelect,
+    ]) {
+      if (!colorSelect) {
+        continue;
+      }
 
+      const selectedValue = colorSelect.value || PLAYER_COLORS[0].id;
+      colorSelect.innerHTML = "";
       for (const color of PLAYER_COLORS) {
         const option = document.createElement("option");
         option.value = color.id;
         option.textContent = color.label;
-        this.elements.playerColorSelect.append(option);
+        colorSelect.append(option);
+      }
+      colorSelect.value = selectedValue;
+    }
+
+    this.renderPlayerColorChoices();
+
+    for (const playerSelect of [
+      this.elements.playerNftSelect,
+      this.elements.gatePlayerNftSelect,
+    ]) {
+      if (!playerSelect) {
+        continue;
+      }
+
+      playerSelect.innerHTML = "";
+      playerSelect.disabled = players.length === 0;
+
+      if (players.length === 0) {
+        const option = document.createElement("option");
+        option.textContent = "No minted players";
+        option.value = "";
+        playerSelect.append(option);
+        continue;
+      }
+
+      for (const player of players) {
+        const style = getPlayerColorStyle(player.color);
+        const option = document.createElement("option");
+        option.value = player.mint.toBase58();
+        option.textContent = `${style.label} · ${shortAddress(player.mint)}`;
+        playerSelect.append(option);
+      }
+
+      if (activePlayer) {
+        playerSelect.value = activePlayer.mint.toBase58();
       }
     }
 
-    if (!this.elements.playerNftSelect) {
+    this.renderOwnedPlayerChoices(players, activePlayer);
+  }
+
+  private renderPlayerColorChoices() {
+    if (!this.elements.gatePlayerColorChoices) {
       return;
     }
 
-    this.elements.playerNftSelect.innerHTML = "";
-    this.elements.playerNftSelect.disabled = players.length === 0;
+    const selectedValue =
+      this.elements.gatePlayerColorSelect?.value || PLAYER_COLORS[0].id;
+    this.elements.gatePlayerColorChoices.innerHTML = "";
+
+    for (const color of PLAYER_COLORS) {
+      const button = this.createPlayerCardButton({
+        label: color.label,
+        value: color.id,
+        fill: color.fill,
+        spriteAssetId: color.spriteAssetId,
+        stroke: color.stroke,
+        selected: color.id === selectedValue,
+      });
+
+      button.addEventListener("click", () => {
+        if (!this.elements.gatePlayerColorSelect) {
+          return;
+        }
+
+        this.elements.gatePlayerColorSelect.value = color.id;
+        this.elements.gatePlayerColorSelect.dispatchEvent(
+          new Event("change", { bubbles: true })
+        );
+        this.renderPlayerColorChoices();
+      });
+      this.elements.gatePlayerColorChoices.append(button);
+    }
+  }
+
+  private renderOwnedPlayerChoices(
+    players: PlayerNft[],
+    activePlayer: PlayerNft | null
+  ) {
+    if (!this.elements.gateOwnedPlayerChoices) {
+      return;
+    }
+
+    this.elements.gateOwnedPlayerChoices.innerHTML = "";
 
     if (players.length === 0) {
-      const option = document.createElement("option");
-      option.textContent = "No player NFTs";
-      option.value = "";
-      this.elements.playerNftSelect.append(option);
+      const empty = document.createElement("p");
+      empty.className = "player-card-grid__empty";
+      empty.textContent = "Mint a player to add it to this wallet.";
+      this.elements.gateOwnedPlayerChoices.append(empty);
       return;
     }
 
     for (const player of players) {
       const style = getPlayerColorStyle(player.color);
-      const option = document.createElement("option");
-      option.value = player.mint.toBase58();
-      option.textContent = `${player.metadata.name} · ${
-        style.label
-      } · ${shortAddress(player.mint)}`;
-      this.elements.playerNftSelect.append(option);
-    }
+      const button = this.createPlayerCardButton({
+        label: style.label,
+        sublabel: shortAddress(player.mint),
+        value: player.mint.toBase58(),
+        fill: style.fill,
+        spriteAssetId: style.spriteAssetId,
+        stroke: style.stroke,
+        selected: activePlayer?.mint.equals(player.mint) ?? false,
+      });
 
-    if (activePlayer) {
-      this.elements.playerNftSelect.value = activePlayer.mint.toBase58();
+      button.addEventListener("click", () => {
+        if (!this.elements.gatePlayerNftSelect) {
+          return;
+        }
+
+        this.elements.gatePlayerNftSelect.value = player.mint.toBase58();
+        this.elements.gatePlayerNftSelect.dispatchEvent(
+          new Event("change", { bubbles: true })
+        );
+      });
+      this.elements.gateOwnedPlayerChoices.append(button);
     }
+  }
+
+  private createPlayerCardButton(args: {
+    label: string;
+    sublabel?: string;
+    value: string;
+    fill: number;
+    spriteAssetId: PlayerSpriteAssetId;
+    stroke: number;
+    selected: boolean;
+  }) {
+    const button = document.createElement("button");
+    const spriteWrap = document.createElement("span");
+    const sprite = document.createElement("span");
+    const label = document.createElement("span");
+
+    button.type = "button";
+    button.className = "player-card";
+    button.dataset.value = args.value;
+    button.style.setProperty("--player-fill", this.colorHex(args.fill));
+    button.style.setProperty("--player-stroke", this.colorHex(args.stroke));
+    button.setAttribute("aria-pressed", args.selected ? "true" : "false");
+
+    spriteWrap.className = "player-card__sprite-wrap";
+    sprite.className = "player-card__sprite";
+    sprite.style.backgroundImage = `url("${getPlayerSpriteSheetUrl(
+      args.spriteAssetId
+    )}")`;
+    spriteWrap.append(sprite);
+
+    label.className = "player-card__label";
+    label.textContent = args.sublabel
+      ? `${args.label} · ${args.sublabel}`
+      : args.label;
+
+    button.append(spriteWrap, label);
+    return button;
+  }
+
+  private colorHex(color: number) {
+    return `#${color.toString(16).padStart(6, "0")}`;
   }
 
   setMintPlayerBusy(isBusy: boolean) {
     this.updateSnapshot({ mintPlayerBusy: isBusy });
 
-    if (!this.elements.mintPlayerButton) {
-      return;
+    if (this.elements.mintPlayerButton) {
+      this.elements.mintPlayerButton.disabled = isBusy;
+      this.elements.mintPlayerButton.textContent = isBusy
+        ? "Minting..."
+        : "Mint Player";
     }
 
-    this.elements.mintPlayerButton.disabled = isBusy;
-    this.elements.mintPlayerButton.textContent = isBusy
-      ? "Minting..."
-      : "Mint Player";
+    if (this.elements.gateMintPlayerButton) {
+      this.elements.gateMintPlayerButton.disabled = isBusy;
+      this.elements.gateMintPlayerButton.textContent = isBusy
+        ? "Minting..."
+        : "Mint Player";
+    }
   }
 
   renderPrograms(
@@ -218,18 +394,22 @@ export class HudController {
 
     this.updateSnapshot({ walletBalance });
 
-    if (!this.elements.walletBalance) {
-      return;
-    }
-
     if (lamports === null) {
-      this.elements.walletBalance.textContent = "Balance unavailable";
+      if (this.elements.walletBalance) {
+        this.elements.walletBalance.textContent = "Balance unavailable";
+      }
+      if (this.elements.gateWalletBalance) {
+        this.elements.gateWalletBalance.textContent = "Balance unavailable";
+      }
       return;
     }
 
-    this.elements.walletBalance.textContent = `${(
-      lamports / LAMPORTS_PER_SOL
-    ).toFixed(3)} SOL`;
+    if (this.elements.walletBalance) {
+      this.elements.walletBalance.textContent = walletBalance;
+    }
+    if (this.elements.gateWalletBalance) {
+      this.elements.gateWalletBalance.textContent = walletBalance;
+    }
   }
 
   setNetworkStatus(status: string) {
@@ -245,6 +425,10 @@ export class HudController {
 
     if (this.elements.programStatus) {
       this.elements.programStatus.textContent = status;
+    }
+
+    if (this.elements.gateProgramStatus) {
+      this.elements.gateProgramStatus.textContent = status;
     }
   }
 

@@ -48,7 +48,18 @@ export const createTradePanel = (
       new Phaser.Geom.Rectangle(0, 0, 430, 108),
       Phaser.Geom.Rectangle.Contains
     )
-    .on("pointerdown", () => runPrimaryTradeAction());
+    .on(
+      "pointerdown",
+      (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData
+      ) => {
+        event.stopPropagation();
+        runPrimaryTradeAction();
+      }
+    );
 
   return {
     container,

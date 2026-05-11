@@ -201,6 +201,9 @@ export class LocalnetClient {
   private readonly playerAppearanceListeners = new Set<
     (appearance: PlayerAppearance) => void
   >();
+  private readonly playerSelectionListeners = new Set<
+    (player: PlayerNft | null) => void
+  >();
   private readonly visiblePlayerListeners = new Set<
     (players: VisiblePlayerState[]) => void
   >();
@@ -226,6 +229,7 @@ export class LocalnetClient {
   private tradeOfferSyncTimer: number | null = null;
   private playerStateSyncing = false;
   private tradeOfferSyncing = false;
+  private lastPlayerActionState: PlayerActionState | null = null;
   private lastPlayerActionStateKey: string | null = null;
   private lastInventoryState: InventoryState | null = null;
   private lastInventoryStateKey: string | null = null;
@@ -831,6 +835,10 @@ export class LocalnetClient {
   subscribePlayerActionState(listener: (state: PlayerActionState) => void) {
     this.playerActionStateListeners.add(listener);
 
+    if (this.lastPlayerActionState) {
+      listener(this.lastPlayerActionState);
+    }
+
     return () => {
       this.playerActionStateListeners.delete(listener);
     };
@@ -846,6 +854,24 @@ export class LocalnetClient {
     return () => {
       this.playerAppearanceListeners.delete(listener);
     };
+  }
+
+  subscribePlayerSelection(listener: (player: PlayerNft | null) => void) {
+    this.playerSelectionListeners.add(listener);
+    listener(this.activePlayerNft);
+
+    return () => {
+      this.playerSelectionListeners.delete(listener);
+    };
+  }
+
+  hasSelectedPlayer() {
+    return Boolean(this.activePlayerNft);
+  }
+
+  async prepareSelectedPlayer() {
+    await this.ensureSelectedPlayerReady();
+    await this.syncPlayerState({ announceLoaded: true });
   }
 
   subscribeVisiblePlayers(listener: (players: VisiblePlayerState[]) => void) {
@@ -1215,6 +1241,10 @@ export class LocalnetClient {
       void this.mintPlayerNft();
     });
 
+    this.hud.elements.gateMintPlayerButton?.addEventListener("click", () => {
+      void this.mintPlayerNft();
+    });
+
     this.hud.elements.playerNftSelect?.addEventListener("change", (event) => {
       const mint = (event.target as HTMLSelectElement).value;
 
@@ -1222,6 +1252,17 @@ export class LocalnetClient {
         void this.selectPlayerNft(new PublicKey(mint));
       }
     });
+
+    this.hud.elements.gatePlayerNftSelect?.addEventListener(
+      "change",
+      (event) => {
+        const mint = (event.target as HTMLSelectElement).value;
+
+        if (mint) {
+          void this.selectPlayerNft(new PublicKey(mint));
+        }
+      }
+    );
 
     this.hud.elements.resetButton?.addEventListener("click", () => {
       resetBurnerWallet();
@@ -1237,7 +1278,7 @@ export class LocalnetClient {
         this.hud.elements.agentSessionTransactionInput.value = "";
       }
       window.localStorage.removeItem(AGENT_DELEGATE_STORAGE_KEY);
-      this.lastPlayerActionStateKey = null;
+      this.clearCachedPlayerActionState();
       this.lastInventoryState = null;
       this.lastInventoryStateKey = null;
       this.lastGoldBalanceState = { amount: 0n };
@@ -1326,7 +1367,7 @@ export class LocalnetClient {
       clearPlayerNfts();
       this.playerState = null;
       this.activePlayerNft = null;
-      this.lastPlayerActionStateKey = null;
+      this.clearCachedPlayerActionState();
       this.lastInventoryState = null;
       this.lastInventoryStateKey = null;
       this.lastGoldBalanceState = { amount: 0n };
@@ -2887,11 +2928,17 @@ export class LocalnetClient {
   }
 
   private emitPlayerActionState(state: PlayerActionState) {
+    this.lastPlayerActionState = state;
     this.lastPlayerActionStateKey = this.getPlayerActionStateKey(state);
 
     for (const listener of this.playerActionStateListeners) {
       listener(state);
     }
+  }
+
+  private clearCachedPlayerActionState() {
+    this.lastPlayerActionState = null;
+    this.lastPlayerActionStateKey = null;
   }
 
   private emitPlayerAppearance(player: PlayerNft) {
@@ -2981,8 +3028,23 @@ export class LocalnetClient {
     return {
       color: player.color,
       fill: style.fill,
+      spriteAssetId: style.spriteAssetId,
       stroke: style.stroke,
     };
+  }
+
+  private getSelectedPlayerColor(): PlayerColorId {
+    return (
+      (this.hud.elements.gatePlayerColorSelect?.value as PlayerColorId) ||
+      (this.hud.elements.playerColorSelect?.value as PlayerColorId) ||
+      "rose"
+    );
+  }
+
+  private emitPlayerSelection() {
+    for (const listener of this.playerSelectionListeners) {
+      listener(this.activePlayerNft);
+    }
   }
 
   private async refreshPlayerNftHud() {
@@ -2995,6 +3057,7 @@ export class LocalnetClient {
       this.wallet.publicKey
     );
     this.hud.renderPlayerNfts(players, this.activePlayerNft);
+    this.emitPlayerSelection();
 
     if (this.activePlayerNft) {
       this.emitPlayerAppearance(this.activePlayerNft);
@@ -3359,8 +3422,7 @@ export class LocalnetClient {
     this.hud.setMintPlayerBusy(true);
 
     try {
-      const color =
-        (this.hud.elements.playerColorSelect?.value as PlayerColorId) ?? "rose";
+      const color = this.getSelectedPlayerColor();
       const { player, transaction, mint } = await mintPlayerNftOnchain(
         this.baseConnection,
         this.wallet.publicKey,
@@ -3376,7 +3438,7 @@ export class LocalnetClient {
         player.mint
       );
       this.playerState = null;
-      this.lastPlayerActionStateKey = null;
+      this.clearCachedPlayerActionState();
       this.lastInventoryState = null;
       this.lastInventoryStateKey = null;
       this.lastTradeOffers = [];
@@ -3405,7 +3467,7 @@ export class LocalnetClient {
     await setActivePlayerNft(this.baseConnection, this.wallet.publicKey, mint);
     clearStoredPlayer();
     this.playerState = null;
-    this.lastPlayerActionStateKey = null;
+    this.clearCachedPlayerActionState();
     this.lastInventoryStateKey = null;
     this.lastInventoryState = null;
     this.lastTradeOffers = [];

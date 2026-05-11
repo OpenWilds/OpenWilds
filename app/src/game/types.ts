@@ -1,3 +1,5 @@
+import type { PlayerSpriteAssetId } from "../assets/visual-assets";
+
 export type GridPoint = {
   x: number;
   y: number;
@@ -95,6 +97,7 @@ export type TileItemState = GridPoint & {
 export type PlayerAppearance = {
   color: string;
   fill: number;
+  spriteAssetId: PlayerSpriteAssetId;
   stroke: number;
 };
 
