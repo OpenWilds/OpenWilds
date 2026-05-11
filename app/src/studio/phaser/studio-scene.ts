@@ -36,6 +36,7 @@ const OBJECT_FOOTPRINT_KEY_DELTAS: Record<
   ArrowUp: { width: 0, height: 1 },
 };
 const SELECTED_OBJECT_DELETE_KEYS = new Set(["Backspace", "Delete"]);
+const MISSING_OBJECT_TEXTURE_KEY = "studio-object-missing-placeholder";
 
 export const STUDIO_LAYER_OPTIONS = Array.from(
   { length: STUDIO_LAYER_COUNT },
@@ -263,10 +264,14 @@ export class StudioScene extends Phaser.Scene {
     validateStudioMap(map);
 
     for (const asset of map.terrainAssets ?? []) {
-      this.addTerrainAsset(asset, false);
+      if (!this.hasTerrainAsset(asset.id)) {
+        this.addTerrainAsset(asset, false);
+      }
     }
     for (const asset of map.objectAssets ?? []) {
-      this.addObjectAsset(asset, false);
+      if (!this.hasObjectAsset(asset.id)) {
+        this.addObjectAsset(asset, false);
+      }
     }
 
     this.widthTiles = map.width;
@@ -294,10 +299,14 @@ export class StudioScene extends Phaser.Scene {
     this.heightTiles = map.height;
 
     for (const asset of map.terrainAssets ?? []) {
-      this.addTerrainAsset(asset, false);
+      if (!this.hasTerrainAsset(asset.id)) {
+        this.addTerrainAsset(asset, false);
+      }
     }
     for (const asset of map.objectAssets ?? []) {
-      this.addObjectAsset(asset, false);
+      if (!this.hasObjectAsset(asset.id)) {
+        this.addObjectAsset(asset, false);
+      }
     }
 
     if (map.baseTerrain) {
@@ -357,7 +366,8 @@ export class StudioScene extends Phaser.Scene {
         object.assetId,
         object.frame,
         object.width ?? 1,
-        object.height ?? 1
+        object.height ?? 1,
+        object.category
       );
     }
 
@@ -1592,7 +1602,8 @@ export class StudioScene extends Phaser.Scene {
     assetId: string,
     frame?: number,
     width = 1,
-    height = 1
+    height = 1,
+    category?: StudioObjectCategory
   ) {
     const placementLayer = isValidLayer(layer) ? layer : 1;
     const footprintWidth = normalizeFootprintSize(width);
@@ -1601,41 +1612,54 @@ export class StudioScene extends Phaser.Scene {
       return;
     }
 
+    const objectAssetId = assetId.trim();
     const asset = this.objectAssets.find(
-      (candidate) => candidate.id === assetId
+      (candidate) => candidate.id === objectAssetId
     );
-    if (
-      !asset ||
-      !this.textures ||
-      !this.textures.exists(studioObjectSpriteKey(asset.id))
-    ) {
+    if (!objectAssetId || !this.textures) {
       return;
     }
 
-    const selectedFrame = frame ?? getDefaultObjectFrame(asset);
+    const spriteTextureKey = asset ? studioObjectSpriteKey(asset.id) : null;
+    const hasSpriteTexture =
+      spriteTextureKey !== null && this.textures.exists(spriteTextureKey);
+    const selectedFrame =
+      asset && hasSpriteTexture
+        ? clampObjectFrame(asset, frame ?? getDefaultObjectFrame(asset))
+        : Math.max(0, Math.floor(frame ?? 0));
     const key = this.createObjectPlacementKey();
     const image = this.add
       .image(
         x * TILE_SIZE + (footprintWidth * TILE_SIZE) / 2,
         y * TILE_SIZE + (footprintHeight * TILE_SIZE) / 2,
-        studioObjectSpriteKey(asset.id)
+        hasSpriteTexture && spriteTextureKey
+          ? spriteTextureKey
+          : this.ensureMissingObjectTexture()
       )
       .setOrigin(0.5, 0.5)
       .setDepth(getObjectRenderDepth(placementLayer, y, footprintHeight));
-    const frameSize = this.applyObjectFrameTexture(image, asset, selectedFrame);
-    const displaySize = getObjectFrameDisplaySize(
-      asset,
-      selectedFrame,
-      frameSize,
-      footprintWidth,
-      footprintHeight
-    );
-    image.setDisplaySize(displaySize.width, displaySize.height);
+    if (asset && hasSpriteTexture) {
+      const frameSize = this.applyObjectFrameTexture(
+        image,
+        asset,
+        selectedFrame
+      );
+      const displaySize = getObjectFrameDisplaySize(
+        asset,
+        selectedFrame,
+        frameSize,
+        footprintWidth,
+        footprintHeight
+      );
+      image.setDisplaySize(displaySize.width, displaySize.height);
+    } else {
+      this.applyMissingObjectTexture(image, footprintWidth, footprintHeight);
+    }
 
     this.objectLayer.add(image);
     this.objectPlacements.set(key, {
-      category: asset.category,
-      assetId: asset.id,
+      category: asset?.category ?? category ?? "objects",
+      assetId: asset?.id ?? objectAssetId,
       layer: placementLayer,
       x,
       y,
@@ -1665,10 +1689,13 @@ export class StudioScene extends Phaser.Scene {
       !this.textures ||
       !this.textures.exists(studioObjectSpriteKey(asset.id))
     ) {
+      this.applyMissingObjectTexture(object.image, object.width, object.height);
       this.positionObjectPlacement(object);
       return;
     }
 
+    object.category = asset.category;
+    object.frame = clampObjectFrame(asset, object.frame);
     const frameSize = this.applyObjectFrameTexture(
       object.image,
       asset,
@@ -1683,8 +1710,54 @@ export class StudioScene extends Phaser.Scene {
     );
     object.image
       .setOrigin(0.5, 0.5)
+      .setAlpha(1)
       .setDisplaySize(displaySize.width, displaySize.height);
     this.positionObjectPlacement(object);
+  }
+
+  private applyMissingObjectTexture(
+    image: Phaser.GameObjects.Image,
+    width: number,
+    height: number
+  ) {
+    image
+      .setTexture(this.ensureMissingObjectTexture())
+      .setCrop(0, 0, 64, 64)
+      .setOrigin(0.5, 0.5)
+      .setAlpha(0.82)
+      .setDisplaySize(width * TILE_SIZE, height * TILE_SIZE);
+  }
+
+  private ensureMissingObjectTexture() {
+    if (this.textures.exists(MISSING_OBJECT_TEXTURE_KEY)) {
+      return MISSING_OBJECT_TEXTURE_KEY;
+    }
+
+    const texture = this.textures.createCanvas(
+      MISSING_OBJECT_TEXTURE_KEY,
+      64,
+      64
+    );
+    if (!texture) {
+      return MISSING_OBJECT_TEXTURE_KEY;
+    }
+
+    const context = texture.getContext();
+    context.clearRect(0, 0, 64, 64);
+    context.fillStyle = "rgba(22, 29, 32, 0.78)";
+    context.fillRect(4, 4, 56, 56);
+    context.strokeStyle = "rgba(247, 216, 112, 0.9)";
+    context.lineWidth = 4;
+    context.strokeRect(5, 5, 54, 54);
+    context.beginPath();
+    context.moveTo(18, 18);
+    context.lineTo(46, 46);
+    context.moveTo(46, 18);
+    context.lineTo(18, 46);
+    context.stroke();
+    texture.refresh();
+
+    return MISSING_OBJECT_TEXTURE_KEY;
   }
 
   private removeObjectAt(x: number, y: number) {
@@ -1986,6 +2059,18 @@ export class StudioScene extends Phaser.Scene {
     );
   }
 
+  private hasTerrainAsset(terrainId: TerrainVisualAssetId) {
+    const normalizedTerrainId = terrainId.trim();
+
+    return this.terrainAssets.some((asset) => asset.id === normalizedTerrainId);
+  }
+
+  private hasObjectAsset(assetId: string) {
+    const normalizedAssetId = assetId.trim();
+
+    return this.objectAssets.some((asset) => asset.id === normalizedAssetId);
+  }
+
   private getPaintableTerrainIds() {
     return this.terrainAssets
       .map((terrainAsset) => terrainAsset.id)
@@ -2068,6 +2153,7 @@ export class StudioScene extends Phaser.Scene {
     };
     const onLoadError = (file: Phaser.Loader.File) => {
       this.load.off(Phaser.Loader.Events.COMPLETE, onLoadComplete);
+      this.updateObjectPlacementTextures(asset.id);
       this.updateStatus(`Could not load object asset: ${file.key}`);
     };
 
@@ -2095,18 +2181,25 @@ export class StudioScene extends Phaser.Scene {
       return Promise.resolve();
     }
 
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<void>((resolve) => {
+      const failedKeys: string[] = [];
       const onComplete = () => {
         this.load.off(Phaser.Loader.Events.LOAD_ERROR, onLoadError);
+        if (failedKeys.length > 0) {
+          this.updateStatus(
+            `Could not load ${failedKeys.length} object asset${
+              failedKeys.length === 1 ? "" : "s"
+            }. Preserved their placements.`
+          );
+        }
         resolve();
       };
       const onLoadError = (file: Phaser.Loader.File) => {
-        this.load.off(Phaser.Loader.Events.COMPLETE, onComplete);
-        reject(new Error(`Could not load object asset: ${file.key}`));
+        failedKeys.push(file.key);
       };
 
       this.load.once(Phaser.Loader.Events.COMPLETE, onComplete);
-      this.load.once(Phaser.Loader.Events.LOAD_ERROR, onLoadError);
+      this.load.on(Phaser.Loader.Events.LOAD_ERROR, onLoadError);
 
       for (const asset of assetsToLoad) {
         const key = studioObjectSpriteKey(asset.id);
@@ -2127,20 +2220,30 @@ export class StudioScene extends Phaser.Scene {
     const asset = this.objectAssets.find(
       (candidate) => candidate.id === assetId
     );
-    if (
-      !this.isReady ||
-      !this.textures ||
-      !asset ||
-      !this.textures.exists(studioObjectSpriteKey(asset.id))
-    ) {
+    if (!this.isReady || !this.textures) {
       return;
     }
 
+    const hasSpriteTexture =
+      asset !== undefined &&
+      this.textures.exists(studioObjectSpriteKey(asset.id));
     for (const placement of this.objectPlacements.values()) {
       if (placement.assetId !== assetId) {
         continue;
       }
 
+      if (!asset || !hasSpriteTexture) {
+        this.applyMissingObjectTexture(
+          placement.image,
+          placement.width,
+          placement.height
+        );
+        this.positionObjectPlacement(placement);
+        continue;
+      }
+
+      placement.category = asset.category;
+      placement.frame = clampObjectFrame(asset, placement.frame);
       const frameSize = this.applyObjectFrameTexture(
         placement.image,
         asset,
@@ -2159,6 +2262,7 @@ export class StudioScene extends Phaser.Scene {
           placement.y * TILE_SIZE + (placement.height * TILE_SIZE) / 2
         )
         .setOrigin(0.5, 0.5)
+        .setAlpha(1)
         .setDepth(
           getObjectRenderDepth(placement.layer, placement.y, placement.height)
         )
@@ -2173,7 +2277,7 @@ export class StudioScene extends Phaser.Scene {
     frame: number
   ) {
     const frameTexture = this.ensureObjectVariantTexture(asset, frame);
-    image.setTexture(frameTexture.key);
+    image.setTexture(frameTexture.key).setAlpha(1);
     image.setCrop(0, 0, frameTexture.width, frameTexture.height);
     return frameTexture;
   }
@@ -2499,6 +2603,12 @@ function getDefaultObjectFrame(asset: StudioObjectSpriteAsset) {
 
   const grownRow = Math.min(2, asset.rows - 1);
   return grownRow * asset.columns;
+}
+
+function clampObjectFrame(asset: StudioObjectSpriteAsset, frame: number) {
+  const frameCount = asset.rows * asset.columns;
+
+  return Phaser.Math.Clamp(Math.floor(frame), 0, frameCount - 1);
 }
 
 function getObjectFrameDisplaySize(

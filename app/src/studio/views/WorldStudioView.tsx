@@ -125,17 +125,17 @@ export function WorldStudioView({
   const editorTerrainAssets = useMemo(
     () =>
       mergeTerrainAssets([
-        ...generatedTerrains,
         ...(openWorld?.map?.terrainAssets ?? []),
+        ...generatedTerrains,
       ]),
     [generatedTerrains, openWorld]
   );
   const editorObjectAssets = useMemo(
     () =>
       mergeObjectAssets([
+        ...(openWorld?.map?.objectAssets ?? []),
         ...plantSpritesToObjectAssets(plantSprites),
         ...objectSpritesToObjectAssets(objectSprites),
-        ...(openWorld?.map?.objectAssets ?? []),
       ]),
     [objectSprites, openWorld, plantSprites]
   );
@@ -1304,8 +1304,8 @@ function WorldMapThumbnail({
     () =>
       map
         ? mergeObjectAssets([
-            ...availableObjectAssets,
             ...(map.objectAssets ?? []),
+            ...availableObjectAssets,
           ])
         : [],
     [availableObjectAssets, map]
