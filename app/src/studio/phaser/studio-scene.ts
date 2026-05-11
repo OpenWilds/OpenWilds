@@ -289,11 +289,12 @@ export class StudioScene extends Phaser.Scene {
   private applyMap(
     map: StudioMapExport,
     message = "Imported map JSON",
-    options: { preserveCamera?: boolean } = {}
+    options: { preserveCamera?: boolean; preserveSelection?: boolean } = {}
   ) {
     const cameraViewport = options.preserveCamera
       ? this.captureCameraViewport()
       : null;
+    const previousSelectedTerrain = this.selectedTerrain;
 
     this.widthTiles = map.width;
     this.heightTiles = map.height;
@@ -312,7 +313,11 @@ export class StudioScene extends Phaser.Scene {
     if (map.baseTerrain) {
       this.baseTerrain = map.baseTerrain;
       this.paintableTerrains = this.getPaintableTerrainIds();
-      this.selectedTerrain = this.paintableTerrains[0] ?? this.baseTerrain;
+      this.selectedTerrain =
+        options.preserveSelection &&
+        this.paintableTerrains.includes(previousSelectedTerrain)
+          ? previousSelectedTerrain
+          : this.paintableTerrains[0] ?? this.baseTerrain;
       this.createLayers();
     }
 
@@ -595,7 +600,10 @@ export class StudioScene extends Phaser.Scene {
       return false;
     }
 
-    this.applyMap(previousMap, "Undid last action", { preserveCamera: true });
+    this.applyMap(previousMap, "Undid last action", {
+      preserveCamera: true,
+      preserveSelection: true,
+    });
     return true;
   }
 
