@@ -2,6 +2,7 @@ import { Components } from "../components/index";
 import type { World } from "../ecs";
 import type { ActionProgressElements } from "../resources";
 import type { ActiveActionState } from "../types";
+import type { createPantheonHud } from "../pantheon-hud";
 
 const formatActionLabel = (action: ActiveActionState) => {
   if (action.kind === "move") {
@@ -32,6 +33,14 @@ export const actionProgressSystem = (world: World) => {
   const remaining = Math.max(0, action.endsAt - now);
 
   if (action.kind === "idle" || remaining <= 0 || duration <= 0) {
+    world
+      .getResource<ReturnType<typeof createPantheonHud>>("pantheonHud")
+      ?.setActionProgress({
+        visible: false,
+        label: "",
+        remainingSeconds: 0,
+        progress: 0,
+      });
     elements.root.hidden = true;
 
     if (elements.fill) {
@@ -47,6 +56,14 @@ export const actionProgressSystem = (world: World) => {
   );
 
   elements.root.hidden = false;
+  world
+    .getResource<ReturnType<typeof createPantheonHud>>("pantheonHud")
+    ?.setActionProgress({
+      visible: true,
+      label: formatActionLabel(action),
+      remainingSeconds: remaining,
+      progress,
+    });
 
   if (elements.label) {
     elements.label.textContent = formatActionLabel(action);

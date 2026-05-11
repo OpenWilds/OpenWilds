@@ -15,8 +15,10 @@ export const gridToWorld = (point: GridPoint) => ({
 export const pointerToGrid = (
   pointer: Phaser.Input.Pointer
 ): GridPoint | null => {
-  const x = Math.floor((pointer.x - GRID_ORIGIN_X) / CELL_SIZE);
-  const y = Math.floor((pointer.y - GRID_ORIGIN_Y) / CELL_SIZE);
+  const worldX = pointer.worldX ?? pointer.x;
+  const worldY = pointer.worldY ?? pointer.y;
+  const x = Math.floor((worldX - GRID_ORIGIN_X) / CELL_SIZE);
+  const y = Math.floor((worldY - GRID_ORIGIN_Y) / CELL_SIZE);
 
   if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) {
     return null;
@@ -24,4 +26,3 @@ export const pointerToGrid = (
 
   return { x, y };
 };
-

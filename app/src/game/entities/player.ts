@@ -1,6 +1,8 @@
 import Phaser from "phaser";
+import { objectSpriteKey } from "../../assets/visual-assets";
 import {
   Components,
+  type PlayerSpriteComponent,
   type RectComponent,
   type RenderState,
 } from "../components/index";
@@ -25,10 +27,22 @@ export const createPlayerEntity = (
   isLocalPlayer = true
 ) => {
   const entity = world.createEntity();
-  const rectangle = scene.add
-    .rectangle(0, 0, CELL_SIZE - 8, CELL_SIZE - 8, appearance.fill)
-    .setStrokeStyle(3, appearance.stroke)
-    .setOrigin(0);
+  const container = scene.add.container(0, 0);
+  const shadow = scene.add
+    .ellipse(0, 24, 64, 20, 0x071018, 0.24)
+    .setStrokeStyle(2, appearance.stroke, isLocalPlayer ? 0.5 : 0.25);
+  const sprite = scene.add
+    .sprite(0, 0, objectSpriteKey("player"), 0)
+    .setOrigin(0.5, 0.72)
+    .setDisplaySize(112, 112);
+
+  if (!isLocalPlayer) {
+    sprite.setAlpha(0.78);
+  }
+
+  container.add([shadow, sprite]);
+  container.setSize(92, 104);
+  container.setDepth(100);
 
   world.addComponent(
     entity,
@@ -60,9 +74,16 @@ export const createPlayerEntity = (
     }
   );
   world.addComponent<RectComponent>(entity, Components.rectangle, {
-    object: rectangle,
-    offsetX: 4,
-    offsetY: 4,
+    object: container,
+    offsetX: CELL_SIZE / 2,
+    offsetY: CELL_SIZE * 0.82,
+  });
+  world.addComponent<PlayerSpriteComponent>(entity, Components.playerSprite, {
+    sprite,
+    shadow,
+    facing: "down",
+    flipX: false,
+    elapsedMs: 0,
   });
   world.addComponent<RenderState>(entity, Components.renderState, {
     dirty: true,

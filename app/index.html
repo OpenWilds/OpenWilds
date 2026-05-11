@@ -8,22 +8,31 @@
   </head>
   <body>
     <main id="app">
-      <section class="game-shell">
-        <div class="hud">
+      <div id="game"></div>
+      <aside id="solana-settings-panel" class="settings-panel" hidden>
+        <div class="settings-panel__header">
           <div>
             <p class="eyebrow">Open Wilds</p>
-            <h1>Grid Prototype</h1>
+            <h1>Solana Settings</h1>
           </div>
-          <p id="player-position" class="position-pill">Player: 10, 10</p>
+          <button id="settings-close-button" type="button">Close</button>
         </div>
-        <div class="localnet-panel">
+
+        <div class="settings-panel__grid">
+          <div class="status-line">
+            <span class="status-label">Position</span>
+            <span id="player-position">Player: 10, 10</span>
+          </div>
           <div class="status-line">
             <span class="status-label">Network</span>
             <span id="network-status">Preparing localnet...</span>
           </div>
-          <div class="status-line wallet-line">
+          <div class="status-line">
             <span class="status-label">Burner</span>
             <span id="wallet-address">Creating wallet...</span>
+          </div>
+          <div class="status-line">
+            <span class="status-label">Balance</span>
             <strong id="wallet-balance">Balance unavailable</strong>
           </div>
           <div class="status-line">
@@ -34,70 +43,71 @@
             <span class="status-label">World Time</span>
             <span id="game-time-status">Day 1 · 00:00</span>
           </div>
-          <div class="player-nft-panel">
-            <label>
-              <span class="status-label">Player</span>
-              <select id="player-nft-select"></select>
-            </label>
-            <label>
-              <span class="status-label">Color</span>
-              <select id="player-color-select"></select>
-            </label>
-            <button id="mint-player-button" type="button">Mint Player</button>
+        </div>
+
+        <div class="settings-panel__section">
+          <label>
+            <span class="status-label">Player</span>
+            <select id="player-nft-select"></select>
+          </label>
+          <label>
+            <span class="status-label">Color</span>
+            <select id="player-color-select"></select>
+          </label>
+          <button id="mint-player-button" type="button">Mint Player</button>
+        </div>
+
+        <div class="settings-panel__section">
+          <label class="agent-mode-toggle">
+            <span class="status-label">Agent Mode</span>
+            <input id="agent-mode-toggle" type="checkbox" />
+          </label>
+          <label>
+            <span class="status-label">OpenClaw Key</span>
+            <input
+              id="agent-delegate-input"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Agent wallet public key"
+            />
+          </label>
+          <label>
+            <span class="status-label">Scope</span>
+            <select id="agent-scope-select">
+              <option value="full">Full control</option>
+            </select>
+          </label>
+          <label>
+            <span class="status-label">BOLT Session Tx</span>
+            <textarea
+              id="agent-session-transaction-input"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Paste open_wilds_prepare_session transaction"
+            ></textarea>
+          </label>
+          <span id="agent-status">Inactive</span>
+          <button id="agent-revoke-button" type="button" hidden>Revoke</button>
+        </div>
+
+        <div class="action-progress" id="action-progress" hidden>
+          <div class="action-progress__meta">
+            <span id="action-progress-label">Action</span>
+            <span id="action-progress-time">0s</span>
           </div>
-          <div class="agent-mode-panel">
-            <label class="agent-mode-toggle">
-              <span class="status-label">Agent Mode</span>
-              <input id="agent-mode-toggle" type="checkbox" />
-            </label>
-            <label class="agent-key-field">
-              <span class="status-label">OpenClaw Key</span>
-              <input
-                id="agent-delegate-input"
-                type="text"
-                autocomplete="off"
-                spellcheck="false"
-                placeholder="Agent wallet public key"
-              />
-            </label>
-            <label class="agent-scope-field">
-              <span class="status-label">Scope</span>
-              <select id="agent-scope-select">
-                <option value="full">Full control</option>
-              </select>
-            </label>
-            <label class="agent-session-tx-field">
-              <span class="status-label">BOLT Session Tx</span>
-              <textarea
-                id="agent-session-transaction-input"
-                autocomplete="off"
-                spellcheck="false"
-                placeholder="Paste open_wilds_prepare_session transaction"
-              ></textarea>
-            </label>
-            <span id="agent-status">Inactive</span>
-            <button id="agent-revoke-button" type="button" hidden>
-              Revoke
-            </button>
-          </div>
-          <div class="action-progress" id="action-progress" hidden>
-            <div class="action-progress__meta">
-              <span id="action-progress-label">Action</span>
-              <span id="action-progress-time">0s</span>
-            </div>
-            <div class="action-progress__track">
-              <span id="action-progress-fill"></span>
-            </div>
-          </div>
-          <div class="wallet-actions">
-            <button id="airdrop-button" type="button">Airdrop</button>
-            <button id="sleep-button" type="button">Sleep</button>
-            <button id="commit-button" type="button">Commit State</button>
-            <button id="reset-button" type="button">Reset Burner</button>
+          <div class="action-progress__track">
+            <span id="action-progress-fill"></span>
           </div>
         </div>
-        <div id="game"></div>
-      </section>
+
+        <div class="wallet-actions">
+          <button id="airdrop-button" type="button">Airdrop</button>
+          <button id="sleep-button" type="button">Sleep</button>
+          <button id="commit-button" type="button">Commit State</button>
+          <button id="reset-button" type="button">Reset Burner</button>
+        </div>
+      </aside>
     </main>
   </body>
 </html>

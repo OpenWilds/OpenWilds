@@ -1,5 +1,6 @@
 import { Components } from "../components/index";
 import type { World } from "../ecs";
+import type { createPantheonHud } from "../pantheon-hud";
 import type { ActiveActionState, EnergyState, GridPoint } from "../types";
 
 const formatPosition = (value: number) =>
@@ -29,7 +30,12 @@ export const positionLabelSystem = (world: World) => {
         )}s`
       : "";
 
-  label.textContent = `Player: ${formatPosition(position.x)}, ${formatPosition(
+  const text = `Player: ${formatPosition(position.x)}, ${formatPosition(
     position.y
   )} | Energy: ${energy.current}/${energy.max}${actionText}`;
+
+  label.textContent = text;
+  world
+    .getResource<ReturnType<typeof createPantheonHud>>("pantheonHud")
+    ?.setPlayerStatus(text);
 };

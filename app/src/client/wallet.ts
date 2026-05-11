@@ -59,4 +59,3 @@ export const readBurnerWallet = () => {
 export const resetBurnerWallet = () => {
   window.localStorage.removeItem(BURNER_STORAGE_KEY);
 };
-

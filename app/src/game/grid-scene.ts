@@ -7,6 +7,8 @@ import {
   terrainCenterVariantsKey,
   type ObjectSpriteAssetId,
 } from "../assets/visual-assets";
+import { loadUiAssets } from "../assets/ui-assets";
+import type { HudController } from "../client/hud";
 import {
   cellKey,
   renderAutotileLayer,
@@ -15,7 +17,6 @@ import {
 import { createBoard } from "./board";
 import { createHoverEntity, createPlayerEntity } from "./entities/index";
 import { World } from "./ecs";
-import { createFarmCatalog } from "./farm-catalog";
 import {
   FARM_TYPES,
   FarmFeature,
@@ -36,11 +37,15 @@ import {
   GRID_SIZE,
 } from "./grid-constants";
 import { pointerToGrid } from "./grid-math";
+import { createPantheonHud } from "./pantheon-hud";
 import { installGridResources, type GridInput } from "./resources";
-import { createTradeOverlay } from "./trade-overlay";
 import { beginActionTransition } from "./systems/action-transition";
 import { gridSystems } from "./systems/index";
-import { Components, type RectComponent } from "./components/index";
+import {
+  Components,
+  type PlayerSpriteComponent,
+  type RectComponent,
+} from "./components/index";
 import { ItemId } from "./terrain";
 import type {
   GameClient,
@@ -86,7 +91,7 @@ const PLANT_INFO_WIDTH = 190;
 const PLANT_INFO_HEIGHT = 112;
 const PLANT_INFO_DEPTH = 20;
 
-export const createGridScene = (client: GameClient) =>
+export const createGridScene = (client: GameClient, hud: HudController) =>
   class GridScene extends Phaser.Scene {
     private world!: World;
     private unsubscribePlayerActionState: (() => void) | null = null;
@@ -97,8 +102,7 @@ export const createGridScene = (client: GameClient) =>
     private unsubscribeTradeOffers: (() => void) | null = null;
     private unsubscribeFarmTiles: (() => void) | null = null;
     private unsubscribeTileItems: (() => void) | null = null;
-    private farmCatalog: ReturnType<typeof createFarmCatalog> | null = null;
-    private tradeOverlay: ReturnType<typeof createTradeOverlay> | null = null;
+    private pantheonHud: ReturnType<typeof createPantheonHud> | null = null;
     private activePlayerEntity: number | null = null;
     private farmActionPending = false;
     private farmTileRenderElapsedMs = 0;
@@ -132,10 +136,19 @@ export const createGridScene = (client: GameClient) =>
           frameHeight: asset.frameSize,
         });
       }
+
+      loadUiAssets(this);
     }
 
     create() {
-      this.cameras.main.setBackgroundColor("#f6f2e8");
+      this.cameras.main.setBackgroundColor("#10191f");
+      this.cameras.main.setBounds(
+        0,
+        0,
+        GRID_SIZE * CELL_SIZE,
+        GRID_SIZE * CELL_SIZE
+      );
+      this.cameras.main.setZoom(0.72);
       this.world = new World();
 
       installGridResources(this.world, this, client);
@@ -143,34 +156,36 @@ export const createGridScene = (client: GameClient) =>
       this.tilledSoilContainer = this.add
         .container(GRID_ORIGIN_X, GRID_ORIGIN_Y)
         .setDepth(-5);
-      this.farmCatalog = createFarmCatalog(
-        this,
-        (mode) => {
+      this.pantheonHud = createPantheonHud(this, hud, {
+        onModeChange: (mode) => {
           this.gridInput.farmActionMode = mode;
         },
-        (itemId) => {
+        onItemSelect: (itemId) => {
           this.gridInput.selectedItemId = itemId;
         },
-        (quantity) => {
+        onQuantityChange: (quantity) => {
           this.gridInput.selectedQuantity = quantity;
-          this.tradeOverlay?.syncSelectedQuantity(quantity);
-        }
-      );
-      this.tradeOverlay = createTradeOverlay(this, {
-        getSelectedItemId: () => this.gridInput.selectedItemId,
-        getSelectedQuantity: () => this.gridInput.selectedQuantity ?? 1,
-        createOffer: (args) =>
-          client.createTradeOffer?.(args) ?? Promise.resolve(),
-        acceptOffer: (offer) =>
-          client.acceptTradeOffer?.(offer) ?? Promise.resolve(),
-        cancelOffer: (offer) =>
-          client.cancelTradeOffer?.(offer) ?? Promise.resolve(),
-        finalizeOffer: (offer) =>
-          client.finalizeTradeOffer?.(offer) ?? Promise.resolve(),
+        },
+        trade: {
+          createOffer: (args) =>
+            client.createTradeOffer?.(args) ?? Promise.resolve(),
+          acceptOffer: (offer) =>
+            client.acceptTradeOffer?.(offer) ?? Promise.resolve(),
+          cancelOffer: (offer) =>
+            client.cancelTradeOffer?.(offer) ?? Promise.resolve(),
+          finalizeOffer: (offer) =>
+            client.finalizeTradeOffer?.(offer) ?? Promise.resolve(),
+        },
       });
+      this.world.setResource("pantheonHud", this.pantheonHud);
       createHoverEntity(this.world, this);
       const player = createPlayerEntity(this.world, this, { x: 10, y: 10 });
       this.activePlayerEntity = player;
+      const playerObject = this.world.requireComponent<RectComponent>(
+        player,
+        Components.rectangle
+      ).object;
+      this.cameras.main.startFollow(playerObject, true, 0.12, 0.12);
       this.bindPlayerActionState(player);
 
       for (const system of gridSystems) {
@@ -260,11 +275,11 @@ export const createGridScene = (client: GameClient) =>
         ) ?? null;
       this.unsubscribeGoldBalance =
         client.subscribeGoldBalance?.((balance) =>
-          this.tradeOverlay?.updateGoldBalance(balance)
+          this.pantheonHud?.updateGoldBalance(balance)
         ) ?? null;
       this.unsubscribeTradeOffers =
         client.subscribeTradeOffers?.((offers) =>
-          this.tradeOverlay?.updateTradeOffers(offers)
+          this.pantheonHud?.updateTradeOffers(offers)
         ) ?? null;
       this.unsubscribeFarmTiles =
         client.subscribeFarmTiles?.((tiles) => this.applyFarmTiles(tiles)) ??
@@ -276,27 +291,25 @@ export const createGridScene = (client: GameClient) =>
 
     private applyPlayerActionState(player: number, state: PlayerActionState) {
       beginActionTransition(this.world, player, state);
-      this.tradeOverlay?.updateLocalPosition(state.position);
+      this.pantheonHud?.updateLocalPosition(state.position);
     }
 
     private applyPlayerAppearance(
       player: number,
       appearance: PlayerAppearance
     ) {
-      const rectangle = this.world.getComponent<RectComponent>(
+      const sprite = this.world.getComponent<PlayerSpriteComponent>(
         player,
-        Components.rectangle
+        Components.playerSprite
       );
 
-      rectangle?.object
-        .setFillStyle(appearance.fill)
-        .setStrokeStyle(3, appearance.stroke);
+      sprite?.shadow.setStrokeStyle(2, appearance.stroke, 0.5);
     }
 
     private applyVisiblePlayers(players: VisiblePlayerState[]) {
       const visibleRemoteMints = new Set<string>();
 
-      this.tradeOverlay?.updateVisiblePlayers(players);
+      this.pantheonHud?.updateVisiblePlayers(players);
 
       for (const player of players) {
         if (player.isActive) {
@@ -332,7 +345,7 @@ export const createGridScene = (client: GameClient) =>
     }
 
     private applyInventory(inventory: InventoryState) {
-      this.farmCatalog?.updateInventory(inventory);
+      this.pantheonHud?.updateInventory(inventory);
     }
 
     private applyFarmTiles(tiles: FarmTileState[]) {
@@ -473,7 +486,9 @@ export const createGridScene = (client: GameClient) =>
       let render = this.tileItemGraphics.get(key);
 
       if (!render) {
-        const container = this.add.container(0, 0).setDepth(70 + item.y);
+        const container = this.add
+          .container(0, 0)
+          .setDepth(70 + (top + CELL_SIZE) * 0.01);
         const shadow = this.add.graphics();
         const sprite = this.add.image(
           centerX,
@@ -488,22 +503,22 @@ export const createGridScene = (client: GameClient) =>
         this.tileItemGraphics.set(key, render);
       }
 
-      render.container.setDepth(70 + item.y);
+      render.container.setDepth(70 + (top + CELL_SIZE) * 0.01);
       render.shadow.clear();
       render.shadow.fillStyle(0x1a2a23, 0.2);
-      render.shadow.fillEllipse(centerX, centerY + 10, 24, 8);
+      render.shadow.fillEllipse(centerX, centerY + 28, 58, 18);
       render.sprite
         .setTexture(objectSpriteKey(frame.assetId), frame.frame)
-        .setPosition(centerX, centerY + 2)
+        .setPosition(centerX, centerY + 8)
         .setOrigin(0.5, 0.62)
-        .setDisplaySize(26, 26);
+        .setDisplaySize(70, 70);
 
       if (item.quantity > 1) {
         render.badge.clear();
         render.badge.fillStyle(0x17211e, 0.82);
-        render.badge.fillRoundedRect(centerX + 4, centerY + 3, 14, 12, 4);
+        render.badge.fillRoundedRect(centerX + 18, centerY + 12, 28, 22, 8);
         render.badge.lineStyle(1, 0xffffff, 0.7);
-        render.badge.strokeRoundedRect(centerX + 4, centerY + 3, 14, 12, 4);
+        render.badge.strokeRoundedRect(centerX + 18, centerY + 12, 28, 22, 8);
       } else {
         render.badge.clear();
       }
@@ -519,7 +534,9 @@ export const createGridScene = (client: GameClient) =>
       let render = this.farmTileGraphics.get(key);
 
       if (!render) {
-        const container = this.add.container(0, 0).setDepth(40 + tile.y);
+        const container = this.add
+          .container(0, 0)
+          .setDepth(70 + (top + CELL_SIZE) * 0.01);
         const water = this.add.graphics();
 
         container.add([water]);
@@ -527,17 +544,17 @@ export const createGridScene = (client: GameClient) =>
         this.farmTileGraphics.set(key, render);
       }
 
-      render.container.setDepth(40 + tile.y);
+      render.container.setDepth(70 + (top + CELL_SIZE) * 0.01);
       render.water.clear();
 
       if (tile.wateredUntil > nowGameSeconds) {
         render.water.fillStyle(0x72d6ff, 0.22);
         render.water.fillRoundedRect(
-          left + 5,
-          top + 7,
-          CELL_SIZE - 10,
-          CELL_SIZE - 12,
-          5
+          left + 16,
+          top + 18,
+          CELL_SIZE - 32,
+          CELL_SIZE - 28,
+          18
         );
       }
 
@@ -569,8 +586,8 @@ export const createGridScene = (client: GameClient) =>
 
       const displaySize =
         farm.kind === FarmKind.tree
-          ? 28 + Math.min(1, growth.progress) * 52
-          : 24 + Math.min(1, growth.progress) * 10;
+          ? 82 + Math.min(1, growth.progress) * 134
+          : 54 + Math.min(1, growth.progress) * 36;
 
       render.plant
         .setTexture(textureKey, spriteFrame)
@@ -758,14 +775,11 @@ export const createGridScene = (client: GameClient) =>
     ) {
       const tileLeft = GRID_ORIGIN_X + point.x * CELL_SIZE;
       const tileTop = GRID_ORIGIN_Y + point.y * CELL_SIZE;
-      const x = Math.min(
-        GAME_WIDTH - PLANT_INFO_WIDTH - 18,
-        Math.max(18, tileLeft + CELL_SIZE + 8)
-      );
-      const y = Math.min(
-        GAME_HEIGHT - PLANT_INFO_HEIGHT - 18,
-        Math.max(48, tileTop - 18)
-      );
+      const x =
+        point.x >= GRID_SIZE - 3
+          ? tileLeft - PLANT_INFO_WIDTH - 16
+          : tileLeft + CELL_SIZE + 16;
+      const y = Math.max(18, tileTop - 12);
 
       panel.highlight.clear();
       panel.highlight.lineStyle(2, highlightColor, 1);
@@ -774,7 +788,7 @@ export const createGridScene = (client: GameClient) =>
         tileTop + 3,
         CELL_SIZE - 6,
         CELL_SIZE - 6,
-        6
+        18
       );
 
       panel.background.clear();
@@ -892,7 +906,7 @@ export const createGridScene = (client: GameClient) =>
             event: Phaser.Types.Input.EventData
           ) => {
             event.stopPropagation();
-            this.tradeOverlay?.selectSeller(player.mint);
+            this.pantheonHud?.selectSeller(player.mint);
           }
         );
       this.remotePlayerEntities.set(player.mint, entity);

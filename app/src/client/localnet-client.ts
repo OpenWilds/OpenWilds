@@ -59,7 +59,7 @@ import type {
   TileFarmState,
   TileTerrainState,
 } from "./types";
-import { HudController, type HudElements } from "./hud";
+import { HudController } from "./hud";
 import { installAnchorProvider, loadBoltSdk } from "./sdk";
 import {
   BrowserAnchorWallet,
@@ -69,10 +69,12 @@ import {
 import { PlayerWorldProvisioner } from "./world-provisioning";
 import {
   PLAYER_SESSION_SCOPES_FULL_CONTROL,
+  decodeBoltSessionToken,
   decodePlayerSession,
   getBoltSessionTokenPda,
   getPlayerSessionPda,
   grantPlayerSessionInstruction,
+  revokeBoltSessionInstruction,
   revokePlayerSessionInstruction,
 } from "./agent-session";
 import {
@@ -237,8 +239,8 @@ export class LocalnetClient {
   private lastTileItemStateKey: string | null = null;
   private readonly knownPlayerTileFarms = new Map<string, TileFarmState[]>();
 
-  constructor(hudElements: HudElements) {
-    this.hud = new HudController(hudElements);
+  constructor(hud: HudController) {
+    this.hud = hud;
   }
 
   async boot() {
@@ -3057,10 +3059,12 @@ export class LocalnetClient {
       return;
     }
 
-    const [session, boltSessionActive] = await Promise.all([
+    const [session, boltSession] = await Promise.all([
       this.fetchAgentSession(delegate),
-      this.hasBoltSession(delegate),
+      this.fetchBoltSessionState(delegate),
     ]);
+    const boltSessionActive = Boolean(boltSession?.active);
+    const boltSessionExpired = Boolean(boltSession && !boltSession.active);
     const isActive =
       Boolean(session) &&
       !session!.revoked &&
@@ -3073,6 +3077,8 @@ export class LocalnetClient {
       active: isActive,
       status: isReady
         ? "Active: full control + BOLT session"
+        : boltSessionExpired
+        ? "BOLT session expired"
         : isActive
         ? "Missing BOLT session"
         : boltSessionActive
@@ -3116,13 +3122,38 @@ export class LocalnetClient {
     return getBoltSessionTokenPda(delegate, this.wallet.publicKey);
   }
 
-  private async hasBoltSession(delegate: PublicKey) {
+  private async fetchBoltSessionState(delegate: PublicKey) {
     const sessionToken = await this.getBoltSessionToken(delegate);
-    const account =
-      (await this.erConnection.getAccountInfo(sessionToken)) ??
-      (await this.baseConnection.getAccountInfo(sessionToken));
+    const accounts = await Promise.all([
+      this.baseConnection
+        .getAccountInfo(sessionToken)
+        .then((account) => ({ account, connection: this.baseConnection })),
+      this.erConnection
+        .getAccountInfo(sessionToken)
+        .then((account) => ({ account, connection: this.erConnection })),
+    ]);
+    const now = Math.floor(Date.now() / 1000);
+    const states = accounts
+      .map(({ account, connection }) => {
+        const session = account ? decodeBoltSessionToken(account.data) : null;
 
-    return Boolean(account);
+        if (
+          !session ||
+          !session.authority.equals(this.wallet.publicKey) ||
+          !session.sessionSigner.equals(delegate)
+        ) {
+          return null;
+        }
+
+        return {
+          connection,
+          session,
+          active: session.validUntil > now,
+        };
+      })
+      .filter((state): state is NonNullable<typeof state> => Boolean(state));
+
+    return states.find((state) => state.active) ?? states[0] ?? null;
   }
 
   private parsePreparedBoltSessionTransaction() {
@@ -3141,7 +3172,9 @@ export class LocalnetClient {
   }
 
   private async ensureBoltSession(delegate: PublicKey) {
-    if (await this.hasBoltSession(delegate)) {
+    const existing = await this.fetchBoltSessionState(delegate);
+
+    if (existing?.active) {
       return;
     }
 
@@ -3168,8 +3201,22 @@ export class LocalnetClient {
       checked: true,
       active: false,
       busy: true,
-      status: "Creating BOLT session...",
+      status: existing
+        ? "Refreshing expired BOLT session..."
+        : "Creating BOLT session...",
     });
+
+    if (existing) {
+      await this.sendSignedTransaction(
+        new Transaction().add(
+          revokeBoltSessionInstruction({
+            sessionToken,
+            authority: this.wallet.publicKey,
+          })
+        ),
+        existing.connection
+      );
+    }
 
     await this.sendSignedTransaction(transaction, this.baseConnection);
     if (this.hud.elements.agentSessionTransactionInput) {

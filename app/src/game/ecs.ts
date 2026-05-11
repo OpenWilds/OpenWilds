@@ -48,7 +48,9 @@ export class World {
     }
 
     return Array.from(firstStore.keys()).filter((entity) =>
-      rest.every((component) => this.componentStores.get(component)?.has(entity))
+      rest.every((component) =>
+        this.componentStores.get(component)?.has(entity)
+      )
     );
   }
 
@@ -92,4 +94,3 @@ export class World {
     return store;
   }
 }
-

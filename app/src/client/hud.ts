@@ -26,6 +26,23 @@ export type HudElements = {
   resetButton: HTMLButtonElement | null;
 };
 
+export type HudSnapshot = {
+  walletAddress: string;
+  walletBalance: string;
+  networkStatus: string;
+  programStatus: string;
+  gameTimeStatus: string;
+  agentStatus: string;
+  agentActive: boolean;
+  actionBusy: boolean;
+  airdropBusy: boolean;
+  commitBusy: boolean;
+  sleepBusy: boolean;
+  mintPlayerBusy: boolean;
+};
+
+export type HudSnapshotListener = (snapshot: HudSnapshot) => void;
+
 export const getHudElements = (): HudElements => ({
   networkStatus: document.getElementById("network-status"),
   walletAddress: document.getElementById("wallet-address"),
@@ -68,6 +85,21 @@ export class HudController {
   private actionBusy = false;
   private agentBusy = false;
   private gameTimeInterval: number | null = null;
+  private readonly listeners = new Set<HudSnapshotListener>();
+  private snapshot: HudSnapshot = {
+    walletAddress: "Creating wallet...",
+    walletBalance: "Balance unavailable",
+    networkStatus: "Preparing localnet...",
+    programStatus: "Checking deployed programs...",
+    gameTimeStatus: formatGameTime(),
+    agentStatus: "Inactive",
+    agentActive: false,
+    actionBusy: false,
+    airdropBusy: false,
+    commitBusy: false,
+    sleepBusy: false,
+    mintPlayerBusy: false,
+  };
 
   constructor(readonly elements: HudElements) {
     this.renderGameTime();
@@ -77,7 +109,27 @@ export class HudController {
     );
   }
 
+  subscribe(listener: HudSnapshotListener) {
+    this.listeners.add(listener);
+    listener(this.snapshot);
+
+    return () => this.listeners.delete(listener);
+  }
+
+  getSnapshot() {
+    return this.snapshot;
+  }
+
+  private updateSnapshot(patch: Partial<HudSnapshot>) {
+    this.snapshot = { ...this.snapshot, ...patch };
+    for (const listener of this.listeners) {
+      listener(this.snapshot);
+    }
+  }
+
   renderWallet(walletAddress: PublicKey) {
+    this.updateSnapshot({ walletAddress: walletAddress.toBase58() });
+
     if (this.elements.walletAddress) {
       this.elements.walletAddress.textContent = walletAddress.toBase58();
     }
@@ -126,6 +178,8 @@ export class HudController {
   }
 
   setMintPlayerBusy(isBusy: boolean) {
+    this.updateSnapshot({ mintPlayerBusy: isBusy });
+
     if (!this.elements.mintPlayerButton) {
       return;
     }
@@ -157,6 +211,13 @@ export class HudController {
   }
 
   setBalance(lamports: number | null) {
+    const walletBalance =
+      lamports === null
+        ? "Balance unavailable"
+        : `${(lamports / LAMPORTS_PER_SOL).toFixed(3)} SOL`;
+
+    this.updateSnapshot({ walletBalance });
+
     if (!this.elements.walletBalance) {
       return;
     }
@@ -172,24 +233,33 @@ export class HudController {
   }
 
   setNetworkStatus(status: string) {
+    this.updateSnapshot({ networkStatus: status });
+
     if (this.elements.networkStatus) {
       this.elements.networkStatus.textContent = status;
     }
   }
 
   setProgramStatus(status: string) {
+    this.updateSnapshot({ programStatus: status });
+
     if (this.elements.programStatus) {
       this.elements.programStatus.textContent = status;
     }
   }
 
   renderGameTime() {
+    const gameTimeStatus = formatGameTime();
+    this.updateSnapshot({ gameTimeStatus });
+
     if (this.elements.gameTimeStatus) {
-      this.elements.gameTimeStatus.textContent = formatGameTime();
+      this.elements.gameTimeStatus.textContent = gameTimeStatus;
     }
   }
 
   setAirdropBusy(isBusy: boolean) {
+    this.updateSnapshot({ airdropBusy: isBusy });
+
     if (!this.elements.airdropButton) {
       return;
     }
@@ -201,6 +271,8 @@ export class HudController {
   }
 
   setCommitBusy(isBusy: boolean) {
+    this.updateSnapshot({ commitBusy: isBusy });
+
     if (!this.elements.commitButton) {
       return;
     }
@@ -212,6 +284,8 @@ export class HudController {
   }
 
   setSleepBusy(isBusy: boolean) {
+    this.updateSnapshot({ sleepBusy: isBusy });
+
     if (!this.elements.sleepButton) {
       return;
     }
@@ -229,6 +303,7 @@ export class HudController {
 
   setActionBusy(isBusy: boolean) {
     this.actionBusy = isBusy;
+    this.updateSnapshot({ actionBusy: isBusy });
     this.setSleepBusy(false);
   }
 
@@ -239,6 +314,12 @@ export class HudController {
     busy?: boolean;
   }) {
     this.agentBusy = args.busy ?? false;
+    this.updateSnapshot({
+      agentStatus:
+        args.status !== undefined ? args.status : this.snapshot.agentStatus,
+      agentActive:
+        args.active !== undefined ? args.active : this.snapshot.agentActive,
+    });
 
     if (this.elements.agentModeToggle) {
       if (args.checked !== undefined) {

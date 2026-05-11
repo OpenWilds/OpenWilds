@@ -15,6 +15,7 @@ import cityCloveSpriteUrl from "./object-sprites/city-clover/city-clover-sprite-
 import routeberrySpriteUrl from "./object-sprites/routeberry/routeberry-sprite-sheet.png?url";
 import stonepineSpriteUrl from "./object-sprites/stonepine/stonepine-sprite-sheet.png?url";
 import sungrainSpriteUrl from "./object-sprites/sungrain/sungrain-sprite-sheet.png?url";
+import playerSpriteUrl from "./object-sprites/player/player-sprite-sheet.png?url";
 
 export type BuiltInTerrainVisualAssetId =
   | "uniswap-dirt"
@@ -83,6 +84,7 @@ export const BUILT_IN_TERRAIN_VISUAL_ASSET_IDS = Object.keys(
 export type ObjectSpriteAssetId =
   | "applewood"
   | "city-clover"
+  | "player"
   | "routeberry"
   | "stonepine"
   | "sungrain";
@@ -110,6 +112,13 @@ export const OBJECT_SPRITE_ASSETS: Record<
     id: "city-clover",
     imageUrl: cityCloveSpriteUrl,
     frameSize: 128,
+    rows: 4,
+    columns: 4,
+  },
+  player: {
+    id: "player",
+    imageUrl: playerSpriteUrl,
+    frameSize: 256,
     rows: 4,
     columns: 4,
   },
