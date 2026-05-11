@@ -17,7 +17,8 @@ import {
 import Phaser from "phaser";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-import type {
+import {
+  TERRAIN_VISUAL_ASSETS,
   TerrainVisualAsset,
   TerrainVisualAssetId,
 } from "../../assets/visual-assets";
@@ -75,6 +76,13 @@ const WORLD_STUDIO_SETTINGS_KEY = "open-wilds:world-studio:settings";
 const AUTOSAVE_DELAY_MS = 1200;
 const MIN_OBJECT_FOOTPRINT = 1;
 const MAX_OBJECT_FOOTPRINT = 6;
+const WORLD_THUMBNAIL_WIDTH = 220;
+const WORLD_THUMBNAIL_HEIGHT = 132;
+const WORLD_THUMBNAIL_PADDING = 5;
+const TERRAIN_CENTER_VARIANT_COLUMNS = 4;
+const TERRAIN_CENTER_VARIANT_ROWS = 4;
+
+type StudioMapObjectPlacement = NonNullable<StudioMapExport["objects"]>[number];
 
 export function WorldStudioView({
   generatedTerrains,
@@ -130,6 +138,22 @@ export function WorldStudioView({
         ...(openWorld?.map?.objectAssets ?? []),
       ]),
     [objectSprites, openWorld, plantSprites]
+  );
+  const thumbnailTerrainAssets = useMemo(
+    () =>
+      mergeTerrainAssets([
+        ...Object.values(TERRAIN_VISUAL_ASSETS),
+        ...generatedTerrains,
+      ]),
+    [generatedTerrains]
+  );
+  const thumbnailObjectAssets = useMemo(
+    () =>
+      mergeObjectAssets([
+        ...plantSpritesToObjectAssets(plantSprites),
+        ...objectSpritesToObjectAssets(objectSprites),
+      ]),
+    [objectSprites, plantSprites]
   );
 
   const paintableTerrains = useMemo(
@@ -760,12 +784,18 @@ export function WorldStudioView({
                   onClick={() => openSavedWorld(world)}
                   type="button"
                 >
-                  <span aria-hidden="true">WS</span>
-                  <strong>{world.name}</strong>
-                  <small>
-                    {world.width}x{world.height} ·{" "}
-                    {formatUpdatedAt(world.updatedAt)}
-                  </small>
+                  <WorldMapThumbnail
+                    availableObjectAssets={thumbnailObjectAssets}
+                    availableTerrainAssets={thumbnailTerrainAssets}
+                    world={world}
+                  />
+                  <div className="studio-world-card__details">
+                    <strong>{world.name}</strong>
+                    <small>
+                      {world.width}x{world.height} ·{" "}
+                      {formatUpdatedAt(world.updatedAt)}
+                    </small>
+                  </div>
                 </button>
               ))}
             </div>
@@ -1247,6 +1277,510 @@ export function WorldStudioView({
       </div>
     </section>
   );
+}
+
+function WorldMapThumbnail({
+  availableObjectAssets,
+  availableTerrainAssets,
+  world,
+}: {
+  availableObjectAssets: StudioObjectSpriteAsset[];
+  availableTerrainAssets: TerrainVisualAsset[];
+  world: StudioMapRecord;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const map = useMemo(() => parseStudioMapRecord(world), [world.mapJson]);
+  const terrainAssets = useMemo(
+    () =>
+      map
+        ? mergeTerrainAssets([
+            ...availableTerrainAssets,
+            ...(map.terrainAssets ?? []),
+          ])
+        : [],
+    [availableTerrainAssets, map]
+  );
+  const objectAssets = useMemo(
+    () =>
+      map
+        ? mergeObjectAssets([
+            ...availableObjectAssets,
+            ...(map.objectAssets ?? []),
+          ])
+        : [],
+    [availableObjectAssets, map]
+  );
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !map) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void renderWorldMapThumbnail(
+      canvas,
+      map,
+      terrainAssets,
+      objectAssets,
+      () => cancelled
+    ).catch(() => {
+      if (!cancelled) {
+        drawWorldThumbnailFallback(canvas);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [map, objectAssets, terrainAssets]);
+
+  if (!map) {
+    return (
+      <div
+        aria-hidden="true"
+        className="studio-world-card__thumbnail studio-world-card__thumbnail--fallback"
+      >
+        <span className="studio-world-card__thumbnail-fallback">
+          <GridFourIcon aria-hidden="true" size={28} weight="bold" />
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div aria-hidden="true" className="studio-world-card__thumbnail">
+      <canvas
+        height={WORLD_THUMBNAIL_HEIGHT}
+        ref={canvasRef}
+        width={WORLD_THUMBNAIL_WIDTH}
+      />
+    </div>
+  );
+}
+
+const thumbnailImageCache = new Map<string, Promise<HTMLImageElement | null>>();
+
+function parseStudioMapRecord(world: StudioMapRecord) {
+  try {
+    const parsed = JSON.parse(world.mapJson) as unknown;
+    validateStudioMap(parsed);
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+async function renderWorldMapThumbnail(
+  canvas: HTMLCanvasElement,
+  map: StudioMapExport,
+  terrainAssets: TerrainVisualAsset[],
+  objectAssets: StudioObjectSpriteAsset[],
+  isCancelled: () => boolean
+) {
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return;
+  }
+
+  const terrainAssetById = new Map(
+    terrainAssets.map((asset) => [asset.id, asset])
+  );
+  const objectAssetById = new Map(
+    objectAssets.map((asset) => [asset.id, asset])
+  );
+  const terrainImages = await loadThumbnailTerrainImages(map, terrainAssetById);
+  const objectImages = await loadThumbnailObjectImages(map, objectAssetById);
+
+  if (isCancelled()) {
+    return;
+  }
+
+  const pixelRatio = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+  canvas.width = Math.round(WORLD_THUMBNAIL_WIDTH * pixelRatio);
+  canvas.height = Math.round(WORLD_THUMBNAIL_HEIGHT * pixelRatio);
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  context.imageSmoothingEnabled = true;
+  context.clearRect(0, 0, WORLD_THUMBNAIL_WIDTH, WORLD_THUMBNAIL_HEIGHT);
+  context.fillStyle = "#17211e";
+  context.fillRect(0, 0, WORLD_THUMBNAIL_WIDTH, WORLD_THUMBNAIL_HEIGHT);
+  const viewport = getWorldThumbnailViewport(map);
+
+  context.save();
+  context.beginPath();
+  context.rect(viewport.x, viewport.y, viewport.width, viewport.height);
+  context.clip();
+  context.fillStyle = "#10201d";
+  context.fillRect(viewport.x, viewport.y, viewport.width, viewport.height);
+
+  drawThumbnailBaseTerrain(context, map, viewport, terrainImages);
+  drawThumbnailTerrainLayers(context, map, viewport, terrainImages);
+  drawThumbnailObjects(context, map, viewport, objectAssetById, objectImages);
+  context.restore();
+
+  context.strokeStyle = "rgba(255, 255, 255, 0.24)";
+  context.lineWidth = 1;
+  context.strokeRect(
+    viewport.x + 0.5,
+    viewport.y + 0.5,
+    viewport.width - 1,
+    viewport.height - 1
+  );
+}
+
+function drawWorldThumbnailFallback(canvas: HTMLCanvasElement) {
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return;
+  }
+
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "#17211e";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.strokeStyle = "rgba(159, 216, 189, 0.18)";
+  context.lineWidth = 1;
+
+  for (let x = 12; x < canvas.width; x += 18) {
+    context.beginPath();
+    context.moveTo(x, 0);
+    context.lineTo(x, canvas.height);
+    context.stroke();
+  }
+
+  for (let y = 12; y < canvas.height; y += 18) {
+    context.beginPath();
+    context.moveTo(0, y);
+    context.lineTo(canvas.width, y);
+    context.stroke();
+  }
+}
+
+async function loadThumbnailTerrainImages(
+  map: StudioMapExport,
+  terrainAssetById: Map<string, TerrainVisualAsset>
+) {
+  const images = new Map<string, HTMLImageElement | null>();
+  const terrainIds = new Set<string>([
+    map.baseTerrain,
+    ...map.layers.map((layer) => layer.terrainId),
+  ]);
+
+  await Promise.all(
+    [...terrainIds].map(async (terrainId) => {
+      const asset = terrainAssetById.get(terrainId);
+      images.set(terrainId, await loadThumbnailImage(asset?.centerVariantsUrl));
+    })
+  );
+
+  return images;
+}
+
+async function loadThumbnailObjectImages(
+  map: StudioMapExport,
+  objectAssetById: Map<string, StudioObjectSpriteAsset>
+) {
+  const images = new Map<string, HTMLImageElement | null>();
+  const objectIds = new Set(
+    (map.objects ?? []).map((object) => object.assetId)
+  );
+
+  await Promise.all(
+    [...objectIds].map(async (objectId) => {
+      const asset = objectAssetById.get(objectId);
+      images.set(objectId, await loadThumbnailImage(asset?.imageUrl));
+    })
+  );
+
+  return images;
+}
+
+function loadThumbnailImage(url: string | undefined) {
+  if (!url) {
+    return Promise.resolve(null);
+  }
+
+  const cached = thumbnailImageCache.get(url);
+  if (cached) {
+    return cached;
+  }
+
+  const promise = new Promise<HTMLImageElement | null>((resolve) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = url;
+  });
+  thumbnailImageCache.set(url, promise);
+
+  return promise;
+}
+
+function getWorldThumbnailViewport(map: StudioMapExport) {
+  const availableWidth = WORLD_THUMBNAIL_WIDTH - WORLD_THUMBNAIL_PADDING * 2;
+  const availableHeight = WORLD_THUMBNAIL_HEIGHT - WORLD_THUMBNAIL_PADDING * 2;
+  const tileSize = Math.min(
+    availableWidth / map.width,
+    availableHeight / map.height
+  );
+  const width = map.width * tileSize;
+  const height = map.height * tileSize;
+
+  return {
+    x: (WORLD_THUMBNAIL_WIDTH - width) / 2,
+    y: (WORLD_THUMBNAIL_HEIGHT - height) / 2,
+    width,
+    height,
+    tileSize,
+  };
+}
+
+function drawThumbnailBaseTerrain(
+  context: CanvasRenderingContext2D,
+  map: StudioMapExport,
+  viewport: ReturnType<typeof getWorldThumbnailViewport>,
+  terrainImages: Map<string, HTMLImageElement | null>
+) {
+  const image = terrainImages.get(map.baseTerrain) ?? null;
+
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      drawThumbnailTerrainTile(context, viewport, x, y, map.baseTerrain, image);
+    }
+  }
+}
+
+function drawThumbnailTerrainLayers(
+  context: CanvasRenderingContext2D,
+  map: StudioMapExport,
+  viewport: ReturnType<typeof getWorldThumbnailViewport>,
+  terrainImages: Map<string, HTMLImageElement | null>
+) {
+  const layers = [...map.layers].sort(
+    (left, right) =>
+      (left.layer ?? 1) - (right.layer ?? 1) ||
+      left.terrainId.localeCompare(right.terrainId)
+  );
+
+  for (const layer of layers) {
+    const image = terrainImages.get(layer.terrainId) ?? null;
+
+    for (const [x, y] of layer.cells) {
+      drawThumbnailTerrainTile(context, viewport, x, y, layer.terrainId, image);
+    }
+  }
+}
+
+function drawThumbnailTerrainTile(
+  context: CanvasRenderingContext2D,
+  viewport: ReturnType<typeof getWorldThumbnailViewport>,
+  tileX: number,
+  tileY: number,
+  terrainId: string,
+  image: HTMLImageElement | null
+) {
+  const x = Math.floor(viewport.x + tileX * viewport.tileSize);
+  const y = Math.floor(viewport.y + tileY * viewport.tileSize);
+  const width = Math.max(
+    1,
+    Math.ceil(viewport.x + (tileX + 1) * viewport.tileSize) - x
+  );
+  const height = Math.max(
+    1,
+    Math.ceil(viewport.y + (tileY + 1) * viewport.tileSize) - y
+  );
+
+  if (!image) {
+    context.fillStyle = getTerrainFallbackColor(terrainId);
+    context.fillRect(x, y, width, height);
+    return;
+  }
+
+  const sourceWidth = image.naturalWidth / TERRAIN_CENTER_VARIANT_COLUMNS;
+  const sourceHeight = image.naturalHeight / TERRAIN_CENTER_VARIANT_ROWS;
+  const variant = hashThumbnailVariant(
+    tileX,
+    tileY,
+    TERRAIN_CENTER_VARIANT_COLUMNS * TERRAIN_CENTER_VARIANT_ROWS
+  );
+  const sourceX = (variant % TERRAIN_CENTER_VARIANT_COLUMNS) * sourceWidth;
+  const sourceY =
+    Math.floor(variant / TERRAIN_CENTER_VARIANT_COLUMNS) * sourceHeight;
+
+  context.drawImage(
+    image,
+    sourceX,
+    sourceY,
+    sourceWidth,
+    sourceHeight,
+    x,
+    y,
+    width,
+    height
+  );
+}
+
+function drawThumbnailObjects(
+  context: CanvasRenderingContext2D,
+  map: StudioMapExport,
+  viewport: ReturnType<typeof getWorldThumbnailViewport>,
+  objectAssetById: Map<string, StudioObjectSpriteAsset>,
+  objectImages: Map<string, HTMLImageElement | null>
+) {
+  const objects = [...(map.objects ?? [])].sort(
+    (left, right) =>
+      getThumbnailObjectDepth(left) - getThumbnailObjectDepth(right) ||
+      left.x - right.x ||
+      left.assetId.localeCompare(right.assetId)
+  );
+
+  for (const object of objects) {
+    const asset = objectAssetById.get(object.assetId);
+    const image = objectImages.get(object.assetId) ?? null;
+
+    if (!asset || !image) {
+      drawThumbnailObjectFallback(context, viewport, object);
+      continue;
+    }
+
+    drawThumbnailObject(context, viewport, object, asset, image);
+  }
+}
+
+function drawThumbnailObject(
+  context: CanvasRenderingContext2D,
+  viewport: ReturnType<typeof getWorldThumbnailViewport>,
+  object: StudioMapObjectPlacement,
+  asset: StudioObjectSpriteAsset,
+  image: HTMLImageElement
+) {
+  const width = object.width ?? 1;
+  const height = object.height ?? 1;
+  const crop = getThumbnailObjectCrop(asset, image, object.frame);
+  const targetWidth = width * viewport.tileSize;
+  const targetHeight = height * viewport.tileSize;
+  const scale =
+    Math.min(targetWidth / crop.width, targetHeight / crop.height) *
+    getThumbnailObjectFrameScale(asset, object.frame);
+  const drawWidth = Math.max(1, crop.width * scale);
+  const drawHeight = Math.max(1, crop.height * scale);
+  const centerX = viewport.x + (object.x + width / 2) * viewport.tileSize;
+  const centerY = viewport.y + (object.y + height / 2) * viewport.tileSize;
+
+  context.drawImage(
+    image,
+    crop.x,
+    crop.y,
+    crop.width,
+    crop.height,
+    centerX - drawWidth / 2,
+    centerY - drawHeight / 2,
+    drawWidth,
+    drawHeight
+  );
+}
+
+function drawThumbnailObjectFallback(
+  context: CanvasRenderingContext2D,
+  viewport: ReturnType<typeof getWorldThumbnailViewport>,
+  object: StudioMapObjectPlacement
+) {
+  context.fillStyle = "rgba(23, 33, 30, 0.58)";
+  context.fillRect(
+    viewport.x + object.x * viewport.tileSize,
+    viewport.y + object.y * viewport.tileSize,
+    (object.width ?? 1) * viewport.tileSize,
+    (object.height ?? 1) * viewport.tileSize
+  );
+}
+
+function getThumbnailObjectCrop(
+  asset: StudioObjectSpriteAsset,
+  image: HTMLImageElement,
+  frame: number
+) {
+  const columns = Math.max(1, asset.columns);
+  const rows = Math.max(1, asset.rows);
+  const frameCount = rows * columns;
+  const boundedFrame = Math.min(frameCount - 1, Math.max(0, Math.floor(frame)));
+  const frameWidth = image.naturalWidth / columns;
+  const frameHeight = image.naturalHeight / rows;
+  const column = boundedFrame % columns;
+  const row = Math.floor(boundedFrame / columns);
+
+  return {
+    x: Math.round(column * frameWidth),
+    y: Math.round(row * frameHeight),
+    width: Math.round(frameWidth),
+    height: Math.round(frameHeight),
+  };
+}
+
+function getThumbnailObjectDepth(object: StudioMapObjectPlacement) {
+  return (
+    (object.y + (object.height ?? 1) - 1) * (STUDIO_LAYER_OPTIONS.length + 1) +
+    (object.layer ?? 1)
+  );
+}
+
+function getThumbnailObjectFrameScale(
+  asset: StudioObjectSpriteAsset,
+  frame: number
+) {
+  if (asset.kind !== "tree") {
+    return 1;
+  }
+
+  const row = Math.floor(frame / Math.max(1, asset.columns));
+  const column = frame % Math.max(1, asset.columns);
+  const grownRow = Math.min(2, Math.max(1, asset.rows) - 1);
+
+  return row === grownRow ? 1 + column * 0.15 : 1;
+}
+
+function getTerrainFallbackColor(terrainId: string) {
+  if (terrainId.includes("water")) {
+    return "#4aa6ba";
+  }
+  if (terrainId.includes("stone")) {
+    return "#8d9aa5";
+  }
+  if (terrainId.includes("dirt")) {
+    return "#9a6b43";
+  }
+  if (terrainId.includes("forest")) {
+    return "#35724c";
+  }
+  if (terrainId.includes("grass")) {
+    return "#69a963";
+  }
+
+  const hue = hashThumbnailVariant(
+    terrainId.length,
+    terrainId.charCodeAt(0),
+    8
+  );
+  const palette = [
+    "#7cbf72",
+    "#c1a36a",
+    "#76a6b7",
+    "#9b87bd",
+    "#b78472",
+    "#7aa783",
+    "#b5bd78",
+    "#7c92bd",
+  ];
+
+  return palette[hue] ?? "#7cbf72";
+}
+
+function hashThumbnailVariant(x: number, y: number, variants: number) {
+  const value = Math.sin(x * 127.1 + y * 311.7) * 43758.5453123;
+  const normalized = value - Math.floor(value);
+
+  return Math.floor(normalized * variants) % variants;
 }
 
 function mergeTerrainAssets(assets: TerrainVisualAsset[]) {
