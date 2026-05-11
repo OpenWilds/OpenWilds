@@ -32,6 +32,8 @@ export type InventoryState = {
   slots: InventorySlotState[];
 };
 
+export type EquippedTool = "hand" | "hoe" | "wateringCan";
+
 export type GoldBalanceState = {
   amount: bigint;
 };
@@ -65,6 +67,8 @@ export type FarmActionMode =
   | "chop"
   | "grab"
   | "drop";
+
+export type ContextAction = Exclude<FarmActionMode, "move">;
 
 export type FarmTileState = GridPoint & {
   soilState: "untilled" | "tilled";

@@ -1,11 +1,19 @@
 import Phaser from "phaser";
-import type { FarmActionMode, GameClient, GridPoint } from "./types";
+import type {
+  ContextAction,
+  EquippedTool,
+  FarmActionMode,
+  GameClient,
+  GridPoint,
+} from "./types";
 
 export type GridInput = {
   hoverPoint: GridPoint | null;
   requestedMove: GridPoint | null;
   requestedFarmAction: GridPoint | null;
   farmActionMode: FarmActionMode;
+  equippedTool: EquippedTool;
+  selectedContextAction: ContextAction | null;
   selectedItemId: number | null;
   selectedQuantity: number;
 };
@@ -44,6 +52,8 @@ export const installGridResources = (
     requestedMove: null,
     requestedFarmAction: null,
     farmActionMode: "move",
+    equippedTool: "hand",
+    selectedContextAction: null,
     selectedItemId: null,
     selectedQuantity: 1,
   });

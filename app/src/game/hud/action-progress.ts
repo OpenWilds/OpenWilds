@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { UI_ASSETS, UI_ICONS } from "../../assets/ui-assets";
+import type { FarmActionMode } from "../types";
 
 const trackWidth = 341;
 const trackHeight = 63;
@@ -58,6 +59,7 @@ export const createActionProgressHud = (scene: Phaser.Scene) => {
       label: string;
       remainingSeconds: number;
       progress: number;
+      action?: FarmActionMode;
     }) {
       container.setVisible(args.visible);
       if (!args.visible) {
@@ -68,8 +70,31 @@ export const createActionProgressHud = (scene: Phaser.Scene) => {
 
       const fillWidth = fillFullWidth * Math.min(1, Math.max(0, args.progress));
 
+      icon.setTexture(getActionIconKey(args.action));
       fill.setVisible(fillWidth > 0);
       fill.setSize(fillWidth, fillHeight);
     },
   };
 };
+
+function getActionIconKey(action: FarmActionMode | undefined) {
+  switch (action) {
+    case "till":
+      return UI_ICONS.dig.key;
+    case "water":
+      return UI_ICONS.wateringCan.key;
+    case "plant":
+      return UI_ICONS.plant.key;
+    case "harvest":
+      return UI_ICONS.harvest.key;
+    case "chop":
+      return UI_ICONS.axe.key;
+    case "grab":
+      return UI_ICONS.grab.key;
+    case "drop":
+      return UI_ICONS.drop.key;
+    case "move":
+    default:
+      return UI_ICONS.hands.key;
+  }
+}

@@ -1,5 +1,5 @@
 import type { UI_ICONS } from "../../assets/ui-assets";
-import type { FarmActionMode } from "../types";
+import type { ContextAction, EquippedTool } from "../types";
 
 export type TradeCallbacks = {
   createOffer: (args: {
@@ -14,26 +14,38 @@ export type TradeCallbacks = {
 };
 
 export type PantheonHudOptions = {
-  onModeChange: (mode: FarmActionMode) => void;
+  onToolChange: (tool: EquippedTool) => void;
+  onContextActionChange: (action: ContextAction | null) => void;
   onItemSelect: (itemId: number | null) => void;
   onQuantityChange: (quantity: number) => void;
   trade: TradeCallbacks;
 };
 
 export type ToolDefinition = {
-  mode: FarmActionMode;
+  tool: EquippedTool;
   label: string;
   icon: keyof typeof UI_ICONS;
   shortcut: string;
 };
 
+export type ContextActionDefinition = {
+  action: ContextAction;
+  label: string;
+  icon: keyof typeof UI_ICONS;
+};
+
 export const tools: ToolDefinition[] = [
-  { mode: "move", label: "Move", icon: "hands", shortcut: "1" },
-  { mode: "till", label: "Hoe", icon: "dig", shortcut: "2" },
-  { mode: "water", label: "Water", icon: "wateringCan", shortcut: "3" },
-  { mode: "plant", label: "Plant", icon: "plant", shortcut: "4" },
-  { mode: "harvest", label: "Harvest", icon: "harvest", shortcut: "5" },
-  { mode: "chop", label: "Axe", icon: "axe", shortcut: "6" },
-  { mode: "grab", label: "Grab", icon: "grab", shortcut: "7" },
-  { mode: "drop", label: "Drop", icon: "drop", shortcut: "8" },
+  { tool: "hand", label: "Hand", icon: "hands", shortcut: "1" },
+  { tool: "hoe", label: "Hoe", icon: "axe", shortcut: "2" },
+  { tool: "wateringCan", label: "Water", icon: "wateringCan", shortcut: "3" },
 ];
+
+export const contextActions: Record<ContextAction, ContextActionDefinition> = {
+  grab: { action: "grab", label: "Grab", icon: "grab" },
+  plant: { action: "plant", label: "Plant", icon: "plant" },
+  drop: { action: "drop", label: "Drop", icon: "drop" },
+  harvest: { action: "harvest", label: "Harvest", icon: "harvest" },
+  till: { action: "till", label: "Dig", icon: "dig" },
+  chop: { action: "chop", label: "Chop", icon: "axe" },
+  water: { action: "water", label: "Water", icon: "wateringCan" },
+};

@@ -9,6 +9,7 @@ import { createTopRightStatus } from "./hud/top-right-status";
 import { createTradePanel } from "./hud/trade-panel";
 import type { PantheonHudOptions } from "./hud/types";
 import type {
+  ContextAction,
   EnergyState,
   GridPoint,
   InventoryState,
@@ -27,7 +28,8 @@ export const createPantheonHud = (
   const minimap = createMinimap(scene);
   const topRight = createTopRightStatus(scene, toggleSettingsPanel);
   const toolInventory = createToolInventory(scene, {
-    onModeChange: options.onModeChange,
+    onToolChange: options.onToolChange,
+    onContextActionChange: options.onContextActionChange,
     onItemSelect: options.onItemSelect,
     onQuantityChange: options.onQuantityChange,
   });
@@ -47,8 +49,9 @@ export const createPantheonHud = (
     topRight.container,
     toolInventory.container,
     actionProgress.container,
-    tradePanel.container,
   ]);
+
+  tradePanel.container.setVisible(false);
 
   const unsubscribe = hud.subscribe((snapshot) => {
     statusPanel.update(snapshot);
@@ -93,6 +96,35 @@ export const createPantheonHud = (
     selectSeller: tradePanel.selectSeller,
     syncSelectedQuantity(quantity: number) {
       toolInventory.setSelectedQuantity(quantity);
+    },
+    setAvailableActions(actions: ContextAction[]) {
+      toolInventory.setAvailableActions(actions);
+    },
+    getSelectedContextAction() {
+      return toolInventory.getSelectedContextAction();
+    },
+    handlePointerMove(pointer: Phaser.Input.Pointer) {
+      const point = getToolInventoryLocalPoint(pointer);
+
+      if (point && toolInventory.containsPoint(point.x, point.y)) {
+        toolInventory.setPointerPosition(point.x, point.y);
+      } else {
+        toolInventory.clearPointerHover();
+      }
+    },
+    handlePointerDown(pointer: Phaser.Input.Pointer) {
+      const point = getToolInventoryLocalPoint(pointer);
+
+      return Boolean(
+        point &&
+          toolInventory.containsPoint(point.x, point.y) &&
+          toolInventory.handlePointerDown(point.x, point.y)
+      );
+    },
+    blocksPointer(pointer: Phaser.Input.Pointer) {
+      const point = getToolInventoryLocalPoint(pointer);
+
+      return Boolean(point && toolInventory.containsPoint(point.x, point.y));
     },
     updateEnergy(energy: EnergyState, deltaMs: number) {
       energyPanel.update(energy, deltaMs);
@@ -150,7 +182,7 @@ export const createPantheonHud = (
       height -
         toolInventory.height -
         actionProgress.height -
-        24 -
+        8 -
         actionProgress.visualTop
     );
     tradePanel.container.setPosition(18, height - tradePanel.height - 22);
@@ -168,6 +200,18 @@ export const createPantheonHud = (
       centerX - centerX * inverseZoom,
       centerY - centerY * inverseZoom
     );
+  }
+
+  function getToolInventoryLocalPoint(pointer: Phaser.Input.Pointer) {
+    const scaleX = root.scaleX || 1;
+    const scaleY = root.scaleY || 1;
+    const rootLocalX = (pointer.x - root.x) / scaleX;
+    const rootLocalY = (pointer.y - root.y) / scaleY;
+
+    return {
+      x: rootLocalX - toolInventory.container.x,
+      y: rootLocalY - toolInventory.container.y,
+    };
   }
 
   function toggleSettingsPanel() {

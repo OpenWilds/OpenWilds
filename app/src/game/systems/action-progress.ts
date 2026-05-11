@@ -3,6 +3,7 @@ import type { World } from "../ecs";
 import type { ActionProgressElements } from "../resources";
 import type { ActiveActionState } from "../types";
 import type { createPantheonHud } from "../pantheon-hud";
+import type { FarmActionMode } from "../types";
 
 const formatActionLabel = (action: ActiveActionState) => {
   if (action.kind === "move") {
@@ -14,6 +15,27 @@ const formatActionLabel = (action: ActiveActionState) => {
   }
 
   return "Acting";
+};
+
+const getFarmActionMode = (action: ActiveActionState): FarmActionMode => {
+  switch (action.action) {
+    case 3:
+      return "till";
+    case 4:
+      return "water";
+    case 5:
+      return "plant";
+    case 6:
+      return "harvest";
+    case 7:
+      return "chop";
+    case 8:
+      return "grab";
+    case 9:
+      return "drop";
+    default:
+      return action.kind === "move" ? "move" : "grab";
+  }
 };
 
 export const actionProgressSystem = (world: World) => {
@@ -63,6 +85,7 @@ export const actionProgressSystem = (world: World) => {
       label: formatActionLabel(action),
       remainingSeconds: remaining,
       progress,
+      action: getFarmActionMode(action),
     });
 
   if (elements.label) {

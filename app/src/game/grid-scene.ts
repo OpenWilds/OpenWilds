@@ -47,7 +47,13 @@ import {
   type RectComponent,
 } from "./components/index";
 import { ItemId } from "./terrain";
+import {
+  getTerrainType,
+  getTileTerrainDefinition,
+  TerrainFeature,
+} from "./terrain";
 import type {
+  ContextAction,
   GameClient,
   FarmActionMode,
   FarmTileState,
@@ -157,11 +163,16 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
         .container(GRID_ORIGIN_X, GRID_ORIGIN_Y)
         .setDepth(-5);
       this.pantheonHud = createPantheonHud(this, hud, {
-        onModeChange: (mode) => {
-          this.gridInput.farmActionMode = mode;
+        onToolChange: (tool) => {
+          this.gridInput.equippedTool = tool;
+          this.refreshAvailableActions();
+        },
+        onContextActionChange: (action) => {
+          this.gridInput.selectedContextAction = action;
         },
         onItemSelect: (itemId) => {
           this.gridInput.selectedItemId = itemId;
+          this.refreshAvailableActions();
         },
         onQuantityChange: (quantity) => {
           this.gridInput.selectedQuantity = quantity;
@@ -226,34 +237,177 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
 
     private bindPointerInput() {
       this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
+        if (this.pantheonHud?.blocksPointer(pointer)) {
+          this.pantheonHud.handlePointerMove(pointer);
+          this.gridInput.hoverPoint = null;
+          this.hidePlantInfo();
+          this.refreshAvailableActions(null);
+          return;
+        }
+
+        this.pantheonHud?.handlePointerMove(pointer);
         const point = pointerToGrid(pointer);
         this.gridInput.hoverPoint = point;
         this.inspectHoveredFarmTile(point);
+        this.refreshAvailableActions(point);
       });
 
       this.input.on("pointerout", () => {
         this.gridInput.hoverPoint = null;
         this.hidePlantInfo();
+        this.refreshAvailableActions(null);
       });
 
       this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+        if (this.pantheonHud?.handlePointerDown(pointer)) {
+          return;
+        }
+
         const point = pointerToGrid(pointer);
 
         if (!point) {
           return;
         }
 
-        if (this.gridInput.farmActionMode === "move") {
+        const action = this.resolveContextAction(point);
+
+        if (!action) {
           this.gridInput.requestedMove = point;
           return;
         }
 
-        void this.performFarmAction(this.gridInput.farmActionMode, point);
+        this.gridInput.farmActionMode = action;
+        void this.performFarmAction(action, point);
       });
     }
 
     private get gridInput() {
       return this.world.requireResource<GridInput>("input");
+    }
+
+    private refreshAvailableActions(
+      point = this.gridInput.hoverPoint
+    ) {
+      this.pantheonHud?.setAvailableActions(this.getAvailableActions(point));
+    }
+
+    private resolveContextAction(point: GridPoint): ContextAction | null {
+      const availableActions = this.getAvailableActions(point);
+      const selectedAction = this.gridInput.selectedContextAction;
+
+      if (selectedAction && availableActions.includes(selectedAction)) {
+        return selectedAction;
+      }
+
+      return availableActions[0] ?? null;
+    }
+
+    private getAvailableActions(point: GridPoint | null): ContextAction[] {
+      switch (this.gridInput.equippedTool) {
+        case "hand":
+          return this.getHandActions(point);
+        case "hoe":
+          return this.getHoeActions(point);
+        case "wateringCan":
+          return this.getWateringActions(point);
+      }
+    }
+
+    private getHandActions(point: GridPoint | null): ContextAction[] {
+      const actions: ContextAction[] = [];
+      const selectedItemId = this.gridInput.selectedItemId;
+
+      if (point && this.tileItems.has(getWorldItemKey(point))) {
+        actions.push("grab");
+      }
+
+      if (selectedItemId && this.isSeedItem(selectedItemId)) {
+        actions.push("plant");
+      }
+
+      if (selectedItemId) {
+        actions.push("drop");
+      }
+
+      if (point && this.isHarvestable(point)) {
+        actions.push("harvest");
+      }
+
+      return actions;
+    }
+
+    private getHoeActions(point: GridPoint | null): ContextAction[] {
+      const actions: ContextAction[] = [];
+
+      if (!point) {
+        return actions;
+      }
+
+      if (this.isTillable(point)) {
+        actions.push("till");
+      }
+
+      if (this.isChoppable(point)) {
+        actions.push("chop");
+      }
+
+      return actions;
+    }
+
+    private getWateringActions(point: GridPoint | null): ContextAction[] {
+      if (!point) {
+        return [];
+      }
+
+      const tile = this.farmTiles.get(this.getTileKey(point));
+
+      return tile && (tile.soilState === "tilled" || tile.farmTypeId !== 0)
+        ? ["water"]
+        : [];
+    }
+
+    private isSeedItem(itemId: number) {
+      return FARM_TYPES.some((farm) => farm.seedItemId === itemId);
+    }
+
+    private getFarmAt(point: GridPoint) {
+      const tile = this.farmTiles.get(this.getTileKey(point));
+      const farm =
+        tile && tile.farmTypeId
+          ? FARM_TYPES.find(
+              (candidate) => candidate.farmTypeId === tile.farmTypeId
+            )
+          : null;
+
+      return { tile: tile ?? null, farm: farm ?? null };
+    }
+
+    private isTillable(point: GridPoint) {
+      const terrain = getTerrainType(getTileTerrainDefinition(point).terrainTypeId);
+      const tile = this.farmTiles.get(this.getTileKey(point));
+
+      return (
+        (terrain.featureFlags & TerrainFeature.farmable) !== 0 &&
+        (!tile || (tile.soilState !== "tilled" && tile.farmTypeId === 0))
+      );
+    }
+
+    private isHarvestable(point: GridPoint) {
+      const { tile, farm } = this.getFarmAt(point);
+
+      if (!tile || !farm || farm.baseYield <= 0) {
+        return false;
+      }
+
+      return projectFarmGrowth(tile, farm, getGameTimeSeconds()).harvestReady;
+    }
+
+    private isChoppable(point: GridPoint) {
+      const { farm } = this.getFarmAt(point);
+
+      return Boolean(
+        farm && farm.kind === FarmKind.tree && farm.chopYield > 0
+      );
     }
 
     private bindPlayerActionState(player: number) {
@@ -346,6 +500,7 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
 
     private applyInventory(inventory: InventoryState) {
       this.pantheonHud?.updateInventory(inventory);
+      this.refreshAvailableActions();
     }
 
     private applyFarmTiles(tiles: FarmTileState[]) {
@@ -375,6 +530,7 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
 
       this.redrawTilledSoilLayer();
       this.inspectHoveredFarmTile(this.gridInput.hoverPoint);
+      this.refreshAvailableActions();
     }
 
     private applyTileItems(items: TileItemState[]) {
@@ -403,6 +559,7 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
       }
 
       this.inspectHoveredFarmTile(this.gridInput.hoverPoint);
+      this.refreshAvailableActions();
     }
 
     private redrawFarmTiles() {
@@ -465,6 +622,7 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
         }
       } finally {
         this.farmActionPending = false;
+        this.refreshAvailableActions();
       }
     }
 
