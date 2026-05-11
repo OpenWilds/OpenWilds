@@ -16,6 +16,8 @@ import type {
   PlayerAppearance,
 } from "../types";
 
+const playerDisplaySize = 174;
+
 export const createPlayerEntity = (
   world: World,
   scene: Phaser.Scene,
@@ -29,19 +31,19 @@ export const createPlayerEntity = (
   const entity = world.createEntity();
   const container = scene.add.container(0, 0);
   const shadow = scene.add
-    .ellipse(0, 24, 64, 20, 0x071018, 0.24)
+    .ellipse(0, 37.2, 99.4, 31.1, 0x071018, 0.24)
     .setStrokeStyle(2, appearance.stroke, isLocalPlayer ? 0.5 : 0.25);
   const sprite = scene.add
     .sprite(0, 0, objectSpriteKey("player"), 0)
     .setOrigin(0.5, 0.72)
-    .setDisplaySize(112, 112);
+    .setDisplaySize(playerDisplaySize, playerDisplaySize);
 
   if (!isLocalPlayer) {
     sprite.setAlpha(0.78);
   }
 
   container.add([shadow, sprite]);
-  container.setSize(92, 104);
+  container.setSize(142.8, 161.5);
   container.setDepth(100);
 
   world.addComponent(
@@ -81,6 +83,7 @@ export const createPlayerEntity = (
   world.addComponent<PlayerSpriteComponent>(entity, Components.playerSprite, {
     sprite,
     shadow,
+    displaySize: playerDisplaySize,
     facing: "down",
     flipX: false,
     elapsedMs: 0,

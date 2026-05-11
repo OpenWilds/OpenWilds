@@ -1,13 +1,19 @@
 import Phaser from "phaser";
 import type { HudController } from "../client/hud";
 import { createActionProgressHud } from "./hud/action-progress";
+import { createEnergyPanel } from "./hud/energy-panel";
 import { createMinimap } from "./hud/minimap";
 import { createStatusPanel } from "./hud/status-panel";
 import { createToolInventory } from "./hud/tool-inventory";
 import { createTopRightStatus } from "./hud/top-right-status";
 import { createTradePanel } from "./hud/trade-panel";
 import type { PantheonHudOptions } from "./hud/types";
-import type { GridPoint, InventoryState, VisiblePlayerState } from "./types";
+import type {
+  EnergyState,
+  GridPoint,
+  InventoryState,
+  VisiblePlayerState,
+} from "./types";
 
 export const createPantheonHud = (
   scene: Phaser.Scene,
@@ -17,6 +23,7 @@ export const createPantheonHud = (
   const hudEdgeInset = 16;
   const root = scene.add.container(0, 0).setDepth(10000).setScrollFactor(0);
   const statusPanel = createStatusPanel(scene);
+  const energyPanel = createEnergyPanel(scene);
   const minimap = createMinimap(scene);
   const topRight = createTopRightStatus(scene, toggleSettingsPanel);
   const toolInventory = createToolInventory(scene, {
@@ -34,6 +41,7 @@ export const createPantheonHud = (
   let visiblePlayers: VisiblePlayerState[] = [];
 
   root.add([
+    energyPanel.container,
     statusPanel.container,
     minimap.container,
     topRight.container,
@@ -86,6 +94,9 @@ export const createPantheonHud = (
     syncSelectedQuantity(quantity: number) {
       toolInventory.setSelectedQuantity(quantity);
     },
+    updateEnergy(energy: EnergyState, deltaMs: number) {
+      energyPanel.update(energy, deltaMs);
+    },
     setPlayerStatus(text: string) {
       topRight.setPlayerStatus(text);
     },
@@ -104,6 +115,16 @@ export const createPantheonHud = (
 
     const width = scene.scale.width;
     const height = scene.scale.height;
+    const energyScale = Math.min(
+      1,
+      Math.max(0.68, (width - hudEdgeInset * 2) / energyPanel.width)
+    );
+
+    energyPanel.container.setPosition(14, 12).setScale(energyScale);
+    statusPanel.container.setPosition(
+      16,
+      12 + energyPanel.height * energyScale + 10
+    );
 
     topRight.container.setPosition(
       Math.max(12, width - topRight.width - 18),

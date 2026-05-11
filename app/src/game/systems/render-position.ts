@@ -9,6 +9,9 @@ import type { World } from "../ecs";
 import { gridToWorld } from "../grid-math";
 import type { GridPoint } from "../types";
 
+const idleFrameMs = 420;
+const movingFrameMs = 180;
+
 export const renderPositionSystem = (world: World) => {
   for (const entity of world.view(
     Components.position,
@@ -93,15 +96,23 @@ export const playerSpriteAnimationSystem = (world: World, deltaMs: number) => {
 
     spriteState.elapsedMs += deltaMs;
 
-    const step = Math.floor(spriteState.elapsedMs / 180);
-    const row = moving ? (step % 2 === 0 ? 2 : 3) : step % 2;
+    const frameMs = moving ? movingFrameMs : idleFrameMs;
+    const step = Math.floor(spriteState.elapsedMs / frameMs);
     const column =
       spriteState.facing === "down" ? 0 : spriteState.facing === "side" ? 1 : 2;
+    const row =
+      moving && spriteState.facing === "side"
+        ? [0, 2, 3][step % 3]
+        : moving
+        ? step % 2 === 0
+          ? 2
+          : 3
+        : step % 2;
 
     spriteState.sprite
       .setFrame(row * 4 + column)
       .setFlipX(spriteState.flipX)
-      .setScale(1);
+      .setDisplaySize(spriteState.displaySize, spriteState.displaySize);
     spriteState.shadow.setAlpha(moving ? 0.3 : 0.22);
   }
 };

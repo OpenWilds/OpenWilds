@@ -148,7 +148,7 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
         GRID_SIZE * CELL_SIZE,
         GRID_SIZE * CELL_SIZE
       );
-      this.cameras.main.setZoom(0.72);
+      this.cameras.main.setZoom(1);
       this.world = new World();
 
       installGridResources(this.world, this, client);

@@ -28,6 +28,7 @@ export type RectComponent = {
 export type PlayerSpriteComponent = {
   sprite: Phaser.GameObjects.Sprite;
   shadow: Phaser.GameObjects.Ellipse;
+  displaySize: number;
   facing: "down" | "up" | "side";
   flipX: boolean;
   elapsedMs: number;

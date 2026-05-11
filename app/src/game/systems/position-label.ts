@@ -6,7 +6,7 @@ import type { ActiveActionState, EnergyState, GridPoint } from "../types";
 const formatPosition = (value: number) =>
   Number.isInteger(value) ? value.toString() : value.toFixed(1);
 
-export const positionLabelSystem = (world: World) => {
+export const positionLabelSystem = (world: World, deltaMs: number) => {
   const label = world.getResource<HTMLElement | null>("positionLabel");
   const player = world.findEntity(Components.player);
 
@@ -35,6 +35,9 @@ export const positionLabelSystem = (world: World) => {
   )} | Energy: ${energy.current}/${energy.max}${actionText}`;
 
   label.textContent = text;
+  world
+    .getResource<ReturnType<typeof createPantheonHud>>("pantheonHud")
+    ?.updateEnergy(energy, deltaMs);
   world
     .getResource<ReturnType<typeof createPantheonHud>>("pantheonHud")
     ?.setPlayerStatus(text);
