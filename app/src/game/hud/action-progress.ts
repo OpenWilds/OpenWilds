@@ -1,30 +1,58 @@
 import Phaser from "phaser";
-import { UI_ASSETS } from "../../assets/ui-assets";
-import { makeHudText } from "./text";
+import { UI_ASSETS, UI_ICONS } from "../../assets/ui-assets";
+
+const trackWidth = 341;
+const trackHeight = 63;
+const fillFullWidth = 322;
+const fillHeight = 42;
+const iconFrameWidth = 136;
+const iconFrameHeight = 112;
+const iconCenterX = -184;
+const iconCenterY = 0;
+const trackLeftX = iconCenterX + iconFrameWidth * 0.5 - 6;
+const trackCenterX = trackLeftX + trackWidth * 0.5;
+const fillX = trackLeftX + (trackWidth - fillFullWidth) * 0.5;
+const fillY = -fillHeight * 0.5;
+const visualLeft = iconCenterX - iconFrameWidth * 0.5;
+const visualRight = trackLeftX + trackWidth;
+const visualTop = -iconFrameHeight * 0.5;
 
 export const createActionProgressHud = (scene: Phaser.Scene) => {
-  const container = scene.add.container(0, 0).setScrollFactor(0);
-  const icon = scene.add
-    .image(0, 0, UI_ASSETS.actionProgressIconContainer.key)
-    .setDisplaySize(74, 60);
+  const container = scene.add.container(0, 0);
   const track = scene.add
-    .image(66, 10, UI_ASSETS.actionProgressBarTrack.key)
-    .setOrigin(0)
-    .setDisplaySize(260, 48);
+    .image(trackCenterX, 0, UI_ASSETS.actionProgressBarTrack.key)
+    .setOrigin(0.5)
+    .setDisplaySize(trackWidth, trackHeight);
   const fill = scene.add
-    .image(78, 22, UI_ASSETS.actionProgressBarFiller.key)
-    .setOrigin(0, 0.5)
-    .setDisplaySize(0, 18);
-  const label = makeHudText(scene, 82, 12, "Acting", 12, "#10191f", 190);
-  const time = makeHudText(scene, 246, 12, "0s", 12, "#10191f", 56);
+    .nineslice(
+      fillX,
+      fillY,
+      UI_ASSETS.actionProgressBarFiller.key,
+      undefined,
+      fillFullWidth,
+      fillHeight,
+      19,
+      19
+    )
+    .setOrigin(0);
+  const iconFrame = scene.add
+    .image(iconCenterX, iconCenterY, UI_ASSETS.actionProgressIconContainer.key)
+    .setOrigin(0.5)
+    .setDisplaySize(iconFrameWidth, iconFrameHeight);
+  const icon = scene.add
+    .image(iconCenterX, iconCenterY + 1, UI_ICONS.hands.key)
+    .setOrigin(0.5)
+    .setDisplaySize(62, 62);
 
-  container.add([icon, track, fill, label, time]);
+  container.add([track, fill, iconFrame, icon]);
   container.setVisible(false);
 
   return {
     container,
-    width: 326,
-    height: 60,
+    width: visualRight - visualLeft,
+    height: iconFrameHeight,
+    visualLeft,
+    visualTop,
     setProgress(args: {
       visible: boolean;
       label: string;
@@ -33,13 +61,15 @@ export const createActionProgressHud = (scene: Phaser.Scene) => {
     }) {
       container.setVisible(args.visible);
       if (!args.visible) {
-        fill.setDisplaySize(0, 18);
+        fill.setVisible(false);
+        fill.setSize(0, fillHeight);
         return;
       }
 
-      label.setText(args.label);
-      time.setText(`${Math.ceil(args.remainingSeconds)}s`);
-      fill.setDisplaySize(232 * Math.min(1, Math.max(0, args.progress)), 18);
+      const fillWidth = fillFullWidth * Math.min(1, Math.max(0, args.progress));
+
+      fill.setVisible(fillWidth > 0);
+      fill.setSize(fillWidth, fillHeight);
     },
   };
 };

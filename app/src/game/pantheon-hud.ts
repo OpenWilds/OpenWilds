@@ -145,8 +145,13 @@ export const createPantheonHud = (
       height - toolInventory.height - 16
     );
     actionProgress.container.setPosition(
-      Math.max(18, (width - actionProgress.width) / 2),
-      height - toolInventory.height - actionProgress.height - 28
+      Math.max(18, (width - actionProgress.width) / 2) -
+        actionProgress.visualLeft,
+      height -
+        toolInventory.height -
+        actionProgress.height -
+        24 -
+        actionProgress.visualTop
     );
     tradePanel.container.setPosition(18, height - tradePanel.height - 22);
   }
