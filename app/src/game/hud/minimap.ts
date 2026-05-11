@@ -6,7 +6,11 @@ import type { GridPoint, VisiblePlayerState } from "../types";
 import { makeHudText } from "./text";
 
 export const createMinimap = (scene: Phaser.Scene) => {
-  const container = scene.add.container(18, 176).setScrollFactor(0);
+  const width = 252;
+  const height = 248;
+  const visualPaddingRight = 14;
+  const visualPaddingBottom = 29;
+  const container = scene.add.container(0, 0).setScrollFactor(0);
   const mapX = 42;
   const mapY = 41;
   const mapSize = 168;
@@ -20,7 +24,7 @@ export const createMinimap = (scene: Phaser.Scene) => {
   const frame = scene.add
     .image(0, 0, UI_ASSETS.minimapFrame.key)
     .setOrigin(0)
-    .setDisplaySize(252, 248);
+    .setDisplaySize(width, height);
   const label = makeHudText(scene, 64, 214, "20x20 Wilds", 12, "#f6efd7", 124);
   let localPosition: GridPoint | null = null;
   let players: VisiblePlayerState[] = [];
@@ -31,6 +35,10 @@ export const createMinimap = (scene: Phaser.Scene) => {
 
   return {
     container,
+    width,
+    height,
+    visualPaddingRight,
+    visualPaddingBottom,
     setLocalPosition(position: GridPoint) {
       localPosition = position;
       renderOverlay();

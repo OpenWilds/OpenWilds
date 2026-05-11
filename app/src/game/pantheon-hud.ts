@@ -14,6 +14,7 @@ export const createPantheonHud = (
   hud: HudController,
   options: PantheonHudOptions
 ) => {
+  const hudEdgeInset = 16;
   const root = scene.add.container(0, 0).setDepth(10000).setScrollFactor(0);
   const statusPanel = createStatusPanel(scene);
   const minimap = createMinimap(scene);
@@ -107,6 +108,16 @@ export const createPantheonHud = (
     topRight.container.setPosition(
       Math.max(12, width - topRight.width - 18),
       18
+    );
+    minimap.container.setPosition(
+      Math.max(
+        12,
+        width - minimap.width - hudEdgeInset + minimap.visualPaddingRight
+      ),
+      Math.max(
+        12,
+        height - minimap.height - hudEdgeInset + minimap.visualPaddingBottom
+      )
     );
     toolInventory.container.setPosition(
       Math.max(12, (width - toolInventory.width) / 2),
