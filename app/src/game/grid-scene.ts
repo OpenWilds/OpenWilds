@@ -56,6 +56,7 @@ import type {
   ContextAction,
   GameClient,
   FarmActionMode,
+  FarmActionResult,
   FarmTileState,
   InventoryState,
   PlayerActionState,
@@ -176,6 +177,9 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
         },
         onQuantityChange: (quantity) => {
           this.gridInput.selectedQuantity = quantity;
+        },
+        onSleep: () => {
+          void client.sleepPlayer?.();
         },
         trade: {
           createOffer: (args) =>
@@ -599,6 +603,7 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
             this.activePlayerEntity,
             result.player
           );
+          this.setPlayerActionPose(this.activePlayerEntity, mode, point, result);
         }
 
         if (result.tile) {
@@ -624,6 +629,38 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
         this.farmActionPending = false;
         this.refreshAvailableActions();
       }
+    }
+
+    private setPlayerActionPose(
+      player: number,
+      mode: FarmActionMode,
+      point: GridPoint,
+      result: FarmActionResult
+    ) {
+      if (mode === "move") {
+        return;
+      }
+
+      const sprite = this.world.getComponent<PlayerSpriteComponent>(
+        player,
+        Components.playerSprite
+      );
+
+      if (!sprite) {
+        return;
+      }
+
+      const now = Date.now() / 1000;
+      const endsAt =
+        result.player.activeAction.endsAt > now
+          ? result.player.activeAction.endsAt
+          : now + 0.45;
+
+      sprite.actionPose = {
+        target: { ...point },
+        mode,
+        endsAt,
+      };
     }
 
     private drawTileItem(item: TileItemState) {

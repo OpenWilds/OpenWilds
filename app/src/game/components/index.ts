@@ -32,6 +32,11 @@ export type PlayerSpriteComponent = {
   facing: "down" | "up" | "side";
   flipX: boolean;
   elapsedMs: number;
+  actionPose?: {
+    target: { x: number; y: number };
+    mode: string;
+    endsAt: number;
+  };
 };
 
 export type RenderState = {

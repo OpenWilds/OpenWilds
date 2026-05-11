@@ -2,6 +2,8 @@ import Phaser from "phaser";
 import { UI_ASSETS, UI_ICONS } from "../../assets/ui-assets";
 import type { FarmActionMode } from "../types";
 
+export type ActionProgressIcon = FarmActionMode | "sleep";
+
 const trackWidth = 341;
 const trackHeight = 63;
 const fillFullWidth = 322;
@@ -59,7 +61,7 @@ export const createActionProgressHud = (scene: Phaser.Scene) => {
       label: string;
       remainingSeconds: number;
       progress: number;
-      action?: FarmActionMode;
+      action?: ActionProgressIcon;
     }) {
       container.setVisible(args.visible);
       if (!args.visible) {
@@ -77,8 +79,10 @@ export const createActionProgressHud = (scene: Phaser.Scene) => {
   };
 };
 
-function getActionIconKey(action: FarmActionMode | undefined) {
+function getActionIconKey(action: ActionProgressIcon | undefined) {
   switch (action) {
+    case "sleep":
+      return UI_ICONS.sleep.key;
     case "till":
       return UI_ICONS.dig.key;
     case "water":

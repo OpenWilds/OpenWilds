@@ -32,6 +32,7 @@ export const createPantheonHud = (
     onContextActionChange: options.onContextActionChange,
     onItemSelect: options.onItemSelect,
     onQuantityChange: options.onQuantityChange,
+    onSleep: options.onSleep,
   });
   const actionProgress = createActionProgressHud(scene);
   const tradePanel = createTradePanel(scene, {

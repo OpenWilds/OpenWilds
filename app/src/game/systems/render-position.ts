@@ -7,10 +7,23 @@ import {
 } from "../components/index";
 import type { World } from "../ecs";
 import { gridToWorld } from "../grid-math";
-import type { GridPoint } from "../types";
+import type { ActiveActionState, GridPoint } from "../types";
 
 const idleFrameMs = 420;
 const movingFrameMs = 180;
+const playerSheetColumns = 4;
+const actionPoseColumn = 3;
+
+const getPlayerSpecialPoseFrame = (
+  facing: PlayerSpriteComponent["facing"],
+  pose: "action" | "sleep"
+): number => {
+  // Matches Pantheon's special pose mapping on the fixed 4x4 sheet.
+  const row =
+    pose === "sleep" ? 3 : facing === "down" ? 0 : facing === "side" ? 1 : 2;
+
+  return row * playerSheetColumns + actionPoseColumn;
+};
 
 export const renderPositionSystem = (world: World) => {
   for (const entity of world.view(
@@ -65,7 +78,8 @@ export const renderPositionSystem = (world: World) => {
 export const playerSpriteAnimationSystem = (world: World, deltaMs: number) => {
   for (const entity of world.view(
     Components.playerSprite,
-    Components.actionTransition
+    Components.actionTransition,
+    Components.activeAction
   )) {
     const spriteState = world.requireComponent<PlayerSpriteComponent>(
       entity,
@@ -80,6 +94,23 @@ export const playerSpriteAnimationSystem = (world: World, deltaMs: number) => {
       transition.active &&
       (Math.abs(transition.toPosition.x - transition.fromPosition.x) > 0.01 ||
         Math.abs(transition.toPosition.y - transition.fromPosition.y) > 0.01);
+    const now = Date.now() / 1000;
+    const activeAction = world.requireComponent<ActiveActionState>(
+      entity,
+      Components.activeAction
+    );
+    const position = world.getComponent<GridPoint>(entity, Components.position);
+    const sleeping = activeAction.kind === "sleep" && activeAction.endsAt > now;
+    const actionPose =
+      spriteState.actionPose &&
+      spriteState.actionPose.endsAt > now &&
+      position
+        ? spriteState.actionPose
+        : null;
+
+    if (spriteState.actionPose && !actionPose) {
+      spriteState.actionPose = undefined;
+    }
 
     if (moving) {
       const dx = transition.toPosition.x - transition.fromPosition.x;
@@ -92,10 +123,22 @@ export const playerSpriteAnimationSystem = (world: World, deltaMs: number) => {
         spriteState.facing = dy < 0 ? "up" : "down";
         spriteState.flipX = false;
       }
+    } else if (actionPose && position) {
+      const dx = actionPose.target.x - position.x;
+      const dy = actionPose.target.y - position.y;
+
+      if (Math.abs(dx) > Math.abs(dy)) {
+        spriteState.facing = "side";
+        spriteState.flipX = dx < 0;
+      } else if (Math.abs(dy) > 0) {
+        spriteState.facing = dy < 0 ? "up" : "down";
+        spriteState.flipX = false;
+      }
     }
 
     spriteState.elapsedMs += deltaMs;
 
+    const acting = (Boolean(actionPose) || sleeping) && !moving;
     const frameMs = moving ? movingFrameMs : idleFrameMs;
     const step = Math.floor(spriteState.elapsedMs / frameMs);
     const column =
@@ -110,9 +153,16 @@ export const playerSpriteAnimationSystem = (world: World, deltaMs: number) => {
         : step % 2;
 
     spriteState.sprite
-      .setFrame(row * 4 + column)
+      .setFrame(
+        acting
+          ? getPlayerSpecialPoseFrame(
+              spriteState.facing,
+              sleeping ? "sleep" : "action"
+            )
+          : row * 4 + column
+      )
       .setFlipX(spriteState.flipX)
       .setDisplaySize(spriteState.displaySize, spriteState.displaySize);
-    spriteState.shadow.setAlpha(moving ? 0.3 : 0.22);
+    spriteState.shadow.setAlpha(moving || acting ? 0.3 : 0.22);
   }
 };

@@ -122,6 +122,7 @@ export type ActionTransitionState = {
 
 export type GameClient = {
   movePlayer: (point: GridPoint) => Promise<PlayerActionState | null>;
+  sleepPlayer?: () => Promise<PlayerActionState | null>;
   performFarmAction?: (
     mode: FarmActionMode,
     point: GridPoint,

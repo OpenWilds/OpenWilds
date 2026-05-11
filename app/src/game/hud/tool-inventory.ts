@@ -33,7 +33,26 @@ type ActionSlot = {
   width: number;
   height: number;
   container: Phaser.GameObjects.Container;
-  selected: Phaser.GameObjects.Image;
+  background: Phaser.GameObjects.Image;
+  selection: Phaser.GameObjects.Rectangle;
+  icon: Phaser.GameObjects.Image;
+  label: Phaser.GameObjects.Text;
+  shortcut: Phaser.GameObjects.Text;
+  hovered: boolean;
+  pressed: boolean;
+};
+
+type SleepSlot = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  container: Phaser.GameObjects.Container;
+  background: Phaser.GameObjects.Image;
+  icon: Phaser.GameObjects.Image;
+  label: Phaser.GameObjects.Text;
+  hovered: boolean;
+  pressed: boolean;
 };
 
 const panelWidth = 770;
@@ -45,6 +64,12 @@ const panelPadding = 18;
 const dividerWidth = 16;
 const dividerHeight = 98;
 const inventorySlotCount = 4;
+const actionButtonWidth = 138;
+const actionButtonHeight = 50;
+const actionButtonGap = 12;
+const sleepButtonWidth = 132;
+const actionHoverScale = 1.035;
+const actionPressScale = 0.965;
 
 function makeShortcutText(
   scene: Phaser.Scene,
@@ -72,6 +97,57 @@ function makeShortcutText(
     .setScrollFactor(0);
 }
 
+function makeActionLabel(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  text: string
+) {
+  return scene.add
+    .text(x, y, text, {
+      color: "#f6efd7",
+      fixedWidth: 68,
+      fontFamily: "Trebuchet MS, Chalkboard SE, Comic Sans MS, sans-serif",
+      fontSize: "18px",
+      fontStyle: "bold",
+      shadow: {
+        color: "#3d2011",
+        blur: 2,
+        fill: true,
+        offsetX: 0,
+        offsetY: 1,
+      },
+    })
+    .setOrigin(0, 0.5)
+    .setScrollFactor(0);
+}
+
+function makeActionShortcut(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  text: string
+) {
+  return scene.add
+    .text(x, y, text, {
+      align: "center",
+      color: "#f6efd7",
+      fixedWidth: 20,
+      fontFamily: "Georgia, Times New Roman, serif",
+      fontSize: "18px",
+      fontStyle: "700",
+      shadow: {
+        color: "#3d2011",
+        blur: 1,
+        fill: true,
+        offsetX: 0,
+        offsetY: 1,
+      },
+    })
+    .setOrigin(0.5)
+    .setScrollFactor(0);
+}
+
 export const createToolInventory = (
   scene: Phaser.Scene,
   args: {
@@ -79,6 +155,7 @@ export const createToolInventory = (
     onContextActionChange: (action: ContextAction | null) => void;
     onItemSelect: (itemId: number | null) => void;
     onQuantityChange: (quantity: number) => void;
+    onSleep: () => void;
   }
 ) => {
   const width = panelWidth;
@@ -110,10 +187,11 @@ export const createToolInventory = (
     "#dce8e2",
     250
   );
-  const actionRoot = scene.add.container(360, panelHeight + 2);
+  const actionRoot = scene.add.container(panelPadding, panelHeight + 2);
   const toolSlots: ToolSlot[] = [];
   const inventorySlots: InventorySlot[] = [];
   const actionSlots: ActionSlot[] = [];
+  let sleepSlot: SleepSlot | null = null;
   let selectedTool: EquippedTool = "hand";
   let selectedContextAction: ContextAction | null = null;
   let availableActions: ContextAction[] = [];
@@ -130,6 +208,15 @@ export const createToolInventory = (
     tools.forEach((tool, index) => {
       keyboard.on(`keydown-${index + 1}`, () => selectTool(tool.tool));
     });
+    for (let index = 0; index < 6; index += 1) {
+      keyboard.on(`keydown-${index + 4}`, () => {
+        const action = availableActions[index];
+
+        if (action) {
+          selectContextAction(action);
+        }
+      });
+    }
   }
 
   return {
@@ -183,6 +270,8 @@ export const createToolInventory = (
         slot.hovered = false;
         syncInventorySlotHover(slot);
       });
+      actionSlots.forEach((slot) => setActionHovered(slot, false));
+      setSleepHovered(false);
     },
     handlePointerDown(x: number, y: number) {
       const toolSlot = toolSlots.find((slot) => isPointInSlot(x, y, slot));
@@ -210,9 +299,29 @@ export const createToolInventory = (
       );
 
       if (actionSlot) {
-        selectedContextAction = actionSlot.action;
-        args.onContextActionChange(actionSlot.action);
-        syncActionSelection();
+        actionSlot.pressed = true;
+        tweenActionSlot(actionSlot, actionPressScale, 70, "Quad.easeOut");
+        selectContextAction(actionSlot.action);
+        scene.time.delayedCall(90, () => {
+          actionSlot.pressed = false;
+          tweenActionSlot(
+            actionSlot,
+            actionSlot.hovered ? actionHoverScale : 1,
+            130,
+            "Back.easeOut"
+          );
+        });
+        return true;
+      }
+
+      if (
+        sleepSlot &&
+        x >= sleepSlot.x &&
+        x <= sleepSlot.x + sleepSlot.width &&
+        y >= sleepSlot.y &&
+        y <= sleepSlot.y + sleepSlot.height
+      ) {
+        pressSleepSlot();
         return true;
       }
 
@@ -349,6 +458,8 @@ export const createToolInventory = (
       inventorySlots.push(inventorySlot);
       cursorX += slotSize + slotGap;
     }
+
+    sleepSlot = createSleepSlot();
   }
 
   function createSlot(x: number, y: number) {
@@ -426,32 +537,63 @@ export const createToolInventory = (
 
     availableActions.forEach((action, index) => {
       const definition = contextActions[action];
-      const x = index * 110;
+      const x = index * (actionButtonWidth + actionButtonGap);
       const slot = scene.add.container(x, 0);
       const bg = scene.add
-        .image(49, 22, UI_ASSETS.actionButtonBg.key)
-        .setDisplaySize(98, 44)
+        .image(actionButtonWidth / 2, actionButtonHeight / 2, UI_ASSETS.actionButtonBg.key)
+        .setDisplaySize(actionButtonWidth, actionButtonHeight)
         .setOrigin(0.5)
+        .setAlpha(0.98)
         .setInteractive({ useHandCursor: true });
-      const selected = scene.add
-        .image(49, 22, UI_ASSETS.inventorySlotSelected.key)
-        .setDisplaySize(98, 44)
+      const selection = scene.add
+        .rectangle(
+          actionButtonWidth / 2,
+          actionButtonHeight / 2,
+          actionButtonWidth - 10,
+          actionButtonHeight - 10,
+          0xf1d38b,
+          0.14
+        )
+        .setStrokeStyle(2, 0xf1d38b, 0.9)
         .setOrigin(0.5)
-        .setAlpha(0.72)
         .setVisible(action === selectedContextAction);
       const icon = scene.add
-        .image(23, 22, UI_ICONS[definition.icon].key)
-        .setDisplaySize(26, 26);
-      const label = makeHudText(
+        .image(28, actionButtonHeight / 2, UI_ICONS[definition.icon].key)
+        .setDisplaySize(30, 30)
+        .setOrigin(0.5);
+      const label = makeActionLabel(
         scene,
-        42,
-        15,
-        definition.label,
-        10,
-        "#f6efd7",
-        50
+        52,
+        actionButtonHeight / 2 - 1,
+        definition.label
       );
+      const shortcut = makeActionShortcut(
+        scene,
+        actionButtonWidth - 18,
+        actionButtonHeight / 2 - 1,
+        `${index + 4}`
+      );
+      const actionSlot: ActionSlot = {
+        action,
+        x: actionRoot.x + x,
+        y: actionRoot.y,
+        width: actionButtonWidth,
+        height: actionButtonHeight,
+        container: slot,
+        background: bg,
+        selection,
+        icon,
+        label,
+        shortcut,
+        hovered: false,
+        pressed: false,
+      };
 
+      bg.on("pointerover", () => setActionHovered(actionSlot, true));
+      bg.on("pointerout", () => {
+        actionSlot.pressed = false;
+        setActionHovered(actionSlot, false);
+      });
       bg.on(
         "pointerdown",
         (
@@ -461,23 +603,99 @@ export const createToolInventory = (
           event: Phaser.Types.Input.EventData
         ) => {
           event.stopPropagation();
-          selectedContextAction = action;
-          args.onContextActionChange(action);
-          syncActionSelection();
+          actionSlot.pressed = true;
+          tweenActionSlot(actionSlot, actionPressScale, 70, "Quad.easeOut");
+          selectContextAction(action);
         }
       );
-      slot.add([bg, selected, icon, label]);
-      actionRoot.add(slot);
-      actionSlots.push({
-        action,
-        x: actionRoot.x + x,
-        y: actionRoot.y,
-        width: 98,
-        height: 44,
-        container: slot,
-        selected,
+      bg.on("pointerup", () => {
+        actionSlot.pressed = false;
+        tweenActionSlot(
+          actionSlot,
+          actionSlot.hovered ? actionHoverScale : 1,
+          160,
+          "Back.easeOut"
+        );
       });
+      bg.on("pointerupoutside", () => {
+        actionSlot.pressed = false;
+        setActionHovered(actionSlot, false);
+      });
+      slot.add([bg, selection, icon, label, shortcut]);
+      actionRoot.add(slot);
+      actionSlots.push(actionSlot);
     });
+    syncActionSelection();
+  }
+
+  function createSleepSlot(): SleepSlot {
+    const x = width - panelPadding - sleepButtonWidth;
+    const y = actionRoot.y;
+    const slot = scene.add.container(x, y);
+    const bg = scene.add
+      .image(
+        sleepButtonWidth / 2,
+        actionButtonHeight / 2,
+        UI_ASSETS.actionButtonBg.key
+      )
+      .setDisplaySize(sleepButtonWidth, actionButtonHeight)
+      .setOrigin(0.5)
+      .setAlpha(0.98)
+      .setInteractive({ useHandCursor: true });
+    const icon = scene.add
+      .image(28, actionButtonHeight / 2, UI_ICONS.sleep.key)
+      .setDisplaySize(30, 30)
+      .setOrigin(0.5);
+    const label = makeActionLabel(
+      scene,
+      52,
+      actionButtonHeight / 2 - 1,
+      "Sleep"
+    );
+    const sleep: SleepSlot = {
+      x,
+      y,
+      width: sleepButtonWidth,
+      height: actionButtonHeight,
+      container: slot,
+      background: bg,
+      icon,
+      label,
+      hovered: false,
+      pressed: false,
+    };
+
+    bg.on("pointerover", () => setSleepHovered(true));
+    bg.on("pointerout", () => {
+      sleep.pressed = false;
+      setSleepHovered(false);
+    });
+    bg.on(
+      "pointerdown",
+      (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData
+      ) => {
+        event.stopPropagation();
+        pressSleepSlot();
+      }
+    );
+    bg.on("pointerup", () => {
+      sleep.pressed = false;
+      tweenSleepSlot(sleep.hovered ? actionHoverScale : 1, 160, "Back.easeOut");
+    });
+    bg.on("pointerupoutside", () => {
+      sleep.pressed = false;
+      setSleepHovered(false);
+    });
+
+    slot.add([bg, icon, label]);
+    container.add(slot);
+    syncSleepSlot();
+
+    return sleep;
   }
 
   function updateManualHover(x: number, y: number) {
@@ -485,6 +703,29 @@ export const createToolInventory = (
       slot.hovered = isPointInSlot(x, y, slot);
       syncInventorySlotHover(slot);
     });
+    actionSlots.forEach((slot) => {
+      const hovered =
+        x >= slot.x &&
+        x <= slot.x + slot.width &&
+        y >= slot.y &&
+        y <= slot.y + slot.height;
+
+      if (slot.hovered !== hovered) {
+        setActionHovered(slot, hovered);
+      }
+    });
+
+    if (sleepSlot) {
+      const hovered =
+        x >= sleepSlot.x &&
+        x <= sleepSlot.x + sleepSlot.width &&
+        y >= sleepSlot.y &&
+        y <= sleepSlot.y + sleepSlot.height;
+
+      if (sleepSlot.hovered !== hovered) {
+        setSleepHovered(hovered);
+      }
+    }
   }
 
   function containsLocalPoint(x: number, y: number) {
@@ -540,8 +781,102 @@ export const createToolInventory = (
   }
 
   function syncActionSelection() {
-    actionSlots.forEach((slot) =>
-      slot.selected.setVisible(slot.action === selectedContextAction)
-    );
+    actionSlots.forEach((slot) => {
+      const selected = slot.action === selectedContextAction;
+      const highlighted = selected || slot.hovered;
+
+      slot.selection.setVisible(selected);
+      slot.background.setTint(
+        selected ? 0xfff1b8 : slot.hovered ? 0xfff7d3 : 0xffffff
+      );
+      slot.label.setColor(selected ? "#3d2011" : "#f6efd7");
+      slot.shortcut.setColor(highlighted ? "#3d2011" : "#f6efd7");
+      slot.icon.setAlpha(highlighted ? 1 : 0.9);
+    });
+  }
+
+  function selectContextAction(action: ContextAction) {
+    selectedContextAction = action;
+    args.onContextActionChange(action);
+    syncActionSelection();
+  }
+
+  function setActionHovered(slot: ActionSlot, hovered: boolean) {
+    slot.hovered = hovered;
+    if (!slot.pressed) {
+      tweenActionSlot(slot, hovered ? actionHoverScale : 1, 90, "Cubic.easeOut");
+    }
+    syncActionSelection();
+  }
+
+  function tweenActionSlot(
+    slot: ActionSlot,
+    scale: number,
+    duration: number,
+    ease: string
+  ) {
+    scene.tweens.add({
+      duration,
+      ease,
+      scale,
+      targets: slot.container,
+    });
+  }
+
+  function pressSleepSlot() {
+    if (!sleepSlot) {
+      return;
+    }
+
+    sleepSlot.pressed = true;
+    tweenSleepSlot(actionPressScale, 70, "Quad.easeOut");
+    args.onSleep();
+    scene.time.delayedCall(90, () => {
+      if (!sleepSlot) {
+        return;
+      }
+
+      sleepSlot.pressed = false;
+      tweenSleepSlot(
+        sleepSlot.hovered ? actionHoverScale : 1,
+        130,
+        "Back.easeOut"
+      );
+    });
+  }
+
+  function setSleepHovered(hovered: boolean) {
+    if (!sleepSlot) {
+      return;
+    }
+
+    sleepSlot.hovered = hovered;
+    if (!sleepSlot.pressed) {
+      tweenSleepSlot(hovered ? actionHoverScale : 1, 90, "Cubic.easeOut");
+    }
+    syncSleepSlot();
+  }
+
+  function syncSleepSlot() {
+    if (!sleepSlot) {
+      return;
+    }
+
+    sleepSlot.background.setTint(sleepSlot.hovered ? 0xfff7d3 : 0xffffff);
+    sleepSlot.label.setColor(sleepSlot.hovered ? "#3d2011" : "#f6efd7");
+    sleepSlot.icon.setAlpha(sleepSlot.hovered ? 1 : 0.9);
+  }
+
+  function tweenSleepSlot(scale: number, duration: number, ease: string) {
+    if (!sleepSlot) {
+      return;
+    }
+
+    scene.tweens.add({
+      duration,
+      ease,
+      scale,
+      targets: sleepSlot.container,
+    });
   }
 };

@@ -18,6 +18,7 @@ export type PantheonHudOptions = {
   onContextActionChange: (action: ContextAction | null) => void;
   onItemSelect: (itemId: number | null) => void;
   onQuantityChange: (quantity: number) => void;
+  onSleep: () => void;
   trade: TradeCallbacks;
 };
 

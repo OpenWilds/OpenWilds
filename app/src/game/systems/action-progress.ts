@@ -3,7 +3,7 @@ import type { World } from "../ecs";
 import type { ActionProgressElements } from "../resources";
 import type { ActiveActionState } from "../types";
 import type { createPantheonHud } from "../pantheon-hud";
-import type { FarmActionMode } from "../types";
+import type { ActionProgressIcon } from "../hud/action-progress";
 
 const formatActionLabel = (action: ActiveActionState) => {
   if (action.kind === "move") {
@@ -17,7 +17,13 @@ const formatActionLabel = (action: ActiveActionState) => {
   return "Acting";
 };
 
-const getFarmActionMode = (action: ActiveActionState): FarmActionMode => {
+const getActionProgressIcon = (
+  action: ActiveActionState
+): ActionProgressIcon => {
+  if (action.kind === "sleep") {
+    return "sleep";
+  }
+
   switch (action.action) {
     case 3:
       return "till";
@@ -85,7 +91,7 @@ export const actionProgressSystem = (world: World) => {
       label: formatActionLabel(action),
       remainingSeconds: remaining,
       progress,
-      action: getFarmActionMode(action),
+      action: getActionProgressIcon(action),
     });
 
   if (elements.label) {
