@@ -111,6 +111,7 @@ export type VisiblePlayerState = {
   isActive: boolean;
   appearance: PlayerAppearance;
   state: PlayerActionState;
+  inventory: InventoryState;
 };
 
 export type ActionTransitionState = {

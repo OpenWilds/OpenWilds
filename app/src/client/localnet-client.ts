@@ -237,6 +237,7 @@ export class LocalnetClient {
   private lastTradeOffers: TradeOfferState[] = [];
   private lastTradeOffersKey: string | null = null;
   private lastRelevantTradeOffersKey: string | null = null;
+  private lastVisiblePlayers: VisiblePlayerState[] = [];
   private lastFarmTileStates: FarmTileState[] = [];
   private lastFarmTileStateKey: string | null = null;
   private lastTileItemStates: TileItemState[] = [];
@@ -876,6 +877,8 @@ export class LocalnetClient {
 
   subscribeVisiblePlayers(listener: (players: VisiblePlayerState[]) => void) {
     this.visiblePlayerListeners.add(listener);
+    listener(this.lastVisiblePlayers);
+    void this.syncVisiblePlayers();
 
     return () => {
       this.visiblePlayerListeners.delete(listener);
@@ -1285,6 +1288,7 @@ export class LocalnetClient {
       this.lastTradeOffers = [];
       this.lastTradeOffersKey = null;
       this.lastRelevantTradeOffersKey = null;
+      this.lastVisiblePlayers = [];
       this.lastFarmTileStates = [];
       this.lastFarmTileStateKey = null;
       this.lastTileItemStates = [];
@@ -1374,6 +1378,7 @@ export class LocalnetClient {
       this.lastTradeOffers = [];
       this.lastTradeOffersKey = null;
       this.lastRelevantTradeOffersKey = null;
+      this.lastVisiblePlayers = [];
       this.lastFarmTileStates = [];
       this.lastFarmTileStateKey = null;
       this.lastTileItemStates = [];
@@ -1491,7 +1496,10 @@ export class LocalnetClient {
           playerNft.mint.toBase58(),
           player.tileFarms
         );
-        const state = await this.fetchPlayerActionStateOnEr(player);
+        const [state, inventory] = await Promise.all([
+          this.fetchPlayerActionStateOnEr(player),
+          this.fetchInventoryState(player),
+        ]);
         visiblePlayers.push({
           mint: playerNft.mint.toBase58(),
           owner: playerNft.owner.toBase58(),
@@ -1502,6 +1510,7 @@ export class LocalnetClient {
           isActive,
           appearance: this.getPlayerAppearance(playerNft),
           state,
+          inventory,
         });
       } catch (error) {
         this.knownPlayerTileFarms.delete(playerNft.mint.toBase58());
@@ -2549,15 +2558,7 @@ export class LocalnetClient {
       return;
     }
 
-    const account =
-      (await this.erConnection.getAccountInfo(player.inventoryComponentPda)) ??
-      (await this.baseConnection.getAccountInfo(player.inventoryComponentPda));
-
-    if (!account || account.data.byteLength < 72) {
-      return;
-    }
-
-    const inventory = this.decodeInventory(account.data);
+    const inventory = await this.fetchInventoryState(player);
     const stateKey = this.getInventoryStateKey(inventory);
 
     if (stateKey === this.lastInventoryStateKey) {
@@ -2565,6 +2566,18 @@ export class LocalnetClient {
     }
 
     this.emitInventory(inventory);
+  }
+
+  private async fetchInventoryState(player: PlayerState) {
+    const account =
+      (await this.erConnection.getAccountInfo(player.inventoryComponentPda)) ??
+      (await this.baseConnection.getAccountInfo(player.inventoryComponentPda));
+
+    if (!account || account.data.byteLength < 72) {
+      return { slots: [] };
+    }
+
+    return this.decodeInventory(account.data);
   }
 
   private async syncFarmTiles(player: PlayerState) {
@@ -2950,6 +2963,8 @@ export class LocalnetClient {
   }
 
   private emitVisiblePlayers(players: VisiblePlayerState[]) {
+    this.lastVisiblePlayers = players;
+
     for (const listener of this.visiblePlayerListeners) {
       listener(players);
     }
@@ -3444,6 +3459,7 @@ export class LocalnetClient {
       this.lastTradeOffers = [];
       this.lastTradeOffersKey = null;
       this.lastRelevantTradeOffersKey = null;
+      this.lastVisiblePlayers = [];
       this.lastFarmTileStates = [];
       this.lastFarmTileStateKey = null;
       this.lastTileItemStates = [];
@@ -3473,6 +3489,7 @@ export class LocalnetClient {
     this.lastTradeOffers = [];
     this.lastTradeOffersKey = null;
     this.lastRelevantTradeOffersKey = null;
+    this.lastVisiblePlayers = [];
     this.lastFarmTileStateKey = null;
     this.lastFarmTileStates = [];
     this.lastTileItemStateKey = null;

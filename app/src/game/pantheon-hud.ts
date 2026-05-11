@@ -37,8 +37,6 @@ export const createPantheonHud = (
   const actionProgress = createActionProgressHud(scene);
   const tradePanel = createTradePanel(scene, {
     callbacks: options.trade,
-    getSelectedItemId: () => toolInventory.getSelectedItemId(),
-    getSelectedQuantity: () => toolInventory.getSelectedQuantity(),
   });
   let localPosition: GridPoint | null = null;
   let visiblePlayers: VisiblePlayerState[] = [];
@@ -129,9 +127,17 @@ export const createPantheonHud = (
         );
       }
 
-      const tradePoint = getContainerLocalPoint(pointer, tradePanel.container);
+      if (tradePanel.container.visible) {
+        const tradePoint = getTradePanelLocalPoint(pointer);
 
-      return Boolean(tradePoint && tradePanelContainsPoint(tradePoint));
+        if (!tradePoint) {
+          return true;
+        }
+
+        return tradePanel.handlePointerDown(tradePoint.x, tradePoint.y);
+      }
+
+      return false;
     },
     blocksPointer(pointer: Phaser.Input.Pointer) {
       const inventoryPoint = getContainerLocalPoint(
@@ -146,9 +152,13 @@ export const createPantheonHud = (
         return true;
       }
 
-      const tradePoint = getContainerLocalPoint(pointer, tradePanel.container);
+      const tradePoint = getTradePanelLocalPoint(pointer);
 
-      return Boolean(tradePoint && tradePanelContainsPoint(tradePoint));
+      return Boolean(
+        tradePanel.container.visible &&
+          tradePoint &&
+          tradePanel.containsPoint(tradePoint.x, tradePoint.y)
+      );
     },
     updateEnergy(energy: EnergyState, deltaMs: number) {
       energyPanel.update(energy, deltaMs);
@@ -213,7 +223,22 @@ export const createPantheonHud = (
         8 -
         actionProgress.visualTop
     );
-    tradePanel.container.setPosition(18, height - tradePanel.height - 22);
+    const tradeScale = Math.min(
+      1,
+      Math.max(
+        0.58,
+        Math.min(
+          (width - hudEdgeInset * 2) / tradePanel.width,
+          (height - hudEdgeInset * 2) / tradePanel.height
+        )
+      )
+    );
+    tradePanel.container
+      .setScale(tradeScale)
+      .setPosition(
+        Math.max(12, (width - tradePanel.width * tradeScale) / 2),
+        Math.max(12, (height - tradePanel.height * tradeScale) / 2)
+      );
   }
 
   function syncRootToScreenSpace() {
@@ -240,18 +265,43 @@ export const createPantheonHud = (
     const rootLocalY = (pointer.y - root.y) / scaleY;
 
     return {
-      x: rootLocalX - container.x,
-      y: rootLocalY - container.y,
+      x: (rootLocalX - container.x) / (container.scaleX || 1),
+      y: (rootLocalY - container.y) / (container.scaleY || 1),
     };
   }
 
-  function tradePanelContainsPoint(point: { x: number; y: number }) {
-    return (
-      point.x >= 0 &&
-      point.x <= tradePanel.width &&
-      point.y >= 0 &&
-      point.y <= tradePanel.height
-    );
+  function getTradePanelLocalPoint(pointer: Phaser.Input.Pointer) {
+    const rootPoint = getContainerLocalPoint(pointer, tradePanel.container);
+
+    if (tradePanel.containsPoint(rootPoint.x, rootPoint.y)) {
+      return rootPoint;
+    }
+
+    const directPoint = {
+      x:
+        (pointer.x - tradePanel.container.x) /
+        (tradePanel.container.scaleX || 1),
+      y:
+        (pointer.y - tradePanel.container.y) /
+        (tradePanel.container.scaleY || 1),
+    };
+
+    if (tradePanel.containsPoint(directPoint.x, directPoint.y)) {
+      return directPoint;
+    }
+
+    const worldPoint = {
+      x:
+        ((pointer.worldX ?? pointer.x) - tradePanel.container.x) /
+        (tradePanel.container.scaleX || 1),
+      y:
+        ((pointer.worldY ?? pointer.y) - tradePanel.container.y) /
+        (tradePanel.container.scaleY || 1),
+    };
+
+    return tradePanel.containsPoint(worldPoint.x, worldPoint.y)
+      ? worldPoint
+      : null;
   }
 
   function toggleSettingsPanel() {
