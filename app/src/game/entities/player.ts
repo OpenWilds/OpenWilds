@@ -17,6 +17,7 @@ import type {
 } from "../types";
 
 const playerDisplaySize = 174;
+const playerVisualFootOffsetY = 28;
 
 export const createPlayerEntity = (
   world: World,
@@ -31,11 +32,11 @@ export const createPlayerEntity = (
   const entity = world.createEntity();
   const container = scene.add.container(0, 0);
   const shadow = scene.add
-    .ellipse(0, 37.2, 99.4, 31.1, 0x071018, 0.24)
+    .ellipse(0, 0, 99.4, 31.1, 0x071018, 0.24)
     .setStrokeStyle(2, appearance.stroke, isLocalPlayer ? 0.5 : 0.25);
   const sprite = scene.add
-    .sprite(0, 0, objectSpriteKey("player"), 0)
-    .setOrigin(0.5, 0.72)
+    .sprite(0, playerVisualFootOffsetY, objectSpriteKey("player"), 0)
+    .setOrigin(0.5, 1)
     .setDisplaySize(playerDisplaySize, playerDisplaySize);
 
   if (!isLocalPlayer) {
@@ -78,7 +79,7 @@ export const createPlayerEntity = (
   world.addComponent<RectComponent>(entity, Components.rectangle, {
     object: container,
     offsetX: CELL_SIZE / 2,
-    offsetY: CELL_SIZE * 0.82,
+    offsetY: CELL_SIZE / 2,
   });
   world.addComponent<PlayerSpriteComponent>(entity, Components.playerSprite, {
     sprite,
