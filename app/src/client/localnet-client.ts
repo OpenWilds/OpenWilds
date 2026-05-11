@@ -1,4 +1,5 @@
 import {
+  type AccountInfo,
   Connection,
   Keypair,
   LAMPORTS_PER_SOL,
@@ -159,8 +160,10 @@ const DEFAULT_MAX_ENERGY = 100;
 const GRID_SIZE = 20;
 const WALK_ENERGY_PER_TILE = 1;
 const PLAYER_STATE_SYNC_INTERVAL_MS = 500;
+const VISIBLE_PLAYER_SYNC_INTERVAL_MS = 500;
 const TRADE_OFFER_SYNC_INTERVAL_MS = 1500;
 type ProgramName = keyof typeof PROGRAMS;
+type AccountSource = "er" | "base";
 type WorldCatalogEntry = {
   farmTypeId?: number;
   terrainTypeId?: number;
@@ -226,9 +229,18 @@ export class LocalnetClient {
   private activePlayerNft: PlayerNft | null = null;
   private actionUnlockTimer: number | null = null;
   private playerStateSyncTimer: number | null = null;
+  private visiblePlayerSyncTimer: number | null = null;
   private tradeOfferSyncTimer: number | null = null;
   private playerStateSyncing = false;
+  private playerStateSyncQueued = false;
+  private visiblePlayerSyncing = false;
   private tradeOfferSyncing = false;
+  private liveRefreshTriggersBound = false;
+  private playerAccountSubscriptionKey: string | null = null;
+  private readonly playerAccountSubscriptions: Array<{
+    connection: Connection;
+    id: number;
+  }> = [];
   private lastPlayerActionState: PlayerActionState | null = null;
   private lastPlayerActionStateKey: string | null = null;
   private lastInventoryState: InventoryState | null = null;
@@ -259,6 +271,7 @@ export class LocalnetClient {
     await this.refreshPlayerNftHud();
     this.restoreAgentModeInput();
     await this.refreshAgentModeStatus();
+    this.bindLiveRefreshTriggers();
     this.startPlayerStateSync();
     await this.syncPlayerState({ announceLoaded: true });
     await this.ensureSelectedPlayerReady();
@@ -878,6 +891,7 @@ export class LocalnetClient {
   subscribeVisiblePlayers(listener: (players: VisiblePlayerState[]) => void) {
     this.visiblePlayerListeners.add(listener);
     listener(this.lastVisiblePlayers);
+    this.startVisiblePlayerSync();
     void this.syncVisiblePlayers();
 
     return () => {
@@ -1413,20 +1427,108 @@ export class LocalnetClient {
       window.clearInterval(this.playerStateSyncTimer);
     }
 
+    console.info("[Open Wilds] player state sync started");
     this.playerStateSyncTimer = window.setInterval(() => {
       void this.syncPlayerState();
     }, PLAYER_STATE_SYNC_INTERVAL_MS);
   }
 
+  private startVisiblePlayerSync() {
+    if (this.visiblePlayerSyncTimer !== null) {
+      return;
+    }
+
+    console.info("[Open Wilds] visible player sync started");
+    this.visiblePlayerSyncTimer = window.setInterval(() => {
+      void this.syncVisiblePlayers();
+    }, VISIBLE_PLAYER_SYNC_INTERVAL_MS);
+  }
+
+  private bindLiveRefreshTriggers() {
+    if (this.liveRefreshTriggersBound) {
+      return;
+    }
+
+    const refresh = () => {
+      void this.syncPlayerState();
+      void this.syncTradeOffers();
+      void this.syncGoldBalance();
+      void this.refreshAgentModeStatus();
+    };
+
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        refresh();
+      }
+    });
+    this.liveRefreshTriggersBound = true;
+  }
+
+  private bindPlayerAccountSubscriptions(player: PlayerState) {
+    const accounts = [
+      player.positionComponentPda,
+      player.energyComponentPda,
+      player.activeActionComponentPda,
+    ];
+    const key = accounts.map((account) => account.toBase58()).join(":");
+
+    if (key === this.playerAccountSubscriptionKey) {
+      return;
+    }
+
+    for (const subscription of this.playerAccountSubscriptions.splice(0)) {
+      void subscription.connection.removeAccountChangeListener(subscription.id);
+    }
+
+    this.playerAccountSubscriptionKey = key;
+    const refresh = () => {
+      void this.syncPlayerState();
+    };
+
+    for (const account of accounts) {
+      try {
+        this.playerAccountSubscriptions.push(
+          {
+            connection: this.erConnection,
+            id: this.erConnection.onAccountChange(
+              account,
+              refresh,
+              "confirmed"
+            ),
+          },
+          {
+            connection: this.baseConnection,
+            id: this.baseConnection.onAccountChange(
+              account,
+              refresh,
+              "confirmed"
+            ),
+          }
+        );
+      } catch (error) {
+        console.debug(
+          `[Open Wilds] account subscription skipped for ${shortAddress(
+            account
+          )}`,
+          error
+        );
+      }
+    }
+  }
+
   private async syncPlayerState(options: { announceLoaded?: boolean } = {}) {
     if (this.playerStateSyncing) {
+      this.playerStateSyncQueued = true;
       return;
     }
 
     this.playerStateSyncing = true;
+    this.playerStateSyncQueued = false;
 
     try {
       if (!this.activePlayerNft) {
+        console.info("[Open Wilds] player state sync skipped: no active player");
         return;
       }
 
@@ -1435,13 +1537,22 @@ export class LocalnetClient {
         (await this.createPlayerWorldProvisioner().loadExistingPlayer());
 
       if (!player) {
+        console.info("[Open Wilds] player state sync skipped: no player state");
         return;
       }
 
       this.playerState = player;
+      this.bindPlayerAccountSubscriptions(player);
       await this.installAnchorProvider(this.erConnection);
       const actionState = await this.fetchPlayerActionStateOnEr(player);
       const stateKey = this.getPlayerActionStateKey(actionState);
+      console.info(
+        "[Open Wilds] player state sync read",
+        `${actionState.position.x},${actionState.position.y}`,
+        `${actionState.energy.current}/${actionState.energy.max}`,
+        actionState.activeAction,
+        stateKey === this.lastPlayerActionStateKey ? "unchanged" : "changed"
+      );
 
       if (stateKey === this.lastPlayerActionStateKey) {
         await this.syncInventory(player);
@@ -1473,64 +1584,90 @@ export class LocalnetClient {
       );
     } finally {
       this.playerStateSyncing = false;
+      if (this.playerStateSyncQueued) {
+        window.setTimeout(() => {
+          void this.syncPlayerState();
+        }, 0);
+      }
     }
   }
 
   private async syncVisiblePlayers() {
-    if (this.visiblePlayerListeners.size === 0) {
+    if (
+      this.visiblePlayerListeners.size === 0 ||
+      this.visiblePlayerSyncing
+    ) {
       return;
     }
 
+    this.visiblePlayerSyncing = true;
     const visiblePlayers: VisiblePlayerState[] = [];
 
-    for (const playerNft of await listPlayerNftsInCollection(
-      this.baseConnection
-    )) {
-      const isActive =
-        this.activePlayerNft?.mint.equals(playerNft.mint) ?? false;
+    try {
+      for (const playerNft of await listPlayerNftsInCollection(
+        this.baseConnection
+      )) {
+        const isActive =
+          this.activePlayerNft?.mint.equals(playerNft.mint) ?? false;
 
-      try {
-        const player =
-          isActive && this.playerState?.playerMint.equals(playerNft.mint)
-            ? this.playerState
-            : await this.createPlayerWorldProvisionerFor(
-                playerNft
-              ).loadExistingPlayer();
+        try {
+          const player =
+            isActive && this.playerState?.playerMint.equals(playerNft.mint)
+              ? this.playerState
+              : await this.createPlayerWorldProvisionerFor(
+                  playerNft
+                ).loadExistingPlayer();
 
-        if (!player) {
-          continue;
+          if (!player) {
+            console.info(
+              `[Open Wilds] visible player skipped: no world state for ${shortAddress(
+                playerNft.mint
+              )}`
+            );
+            continue;
+          }
+
+          this.knownPlayerTileFarms.set(
+            playerNft.mint.toBase58(),
+            player.tileFarms
+          );
+          const [state, inventory] = await Promise.all([
+            this.fetchPlayerActionStateOnEr(player),
+            this.fetchInventoryState(player),
+          ]);
+          console.info(
+            "[Open Wilds] visible player sync read",
+            shortAddress(playerNft.mint),
+            isActive ? "active" : "remote",
+            `${state.position.x},${state.position.y}`,
+            `${state.energy.current}/${state.energy.max}`,
+            state.activeAction
+          );
+          visiblePlayers.push({
+            mint: playerNft.mint.toBase58(),
+            owner: playerNft.owner.toBase58(),
+            entity: player.entityPda.toBase58(),
+            playerOwnerComponent: player.playerOwnerComponentPda.toBase58(),
+            positionComponent: player.positionComponentPda.toBase58(),
+            inventoryComponent: player.inventoryComponentPda.toBase58(),
+            isActive,
+            appearance: this.getPlayerAppearance(playerNft),
+            state,
+            inventory,
+          });
+        } catch (error) {
+          this.knownPlayerTileFarms.delete(playerNft.mint.toBase58());
+          console.warn(
+            `[Open Wilds] skipped visible player ${shortAddress(playerNft.mint)}`,
+            error
+          );
         }
-
-        this.knownPlayerTileFarms.set(
-          playerNft.mint.toBase58(),
-          player.tileFarms
-        );
-        const [state, inventory] = await Promise.all([
-          this.fetchPlayerActionStateOnEr(player),
-          this.fetchInventoryState(player),
-        ]);
-        visiblePlayers.push({
-          mint: playerNft.mint.toBase58(),
-          owner: playerNft.owner.toBase58(),
-          entity: player.entityPda.toBase58(),
-          playerOwnerComponent: player.playerOwnerComponentPda.toBase58(),
-          positionComponent: player.positionComponentPda.toBase58(),
-          inventoryComponent: player.inventoryComponentPda.toBase58(),
-          isActive,
-          appearance: this.getPlayerAppearance(playerNft),
-          state,
-          inventory,
-        });
-      } catch (error) {
-        this.knownPlayerTileFarms.delete(playerNft.mint.toBase58());
-        console.debug(
-          `[Open Wilds] skipped visible player ${shortAddress(playerNft.mint)}`,
-          error
-        );
       }
-    }
 
-    this.emitVisiblePlayers(visiblePlayers);
+      this.emitVisiblePlayers(visiblePlayers);
+    } finally {
+      this.visiblePlayerSyncing = false;
+    }
   }
 
   private async syncGoldBalance() {
@@ -2524,42 +2661,104 @@ export class LocalnetClient {
   private async fetchPlayerActionStateOnEr(
     player: PlayerState
   ): Promise<PlayerActionState> {
-    const [erPositionAccount, erEnergyAccount, erActiveActionAccount] =
-      await this.erConnection.getMultipleAccountsInfo([
+    const [
+      [erPositionAccount, erEnergyAccount, erActiveActionAccount],
+      [basePositionAccount, baseEnergyAccount, baseActiveActionAccount],
+    ] = await Promise.all([
+      this.erConnection.getMultipleAccountsInfo([
         player.positionComponentPda,
         player.energyComponentPda,
         player.activeActionComponentPda,
-      ]);
-    const [basePositionAccount, baseEnergyAccount, baseActiveActionAccount] =
-      !erPositionAccount || !erEnergyAccount || !erActiveActionAccount
-        ? await this.baseConnection.getMultipleAccountsInfo([
-            player.positionComponentPda,
-            player.energyComponentPda,
-            player.activeActionComponentPda,
-          ])
-        : [null, null, null];
-    const positionAccount = erPositionAccount ?? basePositionAccount;
-    const energyAccount = erEnergyAccount ?? baseEnergyAccount;
-    const activeActionAccount =
-      erActiveActionAccount ?? baseActiveActionAccount;
+      ]),
+      this.baseConnection.getMultipleAccountsInfo([
+        player.positionComponentPda,
+        player.energyComponentPda,
+        player.activeActionComponentPda,
+      ]),
+    ]);
+    const erState = this.decodePlayerActionStateFromAccounts(
+      [erPositionAccount, erEnergyAccount, erActiveActionAccount],
+      "er"
+    );
+    const baseState = this.decodePlayerActionStateFromAccounts(
+      [basePositionAccount, baseEnergyAccount, baseActiveActionAccount],
+      "base"
+    );
+    const selectedState = this.selectFreshestPlayerActionState(
+      erState,
+      baseState
+    );
 
-    if (!positionAccount || positionAccount.data.byteLength < 24) {
-      throw new Error("Position account is missing.");
+    if (!selectedState) {
+      throw new Error("Player action state accounts are missing.");
     }
 
-    if (!energyAccount || energyAccount.data.byteLength < 24) {
-      throw new Error("Energy account is missing.");
-    }
+    return selectedState.state;
+  }
 
-    if (!activeActionAccount || activeActionAccount.data.byteLength < 25) {
-      throw new Error("Active Action account is missing.");
+  private decodePlayerActionStateFromAccounts(
+    [positionAccount, energyAccount, activeActionAccount]: [
+      AccountInfo<Buffer> | null,
+      AccountInfo<Buffer> | null,
+      AccountInfo<Buffer> | null
+    ],
+    source: AccountSource
+  ) {
+    if (
+      !positionAccount ||
+      positionAccount.data.byteLength < 24 ||
+      !energyAccount ||
+      energyAccount.data.byteLength < 24 ||
+      !activeActionAccount ||
+      activeActionAccount.data.byteLength < 25
+    ) {
+      return null;
     }
 
     return {
-      position: this.decodePosition(positionAccount.data),
-      energy: this.decodeEnergy(energyAccount.data),
-      activeAction: this.decodeActiveAction(activeActionAccount.data),
+      source,
+      state: {
+        position: this.decodePosition(positionAccount.data),
+        energy: this.decodeEnergy(energyAccount.data),
+        activeAction: this.decodeActiveAction(activeActionAccount.data),
+      },
     };
+  }
+
+  private selectFreshestPlayerActionState(
+    erState: { source: AccountSource; state: PlayerActionState } | null,
+    baseState: { source: AccountSource; state: PlayerActionState } | null
+  ) {
+    if (!erState) {
+      return baseState;
+    }
+
+    if (!baseState) {
+      return erState;
+    }
+
+    const erRevision = this.getPlayerActionRevision(erState.state);
+    const baseRevision = this.getPlayerActionRevision(baseState.state);
+
+    if (baseRevision > erRevision) {
+      console.info(
+        "[Open Wilds] selected base player state over stale ER",
+        this.describePlayerActionState(baseState.state),
+        "er:",
+        this.describePlayerActionState(erState.state)
+      );
+      return baseState;
+    }
+
+    return erState;
+  }
+
+  private getPlayerActionRevision(state: PlayerActionState) {
+    return Math.max(state.activeAction.startedAt, state.activeAction.endsAt);
+  }
+
+  private describePlayerActionState(state: PlayerActionState) {
+    return `${state.position.x},${state.position.y} ${state.energy.current}/${state.energy.max} ${state.activeAction.kind}:${state.activeAction.startedAt}-${state.activeAction.endsAt}`;
   }
 
   private async syncInventory(player: PlayerState) {
@@ -2952,6 +3151,12 @@ export class LocalnetClient {
   private emitPlayerActionState(state: PlayerActionState) {
     this.lastPlayerActionState = state;
     this.lastPlayerActionStateKey = this.getPlayerActionStateKey(state);
+    console.info(
+      "[Open Wilds] player state changed",
+      `${state.position.x},${state.position.y}`,
+      `${state.energy.current}/${state.energy.max}`,
+      state.activeAction
+    );
 
     for (const listener of this.playerActionStateListeners) {
       listener(state);

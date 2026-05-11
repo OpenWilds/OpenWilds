@@ -107,9 +107,12 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
     private unsubscribeTradeOffers: (() => void) | null = null;
     private unsubscribeFarmTiles: (() => void) | null = null;
     private unsubscribeTileItems: (() => void) | null = null;
+    private unsubscribeHudSnapshot: (() => void) | null = null;
     private pantheonHud: ReturnType<typeof createPantheonHud> | null = null;
     private activePlayerEntity: number | null = null;
     private hasAppliedInitialPlayerState = false;
+    private agentModeActive = false;
+    private agentControlledLocalStateKey: string | null = null;
     private farmActionPending = false;
     private farmTileRenderElapsedMs = 0;
     private actionContextPoint: GridPoint | null = null;
@@ -204,6 +207,12 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
         Components.rectangle
       ).object;
       this.cameras.main.startFollow(playerObject, true, 0.12, 0.12);
+      this.unsubscribeHudSnapshot = hud.subscribe((snapshot) => {
+        this.agentModeActive = snapshot.agentActive;
+        if (!snapshot.agentActive) {
+          this.agentControlledLocalStateKey = null;
+        }
+      });
       this.bindPlayerActionState(player);
 
       for (const system of gridSystems) {
@@ -229,6 +238,8 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
         this.unsubscribeFarmTiles = null;
         this.unsubscribeTileItems?.();
         this.unsubscribeTileItems = null;
+        this.unsubscribeHudSnapshot?.();
+        this.unsubscribeHudSnapshot = null;
       });
     }
 
@@ -532,6 +543,16 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
     }
 
     private applyPlayerActionState(player: number, state: PlayerActionState) {
+      if (this.agentModeActive && this.hasAppliedInitialPlayerState) {
+        return;
+      }
+
+      console.info(
+        "[Open Wilds] applying player state",
+        `${state.position.x},${state.position.y}`,
+        `${state.energy.current}/${state.energy.max}`,
+        state.activeAction
+      );
       beginActionTransition(this.world, player, state, {
         snap: !this.hasAppliedInitialPlayerState,
       });
@@ -562,6 +583,9 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
 
       for (const player of players) {
         if (player.isActive) {
+          if (this.agentModeActive) {
+            this.applyAgentControlledLocalPlayer(player);
+          }
           continue;
         }
 
@@ -569,6 +593,9 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
         const entity =
           this.remotePlayerEntities.get(player.mint) ??
           this.createRemotePlayerEntity(player);
+        this.world
+          .getComponent<RectComponent>(entity, Components.rectangle)
+          ?.object.setVisible(true);
         const stateKey = this.getPlayerStateKey(player.state);
 
         this.applyPlayerAppearance(entity, player.appearance);
@@ -576,6 +603,13 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
           continue;
         }
 
+        console.info(
+          "[Open Wilds] applying remote player state",
+          player.mint,
+          `${player.state.position.x},${player.state.position.y}`,
+          `${player.state.energy.current}/${player.state.energy.max}`,
+          player.state.activeAction
+        );
         this.remotePlayerStateKeys.set(player.mint, stateKey);
         beginActionTransition(this.world, entity, player.state);
       }
@@ -591,6 +625,75 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
         this.remotePlayerEntities.delete(mint);
         this.remotePlayerStateKeys.delete(mint);
       }
+    }
+
+    private applyAgentControlledLocalPlayer(player: VisiblePlayerState) {
+      if (this.activePlayerEntity === null) {
+        return;
+      }
+
+      const stateKey = this.getPlayerStateKey(player.state);
+
+      this.applyPlayerAppearance(this.activePlayerEntity, player.appearance);
+      if (this.agentControlledLocalStateKey === stateKey) {
+        return;
+      }
+
+      console.info(
+        "[Open Wilds] applying agent-controlled local player state",
+        player.mint,
+        `${player.state.position.x},${player.state.position.y}`,
+        `${player.state.energy.current}/${player.state.energy.max}`,
+        player.state.activeAction
+      );
+      this.agentControlledLocalStateKey = stateKey;
+      beginActionTransition(
+        this.world,
+        this.activePlayerEntity,
+        this.getAgentControlledTransitionState(player.state),
+        {
+          snap: !this.hasAppliedInitialPlayerState,
+        }
+      );
+      this.hasAppliedInitialPlayerState = true;
+      this.pantheonHud?.updateLocalPosition(player.state.position);
+    }
+
+    private getAgentControlledTransitionState(state: PlayerActionState) {
+      if (this.activePlayerEntity === null) {
+        return state;
+      }
+
+      const now = Date.now() / 1000;
+
+      if (
+        state.activeAction.endsAt > now &&
+        state.activeAction.kind !== "idle"
+      ) {
+        return state;
+      }
+
+      const position = this.world.requireComponent<GridPoint>(
+        this.activePlayerEntity,
+        Components.position
+      );
+      const distance =
+        Math.abs(position.x - state.position.x) +
+        Math.abs(position.y - state.position.y);
+
+      if (distance === 0) {
+        return state;
+      }
+
+      return {
+        ...state,
+        activeAction: {
+          action: state.activeAction.action || 1,
+          kind: "move" as const,
+          startedAt: now,
+          endsAt: now + Math.min(1.5, Math.max(0.35, distance * 0.5)),
+        },
+      };
     }
 
     private applyInventory(inventory: InventoryState) {
