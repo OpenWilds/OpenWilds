@@ -44,6 +44,7 @@ export const createPantheonHud = (
   let visiblePlayers: VisiblePlayerState[] = [];
 
   root.add([
+    topRight.shade,
     energyPanel.container,
     statusPanel.container,
     minimap.container,
@@ -173,6 +174,10 @@ export const createPantheonHud = (
         height - minimap.height - hudEdgeInset + minimap.visualPaddingBottom
       )
     );
+    topRight.resize({
+      screenWidth: width,
+      screenHeight: height,
+    });
     toolInventory.container.setPosition(
       Math.max(12, (width - toolInventory.width) / 2),
       height - toolInventory.height - 16
