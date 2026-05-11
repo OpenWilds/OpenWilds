@@ -2,6 +2,8 @@ import Phaser from "phaser";
 import { UI_ASSETS, UI_ICONS } from "../assets/ui-assets";
 import type { HudController, HudSnapshot } from "../client/hud";
 import { getFarmItemLabel } from "./farm";
+import { GRID_SIZE } from "./grid-constants";
+import { getTerrainType, getTileTerrainDefinition } from "./terrain";
 import type {
   FarmActionMode,
   GoldBalanceState,
@@ -76,6 +78,7 @@ export const createPantheonHud = (
   const toolPanel = scene.add.container(0, 0).setScrollFactor(0);
   const actionPanel = scene.add.container(0, 0).setScrollFactor(0);
   const tradePanel = scene.add.container(18, 0).setScrollFactor(0);
+  const minimapPanel = scene.add.container(18, 176).setScrollFactor(0);
   const systemPanel = scene.add.container(0, 18).setScrollFactor(0);
 
   root.add([
@@ -84,6 +87,7 @@ export const createPantheonHud = (
     toolPanel,
     actionPanel,
     tradePanel,
+    minimapPanel,
     systemPanel,
   ]);
 
@@ -137,6 +141,40 @@ export const createPantheonHud = (
     networkText,
     programText,
     playerText,
+  ]);
+
+  const minimapMapX = 42;
+  const minimapMapY = 41;
+  const minimapMapSize = 168;
+  const minimapCellSize = minimapMapSize / GRID_SIZE;
+  const minimapTerrain = scene.add.graphics();
+  const minimapOverlay = scene.add.graphics();
+  const playerMarker = scene.add
+    .image(0, 0, UI_ASSETS.playerMarker.key)
+    .setDisplaySize(23, 31)
+    .setVisible(false);
+  const minimapFrame = scene.add
+    .image(0, 0, UI_ASSETS.minimapFrame.key)
+    .setOrigin(0)
+    .setDisplaySize(252, 248);
+  const minimapLabel = makeText(
+    scene,
+    64,
+    214,
+    "20x20 Wilds",
+    12,
+    "#f6efd7",
+    124
+  );
+
+  minimapLabel.setAlign("center");
+  drawStaticMinimap();
+  minimapPanel.add([
+    minimapTerrain,
+    minimapOverlay,
+    playerMarker,
+    minimapFrame,
+    minimapLabel,
   ]);
 
   const timeArtwork = scene.add
@@ -357,10 +395,12 @@ export const createPantheonHud = (
     updateLocalPosition(position: GridPoint) {
       localPosition = position;
       renderTrade();
+      renderMinimap();
     },
     updateVisiblePlayers(nextPlayers: VisiblePlayerState[]) {
       players = nextPlayers;
       renderTrade();
+      renderMinimap();
     },
     updateTradeOffers(nextOffers: TradeOfferState[]) {
       offers = nextOffers;
@@ -377,6 +417,10 @@ export const createPantheonHud = (
     },
     setPlayerStatus(text: string) {
       playerText.setText(text);
+    },
+    setPlayerPosition(position: GridPoint) {
+      localPosition = position;
+      renderMinimap();
     },
     setActionProgress(args: {
       visible: boolean;
@@ -502,6 +546,68 @@ export const createPantheonHud = (
     tradeText.setText(
       nearby.length ? "Select a nearby trader" : "No nearby trader"
     );
+  }
+
+  function drawStaticMinimap() {
+    minimapTerrain.clear();
+    minimapTerrain.fillStyle(0x0d151a, 0.96);
+    minimapTerrain.fillRoundedRect(
+      minimapMapX - 5,
+      minimapMapY - 5,
+      minimapMapSize + 10,
+      minimapMapSize + 10,
+      8
+    );
+
+    for (let y = 0; y < GRID_SIZE; y += 1) {
+      for (let x = 0; x < GRID_SIZE; x += 1) {
+        const terrain = getTerrainType(
+          getTileTerrainDefinition({ x, y }).terrainTypeId
+        );
+
+        minimapTerrain.fillStyle(
+          getMinimapTerrainColor(terrain.visualAssetId),
+          0.98
+        );
+        minimapTerrain.fillRect(
+          minimapMapX + x * minimapCellSize,
+          minimapMapY + y * minimapCellSize,
+          Math.ceil(minimapCellSize),
+          Math.ceil(minimapCellSize)
+        );
+      }
+    }
+  }
+
+  function renderMinimap() {
+    minimapOverlay.clear();
+
+    players
+      .filter((player) => !player.isActive)
+      .forEach((player) => {
+        const point = gridToMinimap(player.state.position);
+
+        minimapOverlay.fillStyle(0x7bd7ff, 0.92);
+        minimapOverlay.fillCircle(point.x, point.y, 3.5);
+        minimapOverlay.lineStyle(1, 0x10191f, 0.85);
+        minimapOverlay.strokeCircle(point.x, point.y, 3.5);
+      });
+
+    if (!localPosition) {
+      playerMarker.setVisible(false);
+      return;
+    }
+
+    const point = gridToMinimap(localPosition);
+
+    playerMarker.setVisible(true).setPosition(point.x, point.y - 8);
+  }
+
+  function gridToMinimap(position: GridPoint) {
+    return {
+      x: minimapMapX + (position.x + 0.5) * minimapCellSize,
+      y: minimapMapY + (position.y + 0.5) * minimapCellSize,
+    };
   }
 
   function layout() {
@@ -641,4 +747,22 @@ function compactItemLabel(itemId: number) {
     .replace(" Seed", "")
     .replace("Wild ", "")
     .replace(" Fiber", "");
+}
+
+function getMinimapTerrainColor(assetId: string) {
+  switch (assetId) {
+    case "uniswap-water":
+      return 0x51b9d6;
+    case "uniswap-stone":
+      return 0xaeb4bd;
+    case "uniswap-forest-floor":
+      return 0x487a4d;
+    case "uniswap-dirt":
+      return 0xb98757;
+    case "uniswap-grass":
+      return 0x8fbe67;
+    case "uniswap-plain":
+    default:
+      return 0xc8df86;
+  }
 }

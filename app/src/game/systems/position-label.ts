@@ -38,4 +38,7 @@ export const positionLabelSystem = (world: World) => {
   world
     .getResource<ReturnType<typeof createPantheonHud>>("pantheonHud")
     ?.setPlayerStatus(text);
+  world
+    .getResource<ReturnType<typeof createPantheonHud>>("pantheonHud")
+    ?.setPlayerPosition(position);
 };

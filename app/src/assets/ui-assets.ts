@@ -18,6 +18,8 @@ import journalActiveUrl from "./ui/journal_active.png?url";
 import journalInactiveUrl from "./ui/Journal_inactive.png?url";
 import mapActiveUrl from "./ui/map_active.png?url";
 import mapInactiveUrl from "./ui/map_inactive.png?url";
+import minimapFrameUrl from "./ui/minimap_frame_default.png?url";
+import playerMarkerUrl from "./ui/player_marker.png?url";
 import settingsActiveUrl from "./ui/settings_active.png?url";
 import settingsInactiveUrl from "./ui/settings_inactive.png?url";
 import toastCardPanelUrl from "./ui/toastcard_panel.png?url";
@@ -71,6 +73,8 @@ export const UI_ASSETS = {
   journalInactive: { key: "ui-journal-inactive", url: journalInactiveUrl },
   mapActive: { key: "ui-map-active", url: mapActiveUrl },
   mapInactive: { key: "ui-map-inactive", url: mapInactiveUrl },
+  minimapFrame: { key: "ui-minimap-frame", url: minimapFrameUrl },
+  playerMarker: { key: "ui-player-marker", url: playerMarkerUrl },
   settingsActive: { key: "ui-settings-active", url: settingsActiveUrl },
   settingsInactive: { key: "ui-settings-inactive", url: settingsInactiveUrl },
   toastCardPanel: { key: "ui-toast-card-panel", url: toastCardPanelUrl },
