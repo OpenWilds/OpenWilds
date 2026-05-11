@@ -99,6 +99,8 @@ export const createPantheonHud = (
   };
 
   function layout() {
+    syncRootToScreenSpace();
+
     const width = scene.scale.width;
     const height = scene.scale.height;
 
@@ -115,6 +117,20 @@ export const createPantheonHud = (
       height - toolInventory.height - actionProgress.height - 28
     );
     tradePanel.container.setPosition(18, height - tradePanel.height - 22);
+  }
+
+  function syncRootToScreenSpace() {
+    const camera = scene.cameras.main;
+    const zoom = camera.zoom || 1;
+    const inverseZoom = 1 / zoom;
+    const centerX = camera.width / 2;
+    const centerY = camera.height / 2;
+
+    root.setScale(inverseZoom);
+    root.setPosition(
+      centerX - centerX * inverseZoom,
+      centerY - centerY * inverseZoom
+    );
   }
 
   function toggleSettingsPanel() {
