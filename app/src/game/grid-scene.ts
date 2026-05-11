@@ -5,7 +5,6 @@ import {
   objectSpriteKey,
   terrainAtlasKey,
   terrainCenterVariantsKey,
-  type ObjectSpriteAssetId,
 } from "../assets/visual-assets";
 import { loadUiAssets } from "../assets/ui-assets";
 import type { HudController } from "../client/hud";
@@ -20,7 +19,6 @@ import { World } from "./ecs";
 import {
   FARM_TYPES,
   FarmFeature,
-  FarmItemId,
   FarmKind,
   getFarmItemLabel,
   type FarmTypeDefinition,
@@ -38,6 +36,11 @@ import {
 } from "./grid-constants";
 import { pointerToGrid } from "./grid-math";
 import { createPantheonHud } from "./pantheon-hud";
+import {
+  getItemSpriteFrame,
+  getObjectSpriteFrameTexture,
+  type ObjectSpriteFrameTexture,
+} from "./object-sprite-frames";
 import { installGridResources, type GridInput } from "./resources";
 import { beginActionTransition } from "./systems/action-transition";
 import { gridSystems } from "./systems/index";
@@ -46,7 +49,6 @@ import {
   type PlayerSpriteComponent,
   type RectComponent,
 } from "./components/index";
-import { ItemId } from "./terrain";
 import {
   getTerrainType,
   getTileTerrainDefinition,
@@ -89,14 +91,10 @@ type TileItemRender = {
   sprite: Phaser.GameObjects.Image;
 };
 
-type SpriteFrameRef = {
-  assetId: ObjectSpriteAssetId;
-  frame: number;
-};
-
 const PLANT_INFO_WIDTH = 190;
 const PLANT_INFO_HEIGHT = 112;
 const PLANT_INFO_DEPTH = 20;
+const ACTION_CONTEXT_RETARGET_DELAY_MS = 280;
 
 export const createGridScene = (client: GameClient, hud: HudController) =>
   class GridScene extends Phaser.Scene {
@@ -113,6 +111,10 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
     private activePlayerEntity: number | null = null;
     private farmActionPending = false;
     private farmTileRenderElapsedMs = 0;
+    private actionContextPoint: GridPoint | null = null;
+    private pendingActionContextPoint: GridPoint | null = null;
+    private pendingActionContextTimer: Phaser.Time.TimerEvent | null = null;
+    private pointerOverHud = false;
     private selectedFarmTileKey: string | null = null;
     private selectedTileItemKey: string | null = null;
     private plantInfoPanel: PlantInfoPanel | null = null;
@@ -242,24 +244,25 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
     private bindPointerInput() {
       this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
         if (this.pantheonHud?.blocksPointer(pointer)) {
+          this.pointerOverHud = true;
+          this.cancelPendingActionContext();
           this.pantheonHud.handlePointerMove(pointer);
-          this.gridInput.hoverPoint = null;
-          this.hidePlantInfo();
-          this.refreshAvailableActions(null);
           return;
         }
 
+        this.pointerOverHud = false;
         this.pantheonHud?.handlePointerMove(pointer);
         const point = pointerToGrid(pointer);
         this.gridInput.hoverPoint = point;
         this.inspectHoveredFarmTile(point);
-        this.refreshAvailableActions(point);
+        this.updateActionContext(point);
       });
 
       this.input.on("pointerout", () => {
+        this.pointerOverHud = false;
         this.gridInput.hoverPoint = null;
         this.hidePlantInfo();
-        this.refreshAvailableActions(null);
+        this.clearActionContext();
       });
 
       this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
@@ -290,9 +293,89 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
     }
 
     private refreshAvailableActions(
-      point = this.gridInput.hoverPoint
+      point = this.actionContextPoint ?? this.gridInput.hoverPoint
     ) {
       this.pantheonHud?.setAvailableActions(this.getAvailableActions(point));
+    }
+
+    private updateActionContext(point: GridPoint | null) {
+      if (!point) {
+        this.scheduleActionContextUpdate(null);
+        return;
+      }
+
+      const actions = this.getAvailableActions(point);
+
+      if (actions.length === 0) {
+        this.scheduleActionContextUpdate(null);
+        return;
+      }
+
+      if (
+        this.actionContextPoint === null ||
+        this.isSameGridPoint(this.actionContextPoint, point)
+      ) {
+        this.commitActionContext(point);
+        return;
+      }
+
+      this.scheduleActionContextUpdate(point);
+    }
+
+    private commitActionContext(point: GridPoint) {
+      this.cancelPendingActionContext();
+      this.actionContextPoint = { ...point };
+      this.refreshAvailableActions(point);
+    }
+
+    private clearActionContext() {
+      this.cancelPendingActionContext();
+      this.actionContextPoint = null;
+      this.refreshAvailableActions(null);
+    }
+
+    private scheduleActionContextUpdate(point: GridPoint | null) {
+      if (
+        this.pendingActionContextTimer &&
+        ((point === null && this.pendingActionContextPoint === null) ||
+          (point !== null &&
+            this.pendingActionContextPoint !== null &&
+            this.isSameGridPoint(point, this.pendingActionContextPoint)))
+      ) {
+        return;
+      }
+
+      this.cancelPendingActionContext();
+      this.pendingActionContextPoint = point ? { ...point } : null;
+      this.pendingActionContextTimer = this.time.delayedCall(
+        ACTION_CONTEXT_RETARGET_DELAY_MS,
+        () => {
+          const pendingPoint = this.pendingActionContextPoint;
+
+          this.pendingActionContextPoint = null;
+          this.pendingActionContextTimer = null;
+
+          if (this.pointerOverHud) {
+            return;
+          }
+
+          if (pendingPoint) {
+            this.commitActionContext(pendingPoint);
+          } else {
+            this.clearActionContext();
+          }
+        }
+      );
+    }
+
+    private cancelPendingActionContext() {
+      this.pendingActionContextTimer?.remove(false);
+      this.pendingActionContextTimer = null;
+      this.pendingActionContextPoint = null;
+    }
+
+    private isSameGridPoint(a: GridPoint, b: GridPoint) {
+      return a.x === b.x && a.y === b.y;
     }
 
     private resolveContextAction(point: GridPoint): ContextAction | null {
@@ -678,6 +761,11 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
       const centerX = left + CELL_SIZE / 2;
       const centerY = top + CELL_SIZE / 2;
       const frame = getItemSpriteFrame(item.itemId);
+      const frameTexture = getObjectSpriteFrameTexture(
+        this,
+        frame.assetId,
+        frame.frame
+      );
       let render = this.tileItemGraphics.get(key);
 
       if (!render) {
@@ -685,12 +773,7 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
           .container(0, 0)
           .setDepth(70 + (top + CELL_SIZE) * 0.01);
         const shadow = this.add.graphics();
-        const sprite = this.add.image(
-          centerX,
-          centerY,
-          objectSpriteKey(frame.assetId),
-          frame.frame
-        );
+        const sprite = this.add.image(centerX, centerY, frameTexture.key);
         const badge = this.add.graphics();
 
         container.add([shadow, sprite, badge]);
@@ -703,7 +786,7 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
       render.shadow.fillStyle(0x1a2a23, 0.2);
       render.shadow.fillEllipse(centerX, centerY + 28, 58, 18);
       render.sprite
-        .setTexture(objectSpriteKey(frame.assetId), frame.frame)
+        .setTexture(frameTexture.key)
         .setPosition(centerX, centerY + 8)
         .setOrigin(0.5, 0.62)
         .setDisplaySize(70, 70);
@@ -766,32 +849,30 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
       const growth = projectFarmGrowth(tile, farm, nowGameSeconds);
       const centerX = left + CELL_SIZE / 2;
       const centerY = top + CELL_SIZE / 2;
-      const spriteFrame = getFarmSpriteFrame(farm, growth, tile);
-      const textureKey = objectSpriteKey(farm.spriteAssetId);
+      const spriteStage = getFarmSpriteStage(farm, growth, tile);
+      const spriteFrame = getFarmSpriteFrame(farm, growth, tile, spriteStage);
+      const frameTexture = getObjectSpriteFrameTexture(
+        this,
+        farm.spriteAssetId,
+        spriteFrame
+      );
 
       if (!render.plant) {
-        render.plant = this.add.image(
-          centerX,
-          centerY,
-          textureKey,
-          spriteFrame
-        );
+        render.plant = this.add.image(centerX, centerY, frameTexture.key);
         render.container.add(render.plant);
       }
 
-      const displaySize =
-        farm.kind === FarmKind.tree
-          ? 82 + Math.min(1, growth.progress) * 134
-          : 54 + Math.min(1, growth.progress) * 36;
+      const displaySize = getFarmSpriteDisplaySize(
+        farm,
+        spriteStage,
+        frameTexture
+      );
 
       render.plant
-        .setTexture(textureKey, spriteFrame)
-        .setPosition(
-          centerX,
-          farm.kind === FarmKind.tree ? top + CELL_SIZE : centerY + 5
-        )
-        .setOrigin(0.5, farm.kind === FarmKind.tree ? 0.86 : 0.68)
-        .setDisplaySize(displaySize, displaySize);
+        .setTexture(frameTexture.key)
+        .setPosition(centerX, centerY)
+        .setOrigin(0.5, getFarmSpriteGroundOriginY(farm))
+        .setDisplaySize(displaySize.width, displaySize.height);
     }
 
     private redrawTilledSoilLayer() {
@@ -1123,67 +1204,114 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
   };
 
 type FarmGrowthProjection = ReturnType<typeof projectFarmGrowth>;
+type FarmSpriteStage = "seed" | "growing" | "grown" | "harvested";
 
-const getFarmSpriteFrame = (
+const cropSpriteGroundContactOriginY = 0.5;
+const treeSpriteGroundContactOriginY = 0.82;
+
+const clampUnit = (value: number) => Math.min(1, Math.max(0, value));
+
+const getFarmSpriteStage = (
   farm: FarmTypeDefinition,
   growth: FarmGrowthProjection,
   tile: FarmTileState
-) => {
-  const columns = OBJECT_SPRITE_ASSETS[farm.spriteAssetId].columns;
-  const stageColumn = Math.min(columns - 1, Math.max(0, growth.stageIndex));
-  const variantColumn = Math.abs(tile.x * 17 + tile.y * 31) % columns;
+): FarmSpriteStage => {
   const wasHarvested =
     tile.lastHarvestedAt > 0 && tile.lastHarvestedAt >= tile.plantedAt;
 
   if (growth.harvestReady) {
-    return 2 * columns + variantColumn;
+    return "grown";
   }
 
   if (wasHarvested && farm.regrowSeconds > 0) {
+    return "harvested";
+  }
+
+  return growth.stageIndex <= 0 ? "seed" : "growing";
+};
+
+const getFarmSpriteFrame = (
+  farm: FarmTypeDefinition,
+  growth: FarmGrowthProjection,
+  tile: FarmTileState,
+  stage = getFarmSpriteStage(farm, growth, tile)
+) => {
+  const columns = OBJECT_SPRITE_ASSETS[farm.spriteAssetId].columns;
+
+  if (stage === "grown") {
+    const grownVariantCount = Math.min(columns, 2);
+    const variantColumn =
+      Math.abs(tile.x * 17 + tile.y * 31) % grownVariantCount;
+    return 2 * columns + variantColumn;
+  }
+
+  if (stage === "harvested") {
     return 3 * columns;
   }
 
-  if (growth.stageIndex <= 0) {
-    return Math.min(columns - 1, Math.max(1, stageColumn + 1));
+  if (stage === "seed") {
+    const plantedColumns = Math.max(1, columns - 1);
+    const stageColumn = Math.min(
+      columns - 1,
+      1 + Math.floor(clampUnit(growth.stageProgress) * plantedColumns)
+    );
+    return stageColumn;
   }
 
-  return columns + stageColumn;
-};
-
-const getItemSpriteFrame = (itemId: number): SpriteFrameRef => {
-  const farm = FARM_TYPES.find(
-    (candidate) =>
-      candidate.seedItemId === itemId ||
-      candidate.harvestItemId === itemId ||
-      candidate.chopItemId === itemId
+  const growingStart = farm.stageThresholdSeconds[1] ?? 0;
+  const growingSpan = Math.max(1, farm.requiredGrowthSeconds - growingStart);
+  const growingProgress = clampUnit(
+    (growth.growthSeconds - growingStart) / growingSpan
+  );
+  const growingColumn = Math.min(
+    columns - 1,
+    Math.floor(growingProgress * columns)
   );
 
-  if (farm) {
-    const columns = OBJECT_SPRITE_ASSETS[farm.spriteAssetId].columns;
-    if (farm.seedItemId === itemId) {
-      return { assetId: farm.spriteAssetId, frame: 0 };
-    }
+  return columns + growingColumn;
+};
 
-    if (farm.harvestItemId === itemId) {
-      return { assetId: farm.spriteAssetId, frame: 3 * columns + 1 };
-    }
+const getFarmSpriteGroundOriginY = (farm: FarmTypeDefinition) =>
+  farm.kind === FarmKind.tree
+    ? treeSpriteGroundContactOriginY
+    : cropSpriteGroundContactOriginY;
 
-    return { assetId: farm.spriteAssetId, frame: 3 * columns + 2 };
+const getFarmSpriteDisplaySize = (
+  farm: FarmTypeDefinition,
+  stage: FarmSpriteStage,
+  frameTexture: ObjectSpriteFrameTexture
+) => {
+  const targetWidth =
+    farm.kind === FarmKind.tree && stage === "grown"
+      ? CELL_SIZE * 2
+      : CELL_SIZE;
+  const targetHeight =
+    farm.kind === FarmKind.tree && stage === "grown"
+      ? CELL_SIZE * 2
+      : CELL_SIZE;
+  const fitScale = Math.min(
+    targetWidth / frameTexture.width,
+    targetHeight / frameTexture.height
+  );
+
+  if (farm.kind !== FarmKind.tree) {
+    return {
+      width: frameTexture.width * fitScale,
+      height: frameTexture.height * fitScale,
+    };
   }
 
-  switch (itemId) {
-    case ItemId.berry:
-      return { assetId: "routeberry", frame: 13 };
-    case ItemId.grassFiber:
-      return { assetId: "city-clover", frame: 13 };
-    case ItemId.stone:
-      return { assetId: "stonepine", frame: 14 };
-    case ItemId.reed:
-      return { assetId: "routeberry", frame: 12 };
-    case FarmItemId.wood:
-    case FarmItemId.oakLog:
-      return { assetId: "stonepine", frame: 14 };
-    default:
-      return { assetId: "city-clover", frame: 0 };
-  }
+  const stageScale =
+    stage === "seed"
+      ? 0.45
+      : stage === "growing"
+      ? 0.72
+      : stage === "harvested"
+      ? 0.62
+      : 1;
+
+  return {
+    width: frameTexture.width * fitScale * stageScale,
+    height: frameTexture.height * fitScale * stageScale,
+  };
 };

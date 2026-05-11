@@ -1,5 +1,9 @@
 import Phaser from "phaser";
 import { UI_ASSETS, UI_ICONS } from "../../assets/ui-assets";
+import {
+  getItemSpriteFrame,
+  getObjectSpriteFrameTexture,
+} from "../object-sprite-frames";
 import type { ContextAction, EquippedTool, InventoryState } from "../types";
 import { compactItemLabel, makeHudText } from "./text";
 import { contextActions, tools } from "./types";
@@ -64,6 +68,8 @@ const panelPadding = 18;
 const dividerWidth = 16;
 const dividerHeight = 98;
 const inventorySlotCount = 4;
+const inventoryIconSize = 120;
+const inventoryIconHoverSize = 130;
 const actionButtonWidth = 138;
 const actionButtonHeight = 50;
 const actionButtonGap = 12;
@@ -397,7 +403,7 @@ export const createToolInventory = (
       const slot = createSlot(slotCenterX, centerY);
       const icon = scene.add
         .image(slotCenterX, centerY + 5, UI_ICONS.forage.key)
-        .setDisplaySize(42, 42)
+        .setDisplaySize(inventoryIconSize, inventoryIconSize)
         .setOrigin(0.5)
         .setVisible(false);
       const count = makeHudText(
@@ -522,6 +528,16 @@ export const createToolInventory = (
       slot.icon.setVisible(Boolean(item));
       slot.count.setText(item && item.quantity > 1 ? `${item.quantity}` : "");
       slot.label.setText(item ? compactItemLabel(item.itemId) : "");
+      if (item) {
+        const frame = getItemSpriteFrame(item.itemId);
+        const frameTexture = getObjectSpriteFrameTexture(
+          scene,
+          frame.assetId,
+          frame.frame
+        );
+
+        slot.icon.setTexture(frameTexture.key);
+      }
       if (!item) {
         slot.hovered = false;
       }
@@ -775,7 +791,10 @@ export const createToolInventory = (
 
     slot.hover.setVisible(active);
     slot.background.setTint(active ? 0xfff1b8 : 0xffffff);
-    slot.icon.setDisplaySize(active ? 46 : 42, active ? 46 : 42);
+    slot.icon.setDisplaySize(
+      active ? inventoryIconHoverSize : inventoryIconSize,
+      active ? inventoryIconHoverSize : inventoryIconSize
+    );
     slot.label.setColor(active ? "#fff4c7" : "#dce8e2");
     slot.count.setColor(active ? "#fff4c7" : "#f6efd7");
   }
