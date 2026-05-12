@@ -10,6 +10,7 @@ import {
 } from "@phosphor-icons/react";
 import React, { useEffect, useState } from "react";
 
+import openWildsLogoUrl from "../../assets/openwilds-logo.png?url";
 import type { TerrainVisualAsset } from "../../assets/visual-assets";
 import type { StudioSourceTexture } from "../convex/convex-studio";
 import { useStudioRoute } from "../hooks/use-studio-route";
@@ -76,9 +77,13 @@ export function StudioShell({
           className="studio-brand"
           data-tooltip="OpenWilds Studio"
         >
-          <div className="studio-brand__mark" aria-hidden="true">
-            OW
-          </div>
+          <img
+            alt=""
+            aria-hidden="true"
+            className="studio-brand__logo"
+            draggable={false}
+            src={openWildsLogoUrl}
+          />
         </div>
         <nav className="studio-nav" aria-label="Studio sections">
           {Object.values(ROUTES).map((item) => (
