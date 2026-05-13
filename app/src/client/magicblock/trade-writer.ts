@@ -2,11 +2,11 @@
  * MagicBlock trade command writer.
  *
  * Isolates trade create/accept/cancel/finalize commands from movement and tile
- * actions. Base-layer trade routing remains in the legacy executor until the
+ * actions. Base-layer trade routing remains in the native runtime until the
  * concrete transaction code is moved here.
  */
 import type { GameWriteAdapter } from "../../game/ports";
-import type { MagicBlockClientCore as LegacyMagicBlockClientCore } from "./legacy-client-core";
+import type { MagicBlockNativeClientCore } from "./native-client-core";
 
 type TradeWriteMethods = Pick<
   GameWriteAdapter,
@@ -18,18 +18,18 @@ type TradeWriteMethods = Pick<
 
 /** MagicBlock writer for trade commands. */
 export class MagicBlockTradeWriter implements TradeWriteMethods {
-  /** Receives the current legacy executor used by all MagicBlock trade writes. */
-  constructor(private readonly legacy: LegacyMagicBlockClientCore) {}
+  /** Receives the current native runtime used by all MagicBlock trade writes. */
+  constructor(private readonly runtime: MagicBlockNativeClientCore) {}
 
   createTradeOffer: GameWriteAdapter["createTradeOffer"] = (args) =>
-    this.legacy.createTradeOffer(args);
+    this.runtime.createTradeOffer(args);
 
   acceptTradeOffer: GameWriteAdapter["acceptTradeOffer"] = (offer) =>
-    this.legacy.acceptTradeOffer(offer);
+    this.runtime.acceptTradeOffer(offer);
 
   cancelTradeOffer: GameWriteAdapter["cancelTradeOffer"] = (offer) =>
-    this.legacy.cancelTradeOffer(offer);
+    this.runtime.cancelTradeOffer(offer);
 
   finalizeTradeOffer: GameWriteAdapter["finalizeTradeOffer"] = (offer) =>
-    this.legacy.finalizeTradeOffer(offer);
+    this.runtime.finalizeTradeOffer(offer);
 }

@@ -9,7 +9,7 @@ import type { GameSessionAdapter } from "../../game/ports";
 import type { GameStateStore } from "../../game/state-store";
 import type { SelectedPlayerSummary } from "../../game/types";
 import type { PlayerNft } from "../player-nft";
-import type { MagicBlockClientCore as LegacyMagicBlockClientCore } from "./legacy-client-core";
+import type { MagicBlockNativeClientCore } from "./native-client-core";
 import { MagicBlockProvisioningService } from "./provisioning-service";
 
 /** Implements the backend-neutral session port for MagicBlock. */
@@ -19,29 +19,30 @@ export class MagicBlockSessionService implements GameSessionAdapter {
   private readonly unsubscribeSelection: () => void;
   private readonly provisioning: MagicBlockProvisioningService;
 
-  /** Bridges legacy selection callbacks and composes provisioning behavior. */
+  /** Bridges runtime selection callbacks and composes provisioning behavior. */
   constructor(
-    private readonly legacy: LegacyMagicBlockClientCore,
+    private readonly runtime: MagicBlockNativeClientCore,
     private readonly state: GameStateStore
   ) {
-    this.provisioning = new MagicBlockProvisioningService(this.legacy);
+    this.provisioning = new MagicBlockProvisioningService(this.runtime);
     this.selectedPlayer$ = this.state.selectedPlayer$;
-    this.unsubscribeSelection = this.legacy.subscribePlayerSelection((player) =>
-      this.state.setSelectedPlayer(
-        player ? this.toSelectedPlayerSummary(player) : null
-      )
+    this.unsubscribeSelection = this.runtime.subscribePlayerSelection(
+      (player) =>
+        this.state.setSelectedPlayer(
+          player ? this.toSelectedPlayerSummary(player) : null
+        )
     );
   }
 
-  boot: GameSessionAdapter["boot"] = () => this.legacy.boot();
+  boot: GameSessionAdapter["boot"] = () => this.runtime.boot();
 
   hasSelectedPlayer: GameSessionAdapter["hasSelectedPlayer"] = () =>
-    this.legacy.hasSelectedPlayer();
+    this.runtime.hasSelectedPlayer();
 
   prepareSelectedPlayer: GameSessionAdapter["prepareSelectedPlayer"] = () =>
     this.provisioning.prepareSelectedPlayer();
 
-  /** Detaches the selected-player bridge from the legacy client. */
+  /** Detaches the selected-player bridge from the native runtime. */
   dispose() {
     this.unsubscribeSelection();
   }

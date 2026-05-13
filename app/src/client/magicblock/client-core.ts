@@ -1,7 +1,7 @@
 /**
  * MagicBlock compatibility facade.
  *
- * This file is intentionally small: it combines the legacy MagicBlock runtime
+ * This file is intentionally small: it combines the native MagicBlock runtime
  * with the new read/write/session service modules and exposes old callback
  * methods only for compatibility. New app code should use `readService`,
  * `writeService`, and `sessionService` through `createMagicBlockGameBackend`.
@@ -19,7 +19,9 @@ import type {
 } from "../../game/types";
 import { GameStateStore } from "../../game/state-store";
 import type { PlayerNft } from "../player-nft";
-import { MagicBlockClientCore as LegacyMagicBlockClientCore } from "./legacy-client-core";
+import { MagicBlockAgentSessionService } from "./agent-session-service";
+import { MagicBlockControlBinder } from "./control-binder";
+import { MagicBlockNativeClientCore } from "./native-client-core";
 import { MagicBlockReadService } from "./read-service";
 import { MagicBlockSessionService } from "./session-service";
 import { MagicBlockWriteService } from "./write-service";
@@ -33,15 +35,27 @@ export class MagicBlockClientCore {
   readonly writeService: MagicBlockWriteService;
   readonly sessionService: MagicBlockSessionService;
 
-  private readonly legacy: LegacyMagicBlockClientCore;
+  private readonly runtime: MagicBlockNativeClientCore;
+  private readonly agentSessionService: MagicBlockAgentSessionService;
+  private readonly controls: MagicBlockControlBinder;
 
   /** Creates the shared state store and focused MagicBlock service modules. */
   constructor(hud: HudController, state = new GameStateStore()) {
     this.state = state;
-    this.legacy = new LegacyMagicBlockClientCore(hud);
-    this.readService = new MagicBlockReadService(this.legacy, this.state);
-    this.writeService = new MagicBlockWriteService(this.legacy);
-    this.sessionService = new MagicBlockSessionService(this.legacy, this.state);
+    this.runtime = new MagicBlockNativeClientCore(hud);
+    this.agentSessionService = new MagicBlockAgentSessionService(this.runtime);
+    this.controls = new MagicBlockControlBinder(
+      hud,
+      this.runtime,
+      this.agentSessionService
+    );
+    this.readService = new MagicBlockReadService(this.runtime, this.state);
+    this.writeService = new MagicBlockWriteService(this.runtime);
+    this.sessionService = new MagicBlockSessionService(
+      this.runtime,
+      this.state
+    );
+    this.controls.bind();
   }
 
   /** Boots the MagicBlock session flow through the session service. */
@@ -49,11 +63,12 @@ export class MagicBlockClientCore {
     return this.sessionService.boot();
   }
 
-  /** Tears down read bridges, session subscriptions, legacy timers, and state. */
+  /** Tears down read bridges, session subscriptions, runtime timers, and state. */
   dispose() {
+    this.controls.dispose();
     this.readService.dispose();
     this.sessionService.dispose();
-    this.legacy.dispose();
+    this.runtime.dispose();
     this.state.dispose();
   }
 
@@ -98,48 +113,48 @@ export class MagicBlockClientCore {
   finalizeTradeOffer: MagicBlockWriteService["finalizeTradeOffer"] = (offer) =>
     this.writeService.finalizeTradeOffer(offer);
 
-  /** Compatibility callback wrapper for legacy callers. Prefer streams. */
+  /** Compatibility callback wrapper for runtime callers. Prefer streams. */
   subscribePlayerActionState(listener: (state: PlayerActionState) => void) {
-    return this.legacy.subscribePlayerActionState(listener);
+    return this.runtime.subscribePlayerActionState(listener);
   }
 
-  /** Compatibility callback wrapper for legacy callers. Prefer streams. */
+  /** Compatibility callback wrapper for runtime callers. Prefer streams. */
   subscribePlayerAppearance(listener: (appearance: PlayerAppearance) => void) {
-    return this.legacy.subscribePlayerAppearance(listener);
+    return this.runtime.subscribePlayerAppearance(listener);
   }
 
-  /** Compatibility callback wrapper for legacy callers. Prefer streams. */
+  /** Compatibility callback wrapper for runtime callers. Prefer streams. */
   subscribePlayerSelection(listener: (player: PlayerNft | null) => void) {
-    return this.legacy.subscribePlayerSelection(listener);
+    return this.runtime.subscribePlayerSelection(listener);
   }
 
-  /** Compatibility callback wrapper for legacy callers. Prefer streams. */
+  /** Compatibility callback wrapper for runtime callers. Prefer streams. */
   subscribeVisiblePlayers(listener: (players: VisiblePlayerState[]) => void) {
-    return this.legacy.subscribeVisiblePlayers(listener);
+    return this.runtime.subscribeVisiblePlayers(listener);
   }
 
-  /** Compatibility callback wrapper for legacy callers. Prefer streams. */
+  /** Compatibility callback wrapper for runtime callers. Prefer streams. */
   subscribeInventory(listener: (inventory: InventoryState) => void) {
-    return this.legacy.subscribeInventory(listener);
+    return this.runtime.subscribeInventory(listener);
   }
 
-  /** Compatibility callback wrapper for legacy callers. Prefer streams. */
+  /** Compatibility callback wrapper for runtime callers. Prefer streams. */
   subscribeGoldBalance(listener: (balance: GoldBalanceState) => void) {
-    return this.legacy.subscribeGoldBalance(listener);
+    return this.runtime.subscribeGoldBalance(listener);
   }
 
-  /** Compatibility callback wrapper for legacy callers. Prefer streams. */
+  /** Compatibility callback wrapper for runtime callers. Prefer streams. */
   subscribeTradeOffers(listener: (offers: TradeOfferState[]) => void) {
-    return this.legacy.subscribeTradeOffers(listener);
+    return this.runtime.subscribeTradeOffers(listener);
   }
 
-  /** Compatibility callback wrapper for legacy callers. Prefer streams. */
+  /** Compatibility callback wrapper for runtime callers. Prefer streams. */
   subscribeFarmTiles(listener: (tiles: FarmTileState[]) => void) {
-    return this.legacy.subscribeFarmTiles(listener);
+    return this.runtime.subscribeFarmTiles(listener);
   }
 
-  /** Compatibility callback wrapper for legacy callers. Prefer streams. */
+  /** Compatibility callback wrapper for runtime callers. Prefer streams. */
   subscribeTileItems(listener: (items: TileItemState[]) => void) {
-    return this.legacy.subscribeTileItems(listener);
+    return this.runtime.subscribeTileItems(listener);
   }
 }

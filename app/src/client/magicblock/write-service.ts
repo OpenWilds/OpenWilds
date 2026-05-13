@@ -2,12 +2,12 @@
  * MagicBlock write orchestration.
  *
  * This service groups command handlers behind the backend-neutral
- * `GameWriteAdapter`. Today the handlers delegate to the legacy client; over
+ * `GameWriteAdapter`. Today the handlers delegate to the native runtime; over
  * time the concrete transaction code can move into `MagicBlockActionWriter` and
  * `MagicBlockTradeWriter` without changing game-facing ports.
  */
 import type { GameWriteAdapter } from "../../game/ports";
-import type { MagicBlockClientCore as LegacyMagicBlockClientCore } from "./legacy-client-core";
+import type { MagicBlockNativeClientCore } from "./native-client-core";
 import { MagicBlockActionWriter } from "./action-writer";
 import { MagicBlockTradeWriter } from "./trade-writer";
 
@@ -17,9 +17,9 @@ export class MagicBlockWriteService implements GameWriteAdapter {
   private readonly trades: MagicBlockTradeWriter;
 
   /** Creates focused command writers for gameplay actions and trades. */
-  constructor(legacy: LegacyMagicBlockClientCore) {
-    this.actions = new MagicBlockActionWriter(legacy);
-    this.trades = new MagicBlockTradeWriter(legacy);
+  constructor(runtime: MagicBlockNativeClientCore) {
+    this.actions = new MagicBlockActionWriter(runtime);
+    this.trades = new MagicBlockTradeWriter(runtime);
   }
 
   movePlayer: GameWriteAdapter["movePlayer"] = (point) =>

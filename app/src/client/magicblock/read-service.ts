@@ -1,7 +1,7 @@
 /**
  * MagicBlock read orchestration.
  *
- * The legacy client still owns the concrete MagicBlock account polling and
+ * The native runtime still owns the concrete MagicBlock account polling and
  * subscriptions. This service lazily bridges those callbacks into the shared
  * `GameStateStore`, then exposes backend-neutral RxJS streams through
  * `GameReadAdapter`.
@@ -9,7 +9,7 @@
 import { Observable, shareReplay } from "rxjs";
 import type { GameReadAdapter } from "../../game/ports";
 import type { GameStateStore } from "../../game/state-store";
-import type { MagicBlockClientCore as LegacyMagicBlockClientCore } from "./legacy-client-core";
+import type { MagicBlockNativeClientCore } from "./native-client-core";
 
 /** Converts MagicBlock read callbacks into reusable game read streams. */
 export class MagicBlockReadService implements GameReadAdapter {
@@ -22,84 +22,84 @@ export class MagicBlockReadService implements GameReadAdapter {
   readonly farmTiles$: GameReadAdapter["farmTiles$"];
   readonly tileItems$: GameReadAdapter["tileItems$"];
 
-  private readonly activeLegacySubscriptions = new Set<() => void>();
+  private readonly activeRuntimeSubscriptions = new Set<() => void>();
 
-  /** Wires each legacy read source to the matching state-store stream. */
+  /** Wires each runtime read source to the matching state-store stream. */
   constructor(
-    private readonly legacy: LegacyMagicBlockClientCore,
+    private readonly runtime: MagicBlockNativeClientCore,
     private readonly state: GameStateStore
   ) {
-    this.playerActionState$ = this.mirrorLegacyStream(
+    this.playerActionState$ = this.mirrorRuntimeStream(
       this.state.playerActionState$,
-      (emit) => this.legacy.subscribePlayerActionState(emit),
+      (emit) => this.runtime.subscribePlayerActionState(emit),
       (value) => this.state.setPlayerActionState(value)
     );
-    this.playerAppearance$ = this.mirrorLegacyStream(
+    this.playerAppearance$ = this.mirrorRuntimeStream(
       this.state.playerAppearance$,
-      (emit) => this.legacy.subscribePlayerAppearance(emit),
+      (emit) => this.runtime.subscribePlayerAppearance(emit),
       (value) => this.state.setPlayerAppearance(value)
     );
-    this.visiblePlayers$ = this.mirrorLegacyStream(
+    this.visiblePlayers$ = this.mirrorRuntimeStream(
       this.state.visiblePlayers$,
-      (emit) => this.legacy.subscribeVisiblePlayers(emit),
+      (emit) => this.runtime.subscribeVisiblePlayers(emit),
       (value) => this.state.setVisiblePlayers(value)
     );
-    this.inventory$ = this.mirrorLegacyStream(
+    this.inventory$ = this.mirrorRuntimeStream(
       this.state.inventory$,
-      (emit) => this.legacy.subscribeInventory(emit),
+      (emit) => this.runtime.subscribeInventory(emit),
       (value) => this.state.setInventory(value)
     );
-    this.goldBalance$ = this.mirrorLegacyStream(
+    this.goldBalance$ = this.mirrorRuntimeStream(
       this.state.goldBalance$,
-      (emit) => this.legacy.subscribeGoldBalance(emit),
+      (emit) => this.runtime.subscribeGoldBalance(emit),
       (value) => this.state.setGoldBalance(value)
     );
-    this.tradeOffers$ = this.mirrorLegacyStream(
+    this.tradeOffers$ = this.mirrorRuntimeStream(
       this.state.tradeOffers$,
-      (emit) => this.legacy.subscribeTradeOffers(emit),
+      (emit) => this.runtime.subscribeTradeOffers(emit),
       (value) => this.state.setTradeOffers(value)
     );
-    this.farmTiles$ = this.mirrorLegacyStream(
+    this.farmTiles$ = this.mirrorRuntimeStream(
       this.state.farmTiles$,
-      (emit) => this.legacy.subscribeFarmTiles(emit),
+      (emit) => this.runtime.subscribeFarmTiles(emit),
       (value) => this.state.setFarmTiles(value)
     );
-    this.tileItems$ = this.mirrorLegacyStream(
+    this.tileItems$ = this.mirrorRuntimeStream(
       this.state.tileItems$,
-      (emit) => this.legacy.subscribeTileItems(emit),
+      (emit) => this.runtime.subscribeTileItems(emit),
       (value) => this.state.setTileItems(value)
     );
   }
 
-  /** Detaches any active legacy subscriptions created by stream consumers. */
+  /** Detaches any active runtime subscriptions created by stream consumers. */
   dispose() {
-    for (const unsubscribe of Array.from(this.activeLegacySubscriptions)) {
+    for (const unsubscribe of Array.from(this.activeRuntimeSubscriptions)) {
       unsubscribe();
     }
-    this.activeLegacySubscriptions.clear();
+    this.activeRuntimeSubscriptions.clear();
   }
 
   /**
-   * Attaches to a legacy callback source only while the RxJS stream is observed.
+   * Attaches to a runtime callback source only while the RxJS stream is observed.
    *
    * This preserves the previous lazy polling behavior while giving consumers a
    * cached stream from the shared store.
    */
-  private mirrorLegacyStream<T>(
+  private mirrorRuntimeStream<T>(
     storeStream: Observable<T>,
-    subscribeLegacy: (emit: (value: T) => void) => () => void,
+    subscribeRuntime: (emit: (value: T) => void) => () => void,
     writeStore: (value: T) => void
   ): Observable<T> {
     return new Observable<T>((subscriber) => {
-      const unsubscribeLegacy = subscribeLegacy((value) => writeStore(value));
+      const unsubscribeRuntime = subscribeRuntime((value) => writeStore(value));
       const storeSubscription = storeStream.subscribe(subscriber);
       const unsubscribe = () => {
         storeSubscription.unsubscribe();
-        unsubscribeLegacy();
-        this.activeLegacySubscriptions.delete(unsubscribe);
+        unsubscribeRuntime();
+        this.activeRuntimeSubscriptions.delete(unsubscribe);
       };
 
-      this.activeLegacySubscriptions.add(unsubscribe);
+      this.activeRuntimeSubscriptions.add(unsubscribe);
 
       return unsubscribe;
     }).pipe(shareReplay({ bufferSize: 1, refCount: true }));
