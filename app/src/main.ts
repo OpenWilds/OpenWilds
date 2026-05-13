@@ -62,22 +62,31 @@ if (window.location.pathname.replace(/\/$/, "").startsWith("/studio")) {
     }
   };
 
-  backend.session.subscribePlayerSelection((player) => {
-    if (!startGameButton || gameStarted) {
-      return;
-    }
+  const playerSelectionSubscription = backend.session.selectedPlayer$.subscribe(
+    (player) => {
+      if (!startGameButton || gameStarted) {
+        return;
+      }
 
-    startGameButton.disabled = !player;
-    startGameButton.textContent = player ? "Start Game" : "Mint Player First";
-  });
+      startGameButton.disabled = !player;
+      startGameButton.textContent = player ? "Start Game" : "Mint Player First";
+    }
+  );
 
   startGameButton?.addEventListener("click", () => {
     void startGame();
   });
 
-  window.addEventListener("beforeunload", () => backend.dispose(), {
-    once: true,
-  });
+  window.addEventListener(
+    "beforeunload",
+    () => {
+      playerSelectionSubscription.unsubscribe();
+      backend.dispose();
+    },
+    {
+      once: true,
+    }
+  );
 
   void backend.session.boot();
 }

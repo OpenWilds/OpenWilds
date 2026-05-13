@@ -1,149 +1,87 @@
+/**
+ * Test-only in-memory backend.
+ *
+ * Implements the same read/write/session ports as real backends without a
+ * network. Contract tests use this adapter to verify stream semantics and
+ * command behavior independent of MagicBlock, Convex, or MUD.
+ */
 import {
-  createGameClient,
+  createGameBackend,
   type GameBackend,
   type GameReadAdapter,
   type GameSessionAdapter,
   type GameWriteAdapter,
-  type Unsubscribe,
 } from "../ports";
+import { GameStateStore, type GameStateSnapshot } from "../state-store";
 import type {
   ActionMode,
-  ActiveActionState,
   FarmTileState,
-  GoldBalanceState,
   GridPoint,
-  InventoryState,
   PlayerActionState,
-  PlayerAppearance,
   TileItemState,
   TradeOfferState,
-  VisiblePlayerState,
   WorldTileActionMode,
 } from "../types";
 
-type Listener<T> = (value: T) => void;
+/** Optional seed data for deterministic adapter tests. */
+export type InMemoryGameState = Partial<GameStateSnapshot>;
 
-type InMemoryGameState = {
-  player: PlayerActionState;
-  appearance: PlayerAppearance;
-  visiblePlayers: VisiblePlayerState[];
-  inventory: InventoryState;
-  gold: GoldBalanceState;
-  trades: TradeOfferState[];
-  farmTiles: FarmTileState[];
-  tileItems: TileItemState[];
-};
-
-const idleAction = (): ActiveActionState => ({
-  action: 0,
-  kind: "idle",
-  startedAt: 0,
-  endsAt: 0,
-});
-
-const defaultState = (): InMemoryGameState => ({
-  player: {
-    position: { x: 0, y: 0 },
-    energy: { current: 10, max: 10 },
-    activeAction: idleAction(),
-  },
-  appearance: {
-    color: "#f4a7b9",
-    fill: 0xf4a7b9,
-    spriteAssetId: "player",
-    stroke: 0x1f2933,
-  },
-  visiblePlayers: [],
-  inventory: { slots: [] },
-  gold: { amount: 0n },
-  trades: [],
-  farmTiles: [],
-  tileItems: [],
-});
-
+/** In-memory implementation of all game ports for tests and fake composition. */
 export class InMemoryGameAdapter
   implements GameReadAdapter, GameWriteAdapter, GameSessionAdapter
 {
-  private state: InMemoryGameState;
-  private selected = true;
-  private readonly listeners = {
-    player: new Set<Listener<PlayerActionState>>(),
-    appearance: new Set<Listener<PlayerAppearance>>(),
-    visiblePlayers: new Set<Listener<VisiblePlayerState[]>>(),
-    inventory: new Set<Listener<InventoryState>>(),
-    gold: new Set<Listener<GoldBalanceState>>(),
-    trades: new Set<Listener<TradeOfferState[]>>(),
-    farmTiles: new Set<Listener<FarmTileState[]>>(),
-    tileItems: new Set<Listener<TileItemState[]>>(),
-    selection: new Set<
-      Listener<{ mint: string; owner: string; color: string } | null>
-    >(),
-  };
+  readonly stateStore: GameStateStore;
+  readonly playerActionState$: GameReadAdapter["playerActionState$"];
+  readonly playerAppearance$: GameReadAdapter["playerAppearance$"];
+  readonly visiblePlayers$: GameReadAdapter["visiblePlayers$"];
+  readonly inventory$: GameReadAdapter["inventory$"];
+  readonly goldBalance$: GameReadAdapter["goldBalance$"];
+  readonly tradeOffers$: GameReadAdapter["tradeOffers$"];
+  readonly farmTiles$: GameReadAdapter["farmTiles$"];
+  readonly tileItems$: GameReadAdapter["tileItems$"];
+  readonly selectedPlayer$: GameSessionAdapter["selectedPlayer$"];
 
-  constructor(seed: Partial<InMemoryGameState> = {}) {
-    this.state = {
-      ...defaultState(),
-      ...seed,
-    };
+  private selected = true;
+
+  /** Creates a deterministic in-memory backend seeded through GameStateStore. */
+  constructor(seed: InMemoryGameState = {}) {
+    this.stateStore = new GameStateStore(seed);
+    this.playerActionState$ = this.stateStore.playerActionState$;
+    this.playerAppearance$ = this.stateStore.playerAppearance$;
+    this.visiblePlayers$ = this.stateStore.visiblePlayers$;
+    this.inventory$ = this.stateStore.inventory$;
+    this.goldBalance$ = this.stateStore.goldBalance$;
+    this.tradeOffers$ = this.stateStore.tradeOffers$;
+    this.farmTiles$ = this.stateStore.farmTiles$;
+    this.tileItems$ = this.stateStore.tileItems$;
+    this.selectedPlayer$ = this.stateStore.selectedPlayer$;
   }
 
+  /** Emits the currently selected fake player. */
   async boot() {
     this.emitSelection();
   }
 
+  /** Returns whether the fake player is selected. */
   hasSelectedPlayer() {
     return this.selected;
   }
 
+  /** Selects the fake player and publishes selection state. */
   async prepareSelectedPlayer() {
     this.selected = true;
     this.emitSelection();
   }
 
-  subscribePlayerSelection: GameSessionAdapter["subscribePlayerSelection"] = (
-    listener
-  ) => this.subscribe(this.listeners.selection, listener, this.selection());
-
-  subscribePlayerActionState: GameReadAdapter["subscribePlayerActionState"] = (
-    listener
-  ) => this.subscribe(this.listeners.player, listener, this.state.player);
-
-  subscribePlayerAppearance: GameReadAdapter["subscribePlayerAppearance"] = (
-    listener
-  ) =>
-    this.subscribe(this.listeners.appearance, listener, this.state.appearance);
-
-  subscribeVisiblePlayers: GameReadAdapter["subscribeVisiblePlayers"] = (
-    listener
-  ) =>
-    this.subscribe(
-      this.listeners.visiblePlayers,
-      listener,
-      this.state.visiblePlayers
-    );
-
-  subscribeInventory: GameReadAdapter["subscribeInventory"] = (listener) =>
-    this.subscribe(this.listeners.inventory, listener, this.state.inventory);
-
-  subscribeGoldBalance: GameReadAdapter["subscribeGoldBalance"] = (listener) =>
-    this.subscribe(this.listeners.gold, listener, this.state.gold);
-
-  subscribeTradeOffers: GameReadAdapter["subscribeTradeOffers"] = (listener) =>
-    this.subscribe(this.listeners.trades, listener, this.state.trades);
-
-  subscribeFarmTiles: GameReadAdapter["subscribeFarmTiles"] = (listener) =>
-    this.subscribe(this.listeners.farmTiles, listener, this.state.farmTiles);
-
-  subscribeTileItems: GameReadAdapter["subscribeTileItems"] = (listener) =>
-    this.subscribe(this.listeners.tileItems, listener, this.state.tileItems);
-
+  /** Moves the fake player, reduces energy, and emits player state. */
   async movePlayer(point: GridPoint) {
-    this.state.player = {
-      ...this.state.player,
+    const current = this.stateStore.snapshot.playerActionState;
+    const player: PlayerActionState = {
+      ...current,
       position: { ...point },
       energy: {
-        ...this.state.player.energy,
-        current: Math.max(0, this.state.player.energy.current - 1),
+        ...current.energy,
+        current: Math.max(0, current.energy.current - 1),
       },
       activeAction: {
         action: 1,
@@ -152,16 +90,18 @@ export class InMemoryGameAdapter
         endsAt: 2,
       },
     };
-    this.emit(this.listeners.player, this.state.player);
-    return this.state.player;
+    this.stateStore.setPlayerActionState(player);
+    return player;
   }
 
+  /** Restores fake player energy and emits player state. */
   async sleepPlayer() {
-    this.state.player = {
-      ...this.state.player,
+    const current = this.stateStore.snapshot.playerActionState;
+    const player: PlayerActionState = {
+      ...current,
       energy: {
-        ...this.state.player.energy,
-        current: this.state.player.energy.max,
+        ...current.energy,
+        current: current.energy.max,
       },
       activeAction: {
         action: 2,
@@ -170,10 +110,11 @@ export class InMemoryGameAdapter
         endsAt: 3,
       },
     };
-    this.emit(this.listeners.player, this.state.player);
-    return this.state.player;
+    this.stateStore.setPlayerActionState(player);
+    return player;
   }
 
+  /** Applies fake tile/item actions and emits affected read streams. */
   async performAction(
     mode: ActionMode,
     point: GridPoint,
@@ -181,13 +122,13 @@ export class InMemoryGameAdapter
     selectedQuantity?: number | null
   ) {
     if (mode === "move") {
-      return {
-        player: await this.movePlayer(point),
-      };
+      const player = await this.movePlayer(point);
+      return { player };
     }
 
-    this.state.player = {
-      ...this.state.player,
+    const current = this.stateStore.snapshot.playerActionState;
+    const player: PlayerActionState = {
+      ...current,
       position: { ...point },
       activeAction: {
         action: 3,
@@ -196,98 +137,86 @@ export class InMemoryGameAdapter
         endsAt: 4,
       },
     };
-    this.emit(this.listeners.player, this.state.player);
+    this.stateStore.setPlayerActionState(player);
 
     if (mode === "grab") {
-      this.state.tileItems = this.state.tileItems.filter(
+      const items = this.stateStore.snapshot.tileItems.filter(
         (item) => item.x !== point.x || item.y !== point.y
       );
-      this.emit(this.listeners.tileItems, this.state.tileItems);
-      return { player: this.state.player, item: null };
+      this.stateStore.setTileItems(items);
+      return { player, item: null };
     }
 
     if (mode === "drop") {
-      const item = {
+      const item: TileItemState = {
         ...point,
         itemId: selectedItemId ?? 1,
         quantity: selectedQuantity ?? 1,
       };
-      this.state.tileItems = [
-        ...this.state.tileItems.filter(
+      const items = [
+        ...this.stateStore.snapshot.tileItems.filter(
           (entry) => entry.x !== point.x || entry.y !== point.y
         ),
         item,
       ];
-      this.emit(this.listeners.tileItems, this.state.tileItems);
-      return { player: this.state.player, item };
+      this.stateStore.setTileItems(items);
+      return { player, item };
     }
 
     const tile = this.upsertFarmTile(mode, point);
-    this.emit(this.listeners.farmTiles, this.state.farmTiles);
-    return { player: this.state.player, tile };
+    return { player, tile };
   }
 
+  /** Adds a fake outgoing trade offer. */
   async createTradeOffer(args: {
     sellerMint: string;
     itemId: number;
     itemQuantity: number;
     goldAmount: number;
   }) {
-    this.state.trades = [
-      {
-        offer: `offer-${this.state.trades.length + 1}`,
-        direction: "outgoing",
-        offerId: String(this.state.trades.length + 1),
-        buyer: "buyer",
-        seller: "seller",
-        buyerPlayerMint: "buyer-player",
-        sellerPlayerMint: args.sellerMint,
-        buyerEntity: "buyer-entity",
-        sellerEntity: "seller-entity",
-        itemId: args.itemId,
-        itemQuantity: args.itemQuantity,
-        goldAmount: BigInt(args.goldAmount),
-        expiresAt: 0,
-        status: "open",
-      },
-      ...this.state.trades,
-    ];
-    this.emit(this.listeners.trades, this.state.trades);
+    const currentTrades = this.stateStore.snapshot.tradeOffers;
+    const offerId = String(currentTrades.length + 1);
+    const offer: TradeOfferState = {
+      offer: `offer-${offerId}`,
+      direction: "outgoing",
+      offerId,
+      buyer: "buyer",
+      seller: "seller",
+      buyerPlayerMint: "buyer-player",
+      sellerPlayerMint: args.sellerMint,
+      buyerEntity: "buyer-entity",
+      sellerEntity: "seller-entity",
+      itemId: args.itemId,
+      itemQuantity: args.itemQuantity,
+      goldAmount: BigInt(args.goldAmount),
+      expiresAt: 0,
+      status: "open",
+    };
+    this.stateStore.setTradeOffers([offer, ...currentTrades]);
   }
 
+  /** Marks a fake trade offer as accepted. */
   async acceptTradeOffer(offer: string) {
     this.updateTradeStatus(offer, "accepted");
   }
 
+  /** Removes a fake trade offer. */
   async cancelTradeOffer(offer: string) {
-    this.state.trades = this.state.trades.filter(
-      (trade) => trade.offer !== offer
+    this.stateStore.setTradeOffers(
+      this.stateStore.snapshot.tradeOffers.filter(
+        (trade) => trade.offer !== offer
+      )
     );
-    this.emit(this.listeners.trades, this.state.trades);
   }
 
+  /** Marks a fake trade offer as finalized. */
   async finalizeTradeOffer(offer: string) {
     this.updateTradeStatus(offer, "finalized");
   }
 
+  /** Completes all state streams owned by this adapter. */
   dispose() {
-    Object.values(this.listeners).forEach((listeners) => listeners.clear());
-  }
-
-  private subscribe<T>(
-    listeners: Set<Listener<T>>,
-    listener: Listener<T>,
-    initial: T
-  ): Unsubscribe {
-    listeners.add(listener);
-    listener(initial);
-    return () => listeners.delete(listener);
-  }
-
-  private emit<T>(listeners: Set<Listener<T>>, value: T) {
-    for (const listener of listeners) {
-      listener(value);
-    }
+    this.stateStore.dispose();
   }
 
   private selection() {
@@ -297,17 +226,17 @@ export class InMemoryGameAdapter
   }
 
   private emitSelection() {
-    this.emit(this.listeners.selection, this.selection());
+    this.stateStore.setSelectedPlayer(this.selection());
   }
 
   private upsertFarmTile(
     mode: WorldTileActionMode,
     point: GridPoint
   ): FarmTileState {
+    const currentTiles = this.stateStore.snapshot.farmTiles;
     const existing =
-      this.state.farmTiles.find(
-        (tile) => tile.x === point.x && tile.y === point.y
-      ) ?? null;
+      currentTiles.find((tile) => tile.x === point.x && tile.y === point.y) ??
+      null;
     const tile: FarmTileState = {
       x: point.x,
       y: point.y,
@@ -327,33 +256,35 @@ export class InMemoryGameAdapter
           : existing?.harvestCount ?? 0,
     };
 
-    this.state.farmTiles = [
-      ...this.state.farmTiles.filter(
+    this.stateStore.setFarmTiles([
+      ...currentTiles.filter(
         (entry) => entry.x !== point.x || entry.y !== point.y
       ),
       tile,
-    ];
+    ]);
     return tile;
   }
 
   private updateTradeStatus(offer: string, status: TradeOfferState["status"]) {
-    this.state.trades = this.state.trades.map((trade) =>
-      trade.offer === offer ? { ...trade, status } : trade
+    this.stateStore.setTradeOffers(
+      this.stateStore.snapshot.tradeOffers.map((trade) =>
+        trade.offer === offer ? { ...trade, status } : trade
+      )
     );
-    this.emit(this.listeners.trades, this.state.trades);
   }
 }
 
+/** Creates a complete in-memory backend for contract tests. */
 export const createInMemoryGameBackend = (
-  seed?: Partial<InMemoryGameState>
+  seed?: InMemoryGameState
 ): GameBackend => {
   const adapter = new InMemoryGameAdapter(seed);
 
-  return {
+  return createGameBackend({
     read: adapter,
     write: adapter,
     session: adapter,
-    client: createGameClient(adapter, adapter),
+    state: adapter.stateStore,
     dispose: () => adapter.dispose(),
-  };
+  });
 };

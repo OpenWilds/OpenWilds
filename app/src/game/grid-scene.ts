@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import type { Subscription } from "rxjs";
 import {
   OBJECT_SPRITE_ASSETS,
   TERRAIN_VISUAL_ASSETS,
@@ -57,6 +58,7 @@ import {
 import type {
   ActionResult,
   FarmTileState,
+  GridPoint,
   InventoryState,
   PlayerActionState,
   PlayerAppearance,
@@ -98,14 +100,14 @@ const ACTION_CONTEXT_RETARGET_DELAY_MS = 280;
 export const createGridScene = (client: GameClient, hud: HudController) =>
   class GridScene extends Phaser.Scene {
     private world!: World;
-    private unsubscribePlayerActionState: (() => void) | null = null;
-    private unsubscribePlayerAppearance: (() => void) | null = null;
-    private unsubscribeVisiblePlayers: (() => void) | null = null;
-    private unsubscribeInventory: (() => void) | null = null;
-    private unsubscribeGoldBalance: (() => void) | null = null;
-    private unsubscribeTradeOffers: (() => void) | null = null;
-    private unsubscribeFarmTiles: (() => void) | null = null;
-    private unsubscribeTileItems: (() => void) | null = null;
+    private unsubscribePlayerActionState: Subscription | null = null;
+    private unsubscribePlayerAppearance: Subscription | null = null;
+    private unsubscribeVisiblePlayers: Subscription | null = null;
+    private unsubscribeInventory: Subscription | null = null;
+    private unsubscribeGoldBalance: Subscription | null = null;
+    private unsubscribeTradeOffers: Subscription | null = null;
+    private unsubscribeFarmTiles: Subscription | null = null;
+    private unsubscribeTileItems: Subscription | null = null;
     private unsubscribeHudSnapshot: (() => void) | null = null;
     private pantheonHud: ReturnType<typeof createPantheonHud> | null = null;
     private activePlayerEntity: number | null = null;
@@ -221,21 +223,21 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
       this.world.update(0);
       this.bindPointerInput();
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-        this.unsubscribePlayerActionState?.();
+        this.unsubscribePlayerActionState?.unsubscribe();
         this.unsubscribePlayerActionState = null;
-        this.unsubscribePlayerAppearance?.();
+        this.unsubscribePlayerAppearance?.unsubscribe();
         this.unsubscribePlayerAppearance = null;
-        this.unsubscribeVisiblePlayers?.();
+        this.unsubscribeVisiblePlayers?.unsubscribe();
         this.unsubscribeVisiblePlayers = null;
-        this.unsubscribeInventory?.();
+        this.unsubscribeInventory?.unsubscribe();
         this.unsubscribeInventory = null;
-        this.unsubscribeGoldBalance?.();
+        this.unsubscribeGoldBalance?.unsubscribe();
         this.unsubscribeGoldBalance = null;
-        this.unsubscribeTradeOffers?.();
+        this.unsubscribeTradeOffers?.unsubscribe();
         this.unsubscribeTradeOffers = null;
-        this.unsubscribeFarmTiles?.();
+        this.unsubscribeFarmTiles?.unsubscribe();
         this.unsubscribeFarmTiles = null;
-        this.unsubscribeTileItems?.();
+        this.unsubscribeTileItems?.unsubscribe();
         this.unsubscribeTileItems = null;
         this.unsubscribeHudSnapshot?.();
         this.unsubscribeHudSnapshot = null;
@@ -509,36 +511,30 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
     }
 
     private bindPlayerActionState(player: number) {
-      this.unsubscribePlayerActionState =
-        client.subscribePlayerActionState?.((state) =>
-          this.applyPlayerActionState(player, state)
-        ) ?? null;
-      this.unsubscribePlayerAppearance =
-        client.subscribePlayerAppearance?.((appearance) =>
-          this.applyPlayerAppearance(player, appearance)
-        ) ?? null;
-      this.unsubscribeVisiblePlayers =
-        client.subscribeVisiblePlayers?.((players) =>
-          this.applyVisiblePlayers(players)
-        ) ?? null;
-      this.unsubscribeInventory =
-        client.subscribeInventory?.((inventory) =>
-          this.applyInventory(inventory)
-        ) ?? null;
-      this.unsubscribeGoldBalance =
-        client.subscribeGoldBalance?.((balance) =>
-          this.pantheonHud?.updateGoldBalance(balance)
-        ) ?? null;
-      this.unsubscribeTradeOffers =
-        client.subscribeTradeOffers?.((offers) =>
-          this.pantheonHud?.updateTradeOffers(offers)
-        ) ?? null;
-      this.unsubscribeFarmTiles =
-        client.subscribeFarmTiles?.((tiles) => this.applyFarmTiles(tiles)) ??
-        null;
-      this.unsubscribeTileItems =
-        client.subscribeTileItems?.((items) => this.applyTileItems(items)) ??
-        null;
+      this.unsubscribePlayerActionState = client.playerActionState$.subscribe(
+        (state) => this.applyPlayerActionState(player, state)
+      );
+      this.unsubscribePlayerAppearance = client.playerAppearance$.subscribe(
+        (appearance) => this.applyPlayerAppearance(player, appearance)
+      );
+      this.unsubscribeVisiblePlayers = client.visiblePlayers$.subscribe(
+        (players) => this.applyVisiblePlayers(players)
+      );
+      this.unsubscribeInventory = client.inventory$.subscribe((inventory) =>
+        this.applyInventory(inventory)
+      );
+      this.unsubscribeGoldBalance = client.goldBalance$.subscribe((balance) =>
+        this.pantheonHud?.updateGoldBalance(balance)
+      );
+      this.unsubscribeTradeOffers = client.tradeOffers$.subscribe((offers) =>
+        this.pantheonHud?.updateTradeOffers(offers)
+      );
+      this.unsubscribeFarmTiles = client.farmTiles$.subscribe((tiles) =>
+        this.applyFarmTiles(tiles)
+      );
+      this.unsubscribeTileItems = client.tileItems$.subscribe((items) =>
+        this.applyTileItems(items)
+      );
     }
 
     private applyPlayerActionState(player: number, state: PlayerActionState) {

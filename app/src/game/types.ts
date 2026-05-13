@@ -112,6 +112,12 @@ export type VisiblePlayerState = {
   inventory: InventoryState;
 };
 
+export type SelectedPlayerSummary = {
+  mint: string;
+  owner: string;
+  color: string;
+};
+
 export type ActionTransitionState = {
   active: boolean;
   fromPosition: GridPoint;

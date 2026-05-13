@@ -1,33 +1,26 @@
-import type {
-  GameSessionAdapter,
-  SelectedPlayerSummary,
-} from "../../game/ports";
-import type { PlayerNft } from "../player-nft";
-import type { MagicBlockClientCore } from "./client-core";
+/**
+ * MagicBlock session adapter wrapper.
+ *
+ * Exposes selected-player streams and session commands through the public
+ * `GameSessionAdapter`. Backend factories can replace this with a different
+ * session runtime without touching Phaser or read/write adapters.
+ */
+import type { GameSessionAdapter } from "../../game/ports";
 
+/** Exposes MagicBlock session behavior through the backend-neutral session port. */
 export class MagicBlockSessionAdapter implements GameSessionAdapter {
-  constructor(private readonly core: MagicBlockClientCore) {}
+  readonly selectedPlayer$: GameSessionAdapter["selectedPlayer$"];
 
-  boot: GameSessionAdapter["boot"] = () => this.core.boot();
+  /** Receives the already-composed MagicBlock session service. */
+  constructor(private readonly service: GameSessionAdapter) {
+    this.selectedPlayer$ = service.selectedPlayer$;
+  }
+
+  boot: GameSessionAdapter["boot"] = () => this.service.boot();
 
   hasSelectedPlayer: GameSessionAdapter["hasSelectedPlayer"] = () =>
-    this.core.hasSelectedPlayer();
+    this.service.hasSelectedPlayer();
 
   prepareSelectedPlayer: GameSessionAdapter["prepareSelectedPlayer"] = () =>
-    this.core.prepareSelectedPlayer();
-
-  subscribePlayerSelection: GameSessionAdapter["subscribePlayerSelection"] = (
-    listener
-  ) =>
-    this.core.subscribePlayerSelection((player) =>
-      listener(player ? this.toSelectedPlayerSummary(player) : null)
-    );
-
-  private toSelectedPlayerSummary(player: PlayerNft): SelectedPlayerSummary {
-    return {
-      mint: player.mint.toBase58(),
-      owner: player.owner.toBase58(),
-      color: player.color,
-    };
-  }
+    this.service.prepareSelectedPlayer();
 }
