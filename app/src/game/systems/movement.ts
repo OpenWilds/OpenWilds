@@ -1,7 +1,8 @@
 import { Components } from "../components/index";
 import type { World } from "../ecs";
+import type { GameClient } from "../ports";
 import type { GridInput, MoveState } from "../resources";
-import type { ActiveActionState, GameClient } from "../types";
+import type { ActiveActionState } from "../types";
 import { beginActionTransition } from "./action-transition";
 import { hideHover } from "./hide-hover";
 

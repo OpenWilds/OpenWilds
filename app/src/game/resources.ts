@@ -1,19 +1,19 @@
 import Phaser from "phaser";
 import type {
-  ContextAction,
+  ActionMode,
+  TileActionMode,
   EquippedTool,
-  FarmActionMode,
-  GameClient,
   GridPoint,
 } from "./types";
+import type { GameClient } from "./ports";
 
 export type GridInput = {
   hoverPoint: GridPoint | null;
   requestedMove: GridPoint | null;
-  requestedFarmAction: GridPoint | null;
-  farmActionMode: FarmActionMode;
+  requestedTileAction: GridPoint | null;
+  actionMode: ActionMode;
   equippedTool: EquippedTool;
-  selectedContextAction: ContextAction | null;
+  selectedTileActionMode: TileActionMode | null;
   selectedItemId: number | null;
   selectedQuantity: number;
 };
@@ -50,10 +50,10 @@ export const installGridResources = (
   world.setResource<GridResources["input"]>("input", {
     hoverPoint: null,
     requestedMove: null,
-    requestedFarmAction: null,
-    farmActionMode: "move",
+    requestedTileAction: null,
+    actionMode: "move",
     equippedTool: "hand",
-    selectedContextAction: null,
+    selectedTileActionMode: null,
     selectedItemId: null,
     selectedQuantity: 1,
   });

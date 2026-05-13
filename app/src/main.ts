@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import "./polyfills";
 import { getHudElements, HudController } from "./client/hud";
-import { LocalnetClient } from "./client/localnet-client";
+import { createMagicBlockGameBackend } from "./client/magicblock/backend";
 import { createGridScene, GAME_HEIGHT, GAME_WIDTH } from "./game/grid-scene";
 import { bootStudio } from "./studio/app/studio-react";
 import "./styles.css";
@@ -16,7 +16,7 @@ if (window.location.pathname.replace(/\/$/, "").startsWith("/studio")) {
   bootStudio(app);
 } else {
   const hud = new HudController(getHudElements());
-  const localnetClient = new LocalnetClient(hud);
+  const backend = createMagicBlockGameBackend(hud);
   const gameRoot = document.getElementById("game");
   const playerGate = document.getElementById("player-gate");
   const startGameButton = document.getElementById(
@@ -25,7 +25,7 @@ if (window.location.pathname.replace(/\/$/, "").startsWith("/studio")) {
   let gameStarted = false;
 
   const startGame = async () => {
-    if (gameStarted || !localnetClient.hasSelectedPlayer()) {
+    if (gameStarted || !backend.session.hasSelectedPlayer()) {
       return;
     }
 
@@ -35,7 +35,7 @@ if (window.location.pathname.replace(/\/$/, "").startsWith("/studio")) {
     }
 
     try {
-      await localnetClient.prepareSelectedPlayer();
+      await backend.session.prepareSelectedPlayer();
       gameStarted = true;
       playerGate?.setAttribute("hidden", "");
       gameRoot?.removeAttribute("hidden");
@@ -46,7 +46,7 @@ if (window.location.pathname.replace(/\/$/, "").startsWith("/studio")) {
         width: GAME_WIDTH,
         height: GAME_HEIGHT,
         backgroundColor: "#10191f",
-        scene: createGridScene(localnetClient, hud),
+        scene: createGridScene(backend.client, hud),
         scale: {
           mode: Phaser.Scale.RESIZE,
           autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -54,15 +54,15 @@ if (window.location.pathname.replace(/\/$/, "").startsWith("/studio")) {
       });
     } finally {
       if (startGameButton && !gameStarted) {
-        startGameButton.disabled = !localnetClient.hasSelectedPlayer();
-        startGameButton.textContent = localnetClient.hasSelectedPlayer()
+        startGameButton.disabled = !backend.session.hasSelectedPlayer();
+        startGameButton.textContent = backend.session.hasSelectedPlayer()
           ? "Start Game"
           : "Mint Player First";
       }
     }
   };
 
-  localnetClient.subscribePlayerSelection((player) => {
+  backend.session.subscribePlayerSelection((player) => {
     if (!startGameButton || gameStarted) {
       return;
     }
@@ -75,5 +75,9 @@ if (window.location.pathname.replace(/\/$/, "").startsWith("/studio")) {
     void startGame();
   });
 
-  void localnetClient.boot();
+  window.addEventListener("beforeunload", () => backend.dispose(), {
+    once: true,
+  });
+
+  void backend.session.boot();
 }

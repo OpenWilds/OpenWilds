@@ -4,7 +4,7 @@ import {
   getItemSpriteFrame,
   getObjectSpriteFrameTexture,
 } from "../object-sprite-frames";
-import type { ContextAction, EquippedTool, InventoryState } from "../types";
+import type { TileActionMode, EquippedTool, InventoryState } from "../types";
 import { compactItemLabel, makeHudText } from "./text";
 import { contextActions, tools } from "./types";
 
@@ -31,7 +31,7 @@ type InventorySlot = {
 };
 
 type ActionSlot = {
-  action: ContextAction;
+  action: TileActionMode;
   x: number;
   y: number;
   width: number;
@@ -158,7 +158,7 @@ export const createToolInventory = (
   scene: Phaser.Scene,
   args: {
     onToolChange: (tool: EquippedTool) => void;
-    onContextActionChange: (action: ContextAction | null) => void;
+    onTileActionModeChange: (action: TileActionMode | null) => void;
     onItemSelect: (itemId: number | null) => void;
     onQuantityChange: (quantity: number) => void;
     onSleep: () => void;
@@ -199,8 +199,8 @@ export const createToolInventory = (
   const actionSlots: ActionSlot[] = [];
   let sleepSlot: SleepSlot | null = null;
   let selectedTool: EquippedTool = "hand";
-  let selectedContextAction: ContextAction | null = null;
-  let availableActions: ContextAction[] = [];
+  let selectedTileActionMode: TileActionMode | null = null;
+  let availableActions: TileActionMode[] = [];
   let selectedItemId: number | null = null;
   let selectedQuantity = 1;
   let inventory: InventoryState = { slots: [] };
@@ -219,7 +219,7 @@ export const createToolInventory = (
         const action = availableActions[index];
 
         if (action) {
-          selectContextAction(action);
+          selectTileActionMode(action);
         }
       });
     }
@@ -238,27 +238,27 @@ export const createToolInventory = (
     getSelectedTool() {
       return selectedTool;
     },
-    getSelectedContextAction() {
-      return selectedContextAction;
+    getSelectedTileActionMode() {
+      return selectedTileActionMode;
     },
     setSelectedQuantity(quantity: number) {
       selectedQuantity = Math.max(1, quantity);
       args.onQuantityChange(selectedQuantity);
     },
-    setAvailableActions(actions: ContextAction[]) {
+    setAvailableActions(actions: TileActionMode[]) {
       availableActions = actions;
       if (
-        selectedContextAction !== null &&
-        !availableActions.includes(selectedContextAction)
+        selectedTileActionMode !== null &&
+        !availableActions.includes(selectedTileActionMode)
       ) {
-        selectedContextAction = null;
+        selectedTileActionMode = null;
       }
 
-      if (selectedContextAction === null) {
-        selectedContextAction = availableActions[0] ?? null;
+      if (selectedTileActionMode === null) {
+        selectedTileActionMode = availableActions[0] ?? null;
       }
 
-      args.onContextActionChange(selectedContextAction);
+      args.onTileActionModeChange(selectedTileActionMode);
       renderActions();
     },
     updateInventory(nextInventory: InventoryState) {
@@ -307,7 +307,7 @@ export const createToolInventory = (
       if (actionSlot) {
         actionSlot.pressed = true;
         tweenActionSlot(actionSlot, actionPressScale, 70, "Quad.easeOut");
-        selectContextAction(actionSlot.action);
+        selectTileActionMode(actionSlot.action);
         scene.time.delayedCall(90, () => {
           actionSlot.pressed = false;
           tweenActionSlot(
@@ -491,7 +491,7 @@ export const createToolInventory = (
 
   function selectTool(tool: EquippedTool) {
     selectedTool = tool;
-    selectedContextAction = null;
+    selectedTileActionMode = null;
     syncToolSelection();
     args.onToolChange(tool);
   }
@@ -556,7 +556,11 @@ export const createToolInventory = (
       const x = index * (actionButtonWidth + actionButtonGap);
       const slot = scene.add.container(x, 0);
       const bg = scene.add
-        .image(actionButtonWidth / 2, actionButtonHeight / 2, UI_ASSETS.actionButtonBg.key)
+        .image(
+          actionButtonWidth / 2,
+          actionButtonHeight / 2,
+          UI_ASSETS.actionButtonBg.key
+        )
         .setDisplaySize(actionButtonWidth, actionButtonHeight)
         .setOrigin(0.5)
         .setAlpha(0.98)
@@ -572,7 +576,7 @@ export const createToolInventory = (
         )
         .setStrokeStyle(2, 0xf1d38b, 0.9)
         .setOrigin(0.5)
-        .setVisible(action === selectedContextAction);
+        .setVisible(action === selectedTileActionMode);
       const icon = scene.add
         .image(28, actionButtonHeight / 2, UI_ICONS[definition.icon].key)
         .setDisplaySize(30, 30)
@@ -621,7 +625,7 @@ export const createToolInventory = (
           event.stopPropagation();
           actionSlot.pressed = true;
           tweenActionSlot(actionSlot, actionPressScale, 70, "Quad.easeOut");
-          selectContextAction(action);
+          selectTileActionMode(action);
         }
       );
       bg.on("pointerup", () => {
@@ -748,11 +752,7 @@ export const createToolInventory = (
     return x >= 0 && x <= width && y >= 0 && y <= height;
   }
 
-  function isPointInSlot(
-    x: number,
-    y: number,
-    slot: { x: number; y: number }
-  ) {
+  function isPointInSlot(x: number, y: number, slot: { x: number; y: number }) {
     return (
       x >= slot.x - slotSize / 2 &&
       x <= slot.x + slotSize / 2 &&
@@ -801,7 +801,7 @@ export const createToolInventory = (
 
   function syncActionSelection() {
     actionSlots.forEach((slot) => {
-      const selected = slot.action === selectedContextAction;
+      const selected = slot.action === selectedTileActionMode;
       const highlighted = selected || slot.hovered;
 
       slot.selection.setVisible(selected);
@@ -814,16 +814,21 @@ export const createToolInventory = (
     });
   }
 
-  function selectContextAction(action: ContextAction) {
-    selectedContextAction = action;
-    args.onContextActionChange(action);
+  function selectTileActionMode(action: TileActionMode) {
+    selectedTileActionMode = action;
+    args.onTileActionModeChange(action);
     syncActionSelection();
   }
 
   function setActionHovered(slot: ActionSlot, hovered: boolean) {
     slot.hovered = hovered;
     if (!slot.pressed) {
-      tweenActionSlot(slot, hovered ? actionHoverScale : 1, 90, "Cubic.easeOut");
+      tweenActionSlot(
+        slot,
+        hovered ? actionHoverScale : 1,
+        90,
+        "Cubic.easeOut"
+      );
     }
     syncActionSelection();
   }

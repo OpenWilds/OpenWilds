@@ -1,5 +1,5 @@
 import type { UI_ICONS } from "../../assets/ui-assets";
-import type { ContextAction, EquippedTool } from "../types";
+import type { TileActionMode, EquippedTool } from "../types";
 
 export type TradeCallbacks = {
   createOffer: (args: {
@@ -15,7 +15,7 @@ export type TradeCallbacks = {
 
 export type PantheonHudOptions = {
   onToolChange: (tool: EquippedTool) => void;
-  onContextActionChange: (action: ContextAction | null) => void;
+  onTileActionModeChange: (action: TileActionMode | null) => void;
   onItemSelect: (itemId: number | null) => void;
   onQuantityChange: (quantity: number) => void;
   onSleep: () => void;
@@ -29,8 +29,8 @@ export type ToolDefinition = {
   shortcut: string;
 };
 
-export type ContextActionDefinition = {
-  action: ContextAction;
+export type TileActionModeDefinition = {
+  action: TileActionMode;
   label: string;
   icon: keyof typeof UI_ICONS;
 };
@@ -41,12 +41,13 @@ export const tools: ToolDefinition[] = [
   { tool: "wateringCan", label: "Water", icon: "wateringCan", shortcut: "3" },
 ];
 
-export const contextActions: Record<ContextAction, ContextActionDefinition> = {
-  grab: { action: "grab", label: "Grab", icon: "grab" },
-  plant: { action: "plant", label: "Plant", icon: "plant" },
-  drop: { action: "drop", label: "Drop", icon: "drop" },
-  harvest: { action: "harvest", label: "Harvest", icon: "harvest" },
-  till: { action: "till", label: "Dig", icon: "dig" },
-  chop: { action: "chop", label: "Chop", icon: "axe" },
-  water: { action: "water", label: "Water", icon: "wateringCan" },
-};
+export const contextActions: Record<TileActionMode, TileActionModeDefinition> =
+  {
+    grab: { action: "grab", label: "Grab", icon: "grab" },
+    plant: { action: "plant", label: "Plant", icon: "plant" },
+    drop: { action: "drop", label: "Drop", icon: "drop" },
+    harvest: { action: "harvest", label: "Harvest", icon: "harvest" },
+    till: { action: "till", label: "Dig", icon: "dig" },
+    chop: { action: "chop", label: "Chop", icon: "axe" },
+    water: { action: "water", label: "Water", icon: "wateringCan" },
+  };
