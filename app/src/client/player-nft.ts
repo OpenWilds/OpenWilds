@@ -13,6 +13,7 @@ import {
   createAssociatedTokenAccountIdempotentInstruction,
   getAssociatedTokenAddress,
 } from "./gold";
+import type { PlayerSpriteAssetId } from "../assets/visual-assets";
 
 export const PLAYER_COLLECTION_ID = "open-wilds-players-localnet";
 export const PLAYER_NFT_SYMBOL = "OWP";
@@ -24,11 +25,41 @@ const TOKEN_METADATA_PROGRAM_ID = new PublicKey(
 const MINT_SIZE = 82;
 
 export const PLAYER_COLORS = [
-  { id: "rose", label: "Rose", fill: 0xe24a55, stroke: 0x84242b },
-  { id: "sky", label: "Sky", fill: 0x4aa8e2, stroke: 0x245b84 },
-  { id: "mint", label: "Mint", fill: 0x45c88a, stroke: 0x24744f },
-  { id: "gold", label: "Gold", fill: 0xf3b43f, stroke: 0x875b16 },
-  { id: "violet", label: "Violet", fill: 0x9b6ee8, stroke: 0x513282 },
+  {
+    id: "rose",
+    label: "Player 1",
+    fill: 0xe24a55,
+    stroke: 0x84242b,
+    spriteAssetId: "player",
+  },
+  {
+    id: "sky",
+    label: "Player 2",
+    fill: 0x4aa8e2,
+    stroke: 0x245b84,
+    spriteAssetId: "player2",
+  },
+  {
+    id: "mint",
+    label: "Player 3",
+    fill: 0x45c88a,
+    stroke: 0x24744f,
+    spriteAssetId: "player3",
+  },
+  {
+    id: "gold",
+    label: "Player 4",
+    fill: 0xf3b43f,
+    stroke: 0x875b16,
+    spriteAssetId: "player4",
+  },
+  {
+    id: "violet",
+    label: "Player 5",
+    fill: 0x9b6ee8,
+    stroke: 0x513282,
+    spriteAssetId: "player5",
+  },
 ] as const;
 
 export type PlayerColorId = (typeof PLAYER_COLORS)[number]["id"];
@@ -78,6 +109,7 @@ export const getPlayerColorStyle = (color: string) => {
   return {
     fill: definition.fill,
     label: definition.label,
+    spriteAssetId: definition.spriteAssetId as PlayerSpriteAssetId,
     stroke: definition.stroke,
   };
 };

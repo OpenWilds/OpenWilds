@@ -1,7 +1,7 @@
 export const GRID_SIZE = 20;
-export const CELL_SIZE = 32;
+export const CELL_SIZE = 128;
 export const GRID_PIXELS = GRID_SIZE * CELL_SIZE;
-export const GAME_WIDTH = 940;
-export const GAME_HEIGHT = 760;
-export const GRID_ORIGIN_X = 28;
-export const GRID_ORIGIN_Y = 84;
+export const GAME_WIDTH = 1280;
+export const GAME_HEIGHT = 720;
+export const GRID_ORIGIN_X = 0;
+export const GRID_ORIGIN_Y = 0;

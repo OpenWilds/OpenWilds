@@ -2,6 +2,8 @@ import { Components } from "../components/index";
 import type { World } from "../ecs";
 import type { ActionProgressElements } from "../resources";
 import type { ActiveActionState } from "../types";
+import type { createPantheonHud } from "../pantheon-hud";
+import type { ActionProgressIcon } from "../hud/action-progress";
 
 const formatActionLabel = (action: ActiveActionState) => {
   if (action.kind === "move") {
@@ -13,6 +15,33 @@ const formatActionLabel = (action: ActiveActionState) => {
   }
 
   return "Acting";
+};
+
+const getActionProgressIcon = (
+  action: ActiveActionState
+): ActionProgressIcon => {
+  if (action.kind === "sleep") {
+    return "sleep";
+  }
+
+  switch (action.action) {
+    case 3:
+      return "till";
+    case 4:
+      return "water";
+    case 5:
+      return "plant";
+    case 6:
+      return "harvest";
+    case 7:
+      return "chop";
+    case 8:
+      return "grab";
+    case 9:
+      return "drop";
+    default:
+      return action.kind === "move" ? "move" : "grab";
+  }
 };
 
 export const actionProgressSystem = (world: World) => {
@@ -32,6 +61,14 @@ export const actionProgressSystem = (world: World) => {
   const remaining = Math.max(0, action.endsAt - now);
 
   if (action.kind === "idle" || remaining <= 0 || duration <= 0) {
+    world
+      .getResource<ReturnType<typeof createPantheonHud>>("pantheonHud")
+      ?.setActionProgress({
+        visible: false,
+        label: "",
+        remainingSeconds: 0,
+        progress: 0,
+      });
     elements.root.hidden = true;
 
     if (elements.fill) {
@@ -47,6 +84,15 @@ export const actionProgressSystem = (world: World) => {
   );
 
   elements.root.hidden = false;
+  world
+    .getResource<ReturnType<typeof createPantheonHud>>("pantheonHud")
+    ?.setActionProgress({
+      visible: true,
+      label: formatActionLabel(action),
+      remainingSeconds: remaining,
+      progress,
+      action: getActionProgressIcon(action),
+    });
 
   if (elements.label) {
     elements.label.textContent = formatActionLabel(action);

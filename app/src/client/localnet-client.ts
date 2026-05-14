@@ -1,4 +1,5 @@
 import {
+  type AccountInfo,
   Connection,
   Keypair,
   LAMPORTS_PER_SOL,
@@ -59,7 +60,7 @@ import type {
   TileFarmState,
   TileTerrainState,
 } from "./types";
-import { HudController, type HudElements } from "./hud";
+import { HudController } from "./hud";
 import { installAnchorProvider, loadBoltSdk } from "./sdk";
 import {
   BrowserAnchorWallet,
@@ -69,10 +70,12 @@ import {
 import { PlayerWorldProvisioner } from "./world-provisioning";
 import {
   PLAYER_SESSION_SCOPES_FULL_CONTROL,
+  decodeBoltSessionToken,
   decodePlayerSession,
   getBoltSessionTokenPda,
   getPlayerSessionPda,
   grantPlayerSessionInstruction,
+  revokeBoltSessionInstruction,
   revokePlayerSessionInstruction,
 } from "./agent-session";
 import {
@@ -157,8 +160,10 @@ const DEFAULT_MAX_ENERGY = 100;
 const GRID_SIZE = 20;
 const WALK_ENERGY_PER_TILE = 1;
 const PLAYER_STATE_SYNC_INTERVAL_MS = 500;
+const VISIBLE_PLAYER_SYNC_INTERVAL_MS = 500;
 const TRADE_OFFER_SYNC_INTERVAL_MS = 1500;
 type ProgramName = keyof typeof PROGRAMS;
+type AccountSource = "er" | "base";
 type WorldCatalogEntry = {
   farmTypeId?: number;
   terrainTypeId?: number;
@@ -199,6 +204,9 @@ export class LocalnetClient {
   private readonly playerAppearanceListeners = new Set<
     (appearance: PlayerAppearance) => void
   >();
+  private readonly playerSelectionListeners = new Set<
+    (player: PlayerNft | null) => void
+  >();
   private readonly visiblePlayerListeners = new Set<
     (players: VisiblePlayerState[]) => void
   >();
@@ -221,9 +229,19 @@ export class LocalnetClient {
   private activePlayerNft: PlayerNft | null = null;
   private actionUnlockTimer: number | null = null;
   private playerStateSyncTimer: number | null = null;
+  private visiblePlayerSyncTimer: number | null = null;
   private tradeOfferSyncTimer: number | null = null;
   private playerStateSyncing = false;
+  private playerStateSyncQueued = false;
+  private visiblePlayerSyncing = false;
   private tradeOfferSyncing = false;
+  private liveRefreshTriggersBound = false;
+  private playerAccountSubscriptionKey: string | null = null;
+  private readonly playerAccountSubscriptions: Array<{
+    connection: Connection;
+    id: number;
+  }> = [];
+  private lastPlayerActionState: PlayerActionState | null = null;
   private lastPlayerActionStateKey: string | null = null;
   private lastInventoryState: InventoryState | null = null;
   private lastInventoryStateKey: string | null = null;
@@ -231,14 +249,15 @@ export class LocalnetClient {
   private lastTradeOffers: TradeOfferState[] = [];
   private lastTradeOffersKey: string | null = null;
   private lastRelevantTradeOffersKey: string | null = null;
+  private lastVisiblePlayers: VisiblePlayerState[] = [];
   private lastFarmTileStates: FarmTileState[] = [];
   private lastFarmTileStateKey: string | null = null;
   private lastTileItemStates: TileItemState[] = [];
   private lastTileItemStateKey: string | null = null;
   private readonly knownPlayerTileFarms = new Map<string, TileFarmState[]>();
 
-  constructor(hudElements: HudElements) {
-    this.hud = new HudController(hudElements);
+  constructor(hud: HudController) {
+    this.hud = hud;
   }
 
   async boot() {
@@ -252,6 +271,7 @@ export class LocalnetClient {
     await this.refreshPlayerNftHud();
     this.restoreAgentModeInput();
     await this.refreshAgentModeStatus();
+    this.bindLiveRefreshTriggers();
     this.startPlayerStateSync();
     await this.syncPlayerState({ announceLoaded: true });
     await this.ensureSelectedPlayerReady();
@@ -829,6 +849,10 @@ export class LocalnetClient {
   subscribePlayerActionState(listener: (state: PlayerActionState) => void) {
     this.playerActionStateListeners.add(listener);
 
+    if (this.lastPlayerActionState) {
+      listener(this.lastPlayerActionState);
+    }
+
     return () => {
       this.playerActionStateListeners.delete(listener);
     };
@@ -846,8 +870,29 @@ export class LocalnetClient {
     };
   }
 
+  subscribePlayerSelection(listener: (player: PlayerNft | null) => void) {
+    this.playerSelectionListeners.add(listener);
+    listener(this.activePlayerNft);
+
+    return () => {
+      this.playerSelectionListeners.delete(listener);
+    };
+  }
+
+  hasSelectedPlayer() {
+    return Boolean(this.activePlayerNft);
+  }
+
+  async prepareSelectedPlayer() {
+    await this.ensureSelectedPlayerReady();
+    await this.syncPlayerState({ announceLoaded: true });
+  }
+
   subscribeVisiblePlayers(listener: (players: VisiblePlayerState[]) => void) {
     this.visiblePlayerListeners.add(listener);
+    listener(this.lastVisiblePlayers);
+    this.startVisiblePlayerSync();
+    void this.syncVisiblePlayers();
 
     return () => {
       this.visiblePlayerListeners.delete(listener);
@@ -1190,26 +1235,43 @@ export class LocalnetClient {
       void this.commitPlayerState();
     });
 
-    this.hud.elements.agentModeToggle?.addEventListener("change", (event) => {
-      const enabled = (event.target as HTMLInputElement).checked;
-      void (enabled ? this.grantAgentSession() : this.revokeAgentSession());
-    });
+    for (const toggle of this.agentModeToggles()) {
+      toggle.addEventListener("change", (event) => {
+        const enabled = (event.target as HTMLInputElement).checked;
+        void (enabled ? this.grantAgentSession() : this.revokeAgentSession());
+      });
+    }
 
-    this.hud.elements.agentDelegateInput?.addEventListener("input", () => {
-      const value = this.hud.elements.agentDelegateInput?.value.trim() ?? "";
-      if (value) {
-        window.localStorage.setItem(AGENT_DELEGATE_STORAGE_KEY, value);
-      } else {
-        window.localStorage.removeItem(AGENT_DELEGATE_STORAGE_KEY);
-      }
-      void this.refreshAgentModeStatus();
-    });
+    for (const input of this.agentDelegateInputs()) {
+      input.addEventListener("input", () => {
+        this.syncAgentDelegateInputs(input.value);
+        const value = input.value.trim();
+        if (value) {
+          window.localStorage.setItem(AGENT_DELEGATE_STORAGE_KEY, value);
+        } else {
+          window.localStorage.removeItem(AGENT_DELEGATE_STORAGE_KEY);
+        }
+        void this.refreshAgentModeStatus();
+      });
+    }
 
-    this.hud.elements.agentRevokeButton?.addEventListener("click", () => {
-      void this.revokeAgentSession();
-    });
+    for (const input of this.agentSessionTransactionInputs()) {
+      input.addEventListener("input", () => {
+        this.syncAgentSessionTransactionInputs(input.value);
+      });
+    }
+
+    for (const button of this.agentRevokeButtons()) {
+      button.addEventListener("click", () => {
+        void this.revokeAgentSession();
+      });
+    }
 
     this.hud.elements.mintPlayerButton?.addEventListener("click", () => {
+      void this.mintPlayerNft();
+    });
+
+    this.hud.elements.gateMintPlayerButton?.addEventListener("click", () => {
       void this.mintPlayerNft();
     });
 
@@ -1221,6 +1283,17 @@ export class LocalnetClient {
       }
     });
 
+    this.hud.elements.gatePlayerNftSelect?.addEventListener(
+      "change",
+      (event) => {
+        const mint = (event.target as HTMLSelectElement).value;
+
+        if (mint) {
+          void this.selectPlayerNft(new PublicKey(mint));
+        }
+      }
+    );
+
     this.hud.elements.resetButton?.addEventListener("click", () => {
       resetBurnerWallet();
       clearStoredPlayer();
@@ -1228,20 +1301,17 @@ export class LocalnetClient {
       this.wallet = readBurnerWallet();
       this.playerState = null;
       this.activePlayerNft = null;
-      if (this.hud.elements.agentDelegateInput) {
-        this.hud.elements.agentDelegateInput.value = "";
-      }
-      if (this.hud.elements.agentSessionTransactionInput) {
-        this.hud.elements.agentSessionTransactionInput.value = "";
-      }
+      this.syncAgentDelegateInputs("");
+      this.syncAgentSessionTransactionInputs("");
       window.localStorage.removeItem(AGENT_DELEGATE_STORAGE_KEY);
-      this.lastPlayerActionStateKey = null;
+      this.clearCachedPlayerActionState();
       this.lastInventoryState = null;
       this.lastInventoryStateKey = null;
       this.lastGoldBalanceState = { amount: 0n };
       this.lastTradeOffers = [];
       this.lastTradeOffersKey = null;
       this.lastRelevantTradeOffersKey = null;
+      this.lastVisiblePlayers = [];
       this.lastFarmTileStates = [];
       this.lastFarmTileStateKey = null;
       this.lastTileItemStates = [];
@@ -1324,13 +1394,14 @@ export class LocalnetClient {
       clearPlayerNfts();
       this.playerState = null;
       this.activePlayerNft = null;
-      this.lastPlayerActionStateKey = null;
+      this.clearCachedPlayerActionState();
       this.lastInventoryState = null;
       this.lastInventoryStateKey = null;
       this.lastGoldBalanceState = { amount: 0n };
       this.lastTradeOffers = [];
       this.lastTradeOffersKey = null;
       this.lastRelevantTradeOffersKey = null;
+      this.lastVisiblePlayers = [];
       this.lastFarmTileStates = [];
       this.lastFarmTileStateKey = null;
       this.lastTileItemStates = [];
@@ -1356,20 +1427,108 @@ export class LocalnetClient {
       window.clearInterval(this.playerStateSyncTimer);
     }
 
+    console.info("[Open Wilds] player state sync started");
     this.playerStateSyncTimer = window.setInterval(() => {
       void this.syncPlayerState();
     }, PLAYER_STATE_SYNC_INTERVAL_MS);
   }
 
+  private startVisiblePlayerSync() {
+    if (this.visiblePlayerSyncTimer !== null) {
+      return;
+    }
+
+    console.info("[Open Wilds] visible player sync started");
+    this.visiblePlayerSyncTimer = window.setInterval(() => {
+      void this.syncVisiblePlayers();
+    }, VISIBLE_PLAYER_SYNC_INTERVAL_MS);
+  }
+
+  private bindLiveRefreshTriggers() {
+    if (this.liveRefreshTriggersBound) {
+      return;
+    }
+
+    const refresh = () => {
+      void this.syncPlayerState();
+      void this.syncTradeOffers();
+      void this.syncGoldBalance();
+      void this.refreshAgentModeStatus();
+    };
+
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        refresh();
+      }
+    });
+    this.liveRefreshTriggersBound = true;
+  }
+
+  private bindPlayerAccountSubscriptions(player: PlayerState) {
+    const accounts = [
+      player.positionComponentPda,
+      player.energyComponentPda,
+      player.activeActionComponentPda,
+    ];
+    const key = accounts.map((account) => account.toBase58()).join(":");
+
+    if (key === this.playerAccountSubscriptionKey) {
+      return;
+    }
+
+    for (const subscription of this.playerAccountSubscriptions.splice(0)) {
+      void subscription.connection.removeAccountChangeListener(subscription.id);
+    }
+
+    this.playerAccountSubscriptionKey = key;
+    const refresh = () => {
+      void this.syncPlayerState();
+    };
+
+    for (const account of accounts) {
+      try {
+        this.playerAccountSubscriptions.push(
+          {
+            connection: this.erConnection,
+            id: this.erConnection.onAccountChange(
+              account,
+              refresh,
+              "confirmed"
+            ),
+          },
+          {
+            connection: this.baseConnection,
+            id: this.baseConnection.onAccountChange(
+              account,
+              refresh,
+              "confirmed"
+            ),
+          }
+        );
+      } catch (error) {
+        console.debug(
+          `[Open Wilds] account subscription skipped for ${shortAddress(
+            account
+          )}`,
+          error
+        );
+      }
+    }
+  }
+
   private async syncPlayerState(options: { announceLoaded?: boolean } = {}) {
     if (this.playerStateSyncing) {
+      this.playerStateSyncQueued = true;
       return;
     }
 
     this.playerStateSyncing = true;
+    this.playerStateSyncQueued = false;
 
     try {
       if (!this.activePlayerNft) {
+        console.info("[Open Wilds] player state sync skipped: no active player");
         return;
       }
 
@@ -1378,13 +1537,22 @@ export class LocalnetClient {
         (await this.createPlayerWorldProvisioner().loadExistingPlayer());
 
       if (!player) {
+        console.info("[Open Wilds] player state sync skipped: no player state");
         return;
       }
 
       this.playerState = player;
+      this.bindPlayerAccountSubscriptions(player);
       await this.installAnchorProvider(this.erConnection);
       const actionState = await this.fetchPlayerActionStateOnEr(player);
       const stateKey = this.getPlayerActionStateKey(actionState);
+      console.info(
+        "[Open Wilds] player state sync read",
+        `${actionState.position.x},${actionState.position.y}`,
+        `${actionState.energy.current}/${actionState.energy.max}`,
+        actionState.activeAction,
+        stateKey === this.lastPlayerActionStateKey ? "unchanged" : "changed"
+      );
 
       if (stateKey === this.lastPlayerActionStateKey) {
         await this.syncInventory(player);
@@ -1416,60 +1584,90 @@ export class LocalnetClient {
       );
     } finally {
       this.playerStateSyncing = false;
+      if (this.playerStateSyncQueued) {
+        window.setTimeout(() => {
+          void this.syncPlayerState();
+        }, 0);
+      }
     }
   }
 
   private async syncVisiblePlayers() {
-    if (this.visiblePlayerListeners.size === 0) {
+    if (
+      this.visiblePlayerListeners.size === 0 ||
+      this.visiblePlayerSyncing
+    ) {
       return;
     }
 
+    this.visiblePlayerSyncing = true;
     const visiblePlayers: VisiblePlayerState[] = [];
 
-    for (const playerNft of await listPlayerNftsInCollection(
-      this.baseConnection
-    )) {
-      const isActive =
-        this.activePlayerNft?.mint.equals(playerNft.mint) ?? false;
+    try {
+      for (const playerNft of await listPlayerNftsInCollection(
+        this.baseConnection
+      )) {
+        const isActive =
+          this.activePlayerNft?.mint.equals(playerNft.mint) ?? false;
 
-      try {
-        const player =
-          isActive && this.playerState?.playerMint.equals(playerNft.mint)
-            ? this.playerState
-            : await this.createPlayerWorldProvisionerFor(
-                playerNft
-              ).loadExistingPlayer();
+        try {
+          const player =
+            isActive && this.playerState?.playerMint.equals(playerNft.mint)
+              ? this.playerState
+              : await this.createPlayerWorldProvisionerFor(
+                  playerNft
+                ).loadExistingPlayer();
 
-        if (!player) {
-          continue;
+          if (!player) {
+            console.info(
+              `[Open Wilds] visible player skipped: no world state for ${shortAddress(
+                playerNft.mint
+              )}`
+            );
+            continue;
+          }
+
+          this.knownPlayerTileFarms.set(
+            playerNft.mint.toBase58(),
+            player.tileFarms
+          );
+          const [state, inventory] = await Promise.all([
+            this.fetchPlayerActionStateOnEr(player),
+            this.fetchInventoryState(player),
+          ]);
+          console.info(
+            "[Open Wilds] visible player sync read",
+            shortAddress(playerNft.mint),
+            isActive ? "active" : "remote",
+            `${state.position.x},${state.position.y}`,
+            `${state.energy.current}/${state.energy.max}`,
+            state.activeAction
+          );
+          visiblePlayers.push({
+            mint: playerNft.mint.toBase58(),
+            owner: playerNft.owner.toBase58(),
+            entity: player.entityPda.toBase58(),
+            playerOwnerComponent: player.playerOwnerComponentPda.toBase58(),
+            positionComponent: player.positionComponentPda.toBase58(),
+            inventoryComponent: player.inventoryComponentPda.toBase58(),
+            isActive,
+            appearance: this.getPlayerAppearance(playerNft),
+            state,
+            inventory,
+          });
+        } catch (error) {
+          this.knownPlayerTileFarms.delete(playerNft.mint.toBase58());
+          console.warn(
+            `[Open Wilds] skipped visible player ${shortAddress(playerNft.mint)}`,
+            error
+          );
         }
-
-        this.knownPlayerTileFarms.set(
-          playerNft.mint.toBase58(),
-          player.tileFarms
-        );
-        const state = await this.fetchPlayerActionStateOnEr(player);
-        visiblePlayers.push({
-          mint: playerNft.mint.toBase58(),
-          owner: playerNft.owner.toBase58(),
-          entity: player.entityPda.toBase58(),
-          playerOwnerComponent: player.playerOwnerComponentPda.toBase58(),
-          positionComponent: player.positionComponentPda.toBase58(),
-          inventoryComponent: player.inventoryComponentPda.toBase58(),
-          isActive,
-          appearance: this.getPlayerAppearance(playerNft),
-          state,
-        });
-      } catch (error) {
-        this.knownPlayerTileFarms.delete(playerNft.mint.toBase58());
-        console.debug(
-          `[Open Wilds] skipped visible player ${shortAddress(playerNft.mint)}`,
-          error
-        );
       }
-    }
 
-    this.emitVisiblePlayers(visiblePlayers);
+      this.emitVisiblePlayers(visiblePlayers);
+    } finally {
+      this.visiblePlayerSyncing = false;
+    }
   }
 
   private async syncGoldBalance() {
@@ -2463,42 +2661,104 @@ export class LocalnetClient {
   private async fetchPlayerActionStateOnEr(
     player: PlayerState
   ): Promise<PlayerActionState> {
-    const [erPositionAccount, erEnergyAccount, erActiveActionAccount] =
-      await this.erConnection.getMultipleAccountsInfo([
+    const [
+      [erPositionAccount, erEnergyAccount, erActiveActionAccount],
+      [basePositionAccount, baseEnergyAccount, baseActiveActionAccount],
+    ] = await Promise.all([
+      this.erConnection.getMultipleAccountsInfo([
         player.positionComponentPda,
         player.energyComponentPda,
         player.activeActionComponentPda,
-      ]);
-    const [basePositionAccount, baseEnergyAccount, baseActiveActionAccount] =
-      !erPositionAccount || !erEnergyAccount || !erActiveActionAccount
-        ? await this.baseConnection.getMultipleAccountsInfo([
-            player.positionComponentPda,
-            player.energyComponentPda,
-            player.activeActionComponentPda,
-          ])
-        : [null, null, null];
-    const positionAccount = erPositionAccount ?? basePositionAccount;
-    const energyAccount = erEnergyAccount ?? baseEnergyAccount;
-    const activeActionAccount =
-      erActiveActionAccount ?? baseActiveActionAccount;
+      ]),
+      this.baseConnection.getMultipleAccountsInfo([
+        player.positionComponentPda,
+        player.energyComponentPda,
+        player.activeActionComponentPda,
+      ]),
+    ]);
+    const erState = this.decodePlayerActionStateFromAccounts(
+      [erPositionAccount, erEnergyAccount, erActiveActionAccount],
+      "er"
+    );
+    const baseState = this.decodePlayerActionStateFromAccounts(
+      [basePositionAccount, baseEnergyAccount, baseActiveActionAccount],
+      "base"
+    );
+    const selectedState = this.selectFreshestPlayerActionState(
+      erState,
+      baseState
+    );
 
-    if (!positionAccount || positionAccount.data.byteLength < 24) {
-      throw new Error("Position account is missing.");
+    if (!selectedState) {
+      throw new Error("Player action state accounts are missing.");
     }
 
-    if (!energyAccount || energyAccount.data.byteLength < 24) {
-      throw new Error("Energy account is missing.");
-    }
+    return selectedState.state;
+  }
 
-    if (!activeActionAccount || activeActionAccount.data.byteLength < 25) {
-      throw new Error("Active Action account is missing.");
+  private decodePlayerActionStateFromAccounts(
+    [positionAccount, energyAccount, activeActionAccount]: [
+      AccountInfo<Buffer> | null,
+      AccountInfo<Buffer> | null,
+      AccountInfo<Buffer> | null
+    ],
+    source: AccountSource
+  ) {
+    if (
+      !positionAccount ||
+      positionAccount.data.byteLength < 24 ||
+      !energyAccount ||
+      energyAccount.data.byteLength < 24 ||
+      !activeActionAccount ||
+      activeActionAccount.data.byteLength < 25
+    ) {
+      return null;
     }
 
     return {
-      position: this.decodePosition(positionAccount.data),
-      energy: this.decodeEnergy(energyAccount.data),
-      activeAction: this.decodeActiveAction(activeActionAccount.data),
+      source,
+      state: {
+        position: this.decodePosition(positionAccount.data),
+        energy: this.decodeEnergy(energyAccount.data),
+        activeAction: this.decodeActiveAction(activeActionAccount.data),
+      },
     };
+  }
+
+  private selectFreshestPlayerActionState(
+    erState: { source: AccountSource; state: PlayerActionState } | null,
+    baseState: { source: AccountSource; state: PlayerActionState } | null
+  ) {
+    if (!erState) {
+      return baseState;
+    }
+
+    if (!baseState) {
+      return erState;
+    }
+
+    const erRevision = this.getPlayerActionRevision(erState.state);
+    const baseRevision = this.getPlayerActionRevision(baseState.state);
+
+    if (baseRevision > erRevision) {
+      console.info(
+        "[Open Wilds] selected base player state over stale ER",
+        this.describePlayerActionState(baseState.state),
+        "er:",
+        this.describePlayerActionState(erState.state)
+      );
+      return baseState;
+    }
+
+    return erState;
+  }
+
+  private getPlayerActionRevision(state: PlayerActionState) {
+    return Math.max(state.activeAction.startedAt, state.activeAction.endsAt);
+  }
+
+  private describePlayerActionState(state: PlayerActionState) {
+    return `${state.position.x},${state.position.y} ${state.energy.current}/${state.energy.max} ${state.activeAction.kind}:${state.activeAction.startedAt}-${state.activeAction.endsAt}`;
   }
 
   private async syncInventory(player: PlayerState) {
@@ -2506,15 +2766,7 @@ export class LocalnetClient {
       return;
     }
 
-    const account =
-      (await this.erConnection.getAccountInfo(player.inventoryComponentPda)) ??
-      (await this.baseConnection.getAccountInfo(player.inventoryComponentPda));
-
-    if (!account || account.data.byteLength < 72) {
-      return;
-    }
-
-    const inventory = this.decodeInventory(account.data);
+    const inventory = await this.fetchInventoryState(player);
     const stateKey = this.getInventoryStateKey(inventory);
 
     if (stateKey === this.lastInventoryStateKey) {
@@ -2522,6 +2774,18 @@ export class LocalnetClient {
     }
 
     this.emitInventory(inventory);
+  }
+
+  private async fetchInventoryState(player: PlayerState) {
+    const account =
+      (await this.erConnection.getAccountInfo(player.inventoryComponentPda)) ??
+      (await this.baseConnection.getAccountInfo(player.inventoryComponentPda));
+
+    if (!account || account.data.byteLength < 72) {
+      return { slots: [] };
+    }
+
+    return this.decodeInventory(account.data);
   }
 
   private async syncFarmTiles(player: PlayerState) {
@@ -2885,11 +3149,23 @@ export class LocalnetClient {
   }
 
   private emitPlayerActionState(state: PlayerActionState) {
+    this.lastPlayerActionState = state;
     this.lastPlayerActionStateKey = this.getPlayerActionStateKey(state);
+    console.info(
+      "[Open Wilds] player state changed",
+      `${state.position.x},${state.position.y}`,
+      `${state.energy.current}/${state.energy.max}`,
+      state.activeAction
+    );
 
     for (const listener of this.playerActionStateListeners) {
       listener(state);
     }
+  }
+
+  private clearCachedPlayerActionState() {
+    this.lastPlayerActionState = null;
+    this.lastPlayerActionStateKey = null;
   }
 
   private emitPlayerAppearance(player: PlayerNft) {
@@ -2901,6 +3177,8 @@ export class LocalnetClient {
   }
 
   private emitVisiblePlayers(players: VisiblePlayerState[]) {
+    this.lastVisiblePlayers = players;
+
     for (const listener of this.visiblePlayerListeners) {
       listener(players);
     }
@@ -2979,8 +3257,23 @@ export class LocalnetClient {
     return {
       color: player.color,
       fill: style.fill,
+      spriteAssetId: style.spriteAssetId,
       stroke: style.stroke,
     };
+  }
+
+  private getSelectedPlayerColor(): PlayerColorId {
+    return (
+      (this.hud.elements.gatePlayerColorSelect?.value as PlayerColorId) ||
+      (this.hud.elements.playerColorSelect?.value as PlayerColorId) ||
+      "rose"
+    );
+  }
+
+  private emitPlayerSelection() {
+    for (const listener of this.playerSelectionListeners) {
+      listener(this.activePlayerNft);
+    }
   }
 
   private async refreshPlayerNftHud() {
@@ -2993,6 +3286,7 @@ export class LocalnetClient {
       this.wallet.publicKey
     );
     this.hud.renderPlayerNfts(players, this.activePlayerNft);
+    this.emitPlayerSelection();
 
     if (this.activePlayerNft) {
       this.emitPlayerAppearance(this.activePlayerNft);
@@ -3002,17 +3296,69 @@ export class LocalnetClient {
   }
 
   private restoreAgentModeInput() {
-    const input = this.hud.elements.agentDelegateInput;
+    this.syncAgentDelegateInputs(
+      window.localStorage.getItem(AGENT_DELEGATE_STORAGE_KEY) ?? ""
+    );
+  }
 
-    if (!input) {
-      return;
+  private agentModeToggles() {
+    return [
+      this.hud.elements.agentModeToggle,
+      this.hud.elements.gateAgentModeToggle,
+    ].filter((input): input is HTMLInputElement => Boolean(input));
+  }
+
+  private agentDelegateInputs() {
+    return [
+      this.hud.elements.agentDelegateInput,
+      this.hud.elements.gateAgentDelegateInput,
+    ].filter((input): input is HTMLInputElement => Boolean(input));
+  }
+
+  private agentSessionTransactionInputs() {
+    return [
+      this.hud.elements.agentSessionTransactionInput,
+      this.hud.elements.gateAgentSessionTransactionInput,
+    ].filter((input): input is HTMLTextAreaElement => Boolean(input));
+  }
+
+  private agentRevokeButtons() {
+    return [
+      this.hud.elements.agentRevokeButton,
+      this.hud.elements.gateAgentRevokeButton,
+    ].filter((button): button is HTMLButtonElement => Boolean(button));
+  }
+
+  private syncAgentDelegateInputs(value: string) {
+    for (const input of this.agentDelegateInputs()) {
+      input.value = value;
     }
+  }
 
-    input.value = window.localStorage.getItem(AGENT_DELEGATE_STORAGE_KEY) ?? "";
+  private syncAgentSessionTransactionInputs(value: string) {
+    for (const input of this.agentSessionTransactionInputs()) {
+      input.value = value;
+    }
+  }
+
+  private currentAgentDelegateValue() {
+    return (
+      this.hud.elements.agentDelegateInput?.value.trim() ||
+      this.hud.elements.gateAgentDelegateInput?.value.trim() ||
+      ""
+    );
+  }
+
+  private currentAgentSessionTransactionValue() {
+    return (
+      this.hud.elements.agentSessionTransactionInput?.value.trim() ||
+      this.hud.elements.gateAgentSessionTransactionInput?.value.trim() ||
+      ""
+    );
   }
 
   private parseAgentDelegate(): PublicKey | null {
-    const value = this.hud.elements.agentDelegateInput?.value.trim();
+    const value = this.currentAgentDelegateValue();
 
     if (!value) {
       return null;
@@ -3026,7 +3372,7 @@ export class LocalnetClient {
   }
 
   private async refreshAgentModeStatus() {
-    const inputValue = this.hud.elements.agentDelegateInput?.value.trim() ?? "";
+    const inputValue = this.currentAgentDelegateValue();
 
     if (!this.activePlayerNft) {
       this.hud.setAgentModeState({
@@ -3057,10 +3403,12 @@ export class LocalnetClient {
       return;
     }
 
-    const [session, boltSessionActive] = await Promise.all([
+    const [session, boltSession] = await Promise.all([
       this.fetchAgentSession(delegate),
-      this.hasBoltSession(delegate),
+      this.fetchBoltSessionState(delegate),
     ]);
+    const boltSessionActive = Boolean(boltSession?.active);
+    const boltSessionExpired = Boolean(boltSession && !boltSession.active);
     const isActive =
       Boolean(session) &&
       !session!.revoked &&
@@ -3073,6 +3421,8 @@ export class LocalnetClient {
       active: isActive,
       status: isReady
         ? "Active: full control + BOLT session"
+        : boltSessionExpired
+        ? "BOLT session expired"
         : isActive
         ? "Missing BOLT session"
         : boltSessionActive
@@ -3116,18 +3466,42 @@ export class LocalnetClient {
     return getBoltSessionTokenPda(delegate, this.wallet.publicKey);
   }
 
-  private async hasBoltSession(delegate: PublicKey) {
+  private async fetchBoltSessionState(delegate: PublicKey) {
     const sessionToken = await this.getBoltSessionToken(delegate);
-    const account =
-      (await this.erConnection.getAccountInfo(sessionToken)) ??
-      (await this.baseConnection.getAccountInfo(sessionToken));
+    const accounts = await Promise.all([
+      this.baseConnection
+        .getAccountInfo(sessionToken)
+        .then((account) => ({ account, connection: this.baseConnection })),
+      this.erConnection
+        .getAccountInfo(sessionToken)
+        .then((account) => ({ account, connection: this.erConnection })),
+    ]);
+    const now = Math.floor(Date.now() / 1000);
+    const states = accounts
+      .map(({ account, connection }) => {
+        const session = account ? decodeBoltSessionToken(account.data) : null;
 
-    return Boolean(account);
+        if (
+          !session ||
+          !session.authority.equals(this.wallet.publicKey) ||
+          !session.sessionSigner.equals(delegate)
+        ) {
+          return null;
+        }
+
+        return {
+          connection,
+          session,
+          active: session.validUntil > now,
+        };
+      })
+      .filter((state): state is NonNullable<typeof state> => Boolean(state));
+
+    return states.find((state) => state.active) ?? states[0] ?? null;
   }
 
   private parsePreparedBoltSessionTransaction() {
-    const input = this.hud.elements.agentSessionTransactionInput;
-    const value = input?.value.trim();
+    const value = this.currentAgentSessionTransactionValue();
 
     if (!value) {
       return null;
@@ -3141,7 +3515,9 @@ export class LocalnetClient {
   }
 
   private async ensureBoltSession(delegate: PublicKey) {
-    if (await this.hasBoltSession(delegate)) {
+    const existing = await this.fetchBoltSessionState(delegate);
+
+    if (existing?.active) {
       return;
     }
 
@@ -3168,13 +3544,25 @@ export class LocalnetClient {
       checked: true,
       active: false,
       busy: true,
-      status: "Creating BOLT session...",
+      status: existing
+        ? "Refreshing expired BOLT session..."
+        : "Creating BOLT session...",
     });
 
-    await this.sendSignedTransaction(transaction, this.baseConnection);
-    if (this.hud.elements.agentSessionTransactionInput) {
-      this.hud.elements.agentSessionTransactionInput.value = "";
+    if (existing) {
+      await this.sendSignedTransaction(
+        new Transaction().add(
+          revokeBoltSessionInstruction({
+            sessionToken,
+            authority: this.wallet.publicKey,
+          })
+        ),
+        existing.connection
+      );
     }
+
+    await this.sendSignedTransaction(transaction, this.baseConnection);
+    this.syncAgentSessionTransactionInputs("");
   }
 
   private async grantAgentSession() {
@@ -3312,8 +3700,7 @@ export class LocalnetClient {
     this.hud.setMintPlayerBusy(true);
 
     try {
-      const color =
-        (this.hud.elements.playerColorSelect?.value as PlayerColorId) ?? "rose";
+      const color = this.getSelectedPlayerColor();
       const { player, transaction, mint } = await mintPlayerNftOnchain(
         this.baseConnection,
         this.wallet.publicKey,
@@ -3329,12 +3716,13 @@ export class LocalnetClient {
         player.mint
       );
       this.playerState = null;
-      this.lastPlayerActionStateKey = null;
+      this.clearCachedPlayerActionState();
       this.lastInventoryState = null;
       this.lastInventoryStateKey = null;
       this.lastTradeOffers = [];
       this.lastTradeOffersKey = null;
       this.lastRelevantTradeOffersKey = null;
+      this.lastVisiblePlayers = [];
       this.lastFarmTileStates = [];
       this.lastFarmTileStateKey = null;
       this.lastTileItemStates = [];
@@ -3358,12 +3746,13 @@ export class LocalnetClient {
     await setActivePlayerNft(this.baseConnection, this.wallet.publicKey, mint);
     clearStoredPlayer();
     this.playerState = null;
-    this.lastPlayerActionStateKey = null;
+    this.clearCachedPlayerActionState();
     this.lastInventoryStateKey = null;
     this.lastInventoryState = null;
     this.lastTradeOffers = [];
     this.lastTradeOffersKey = null;
     this.lastRelevantTradeOffersKey = null;
+    this.lastVisiblePlayers = [];
     this.lastFarmTileStateKey = null;
     this.lastFarmTileStates = [];
     this.lastTileItemStateKey = null;

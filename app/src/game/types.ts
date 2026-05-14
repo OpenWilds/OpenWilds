@@ -1,3 +1,5 @@
+import type { PlayerSpriteAssetId } from "../assets/visual-assets";
+
 export type GridPoint = {
   x: number;
   y: number;
@@ -31,6 +33,8 @@ export type InventorySlotState = {
 export type InventoryState = {
   slots: InventorySlotState[];
 };
+
+export type EquippedTool = "hand" | "hoe" | "wateringCan";
 
 export type GoldBalanceState = {
   amount: bigint;
@@ -66,6 +70,8 @@ export type FarmActionMode =
   | "grab"
   | "drop";
 
+export type ContextAction = Exclude<FarmActionMode, "move">;
+
 export type FarmTileState = GridPoint & {
   soilState: "untilled" | "tilled";
   farmTypeId: number;
@@ -91,6 +97,7 @@ export type TileItemState = GridPoint & {
 export type PlayerAppearance = {
   color: string;
   fill: number;
+  spriteAssetId: PlayerSpriteAssetId;
   stroke: number;
 };
 
@@ -104,6 +111,7 @@ export type VisiblePlayerState = {
   isActive: boolean;
   appearance: PlayerAppearance;
   state: PlayerActionState;
+  inventory: InventoryState;
 };
 
 export type ActionTransitionState = {
@@ -118,6 +126,7 @@ export type ActionTransitionState = {
 
 export type GameClient = {
   movePlayer: (point: GridPoint) => Promise<PlayerActionState | null>;
+  sleepPlayer?: () => Promise<PlayerActionState | null>;
   performFarmAction?: (
     mode: FarmActionMode,
     point: GridPoint,

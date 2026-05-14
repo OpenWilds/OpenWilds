@@ -34,6 +34,12 @@ const PLAYER_SESSION_SIZE = 118;
 const PLAYER_SESSION_DISCRIMINATOR = Buffer.from([
   89, 95, 51, 45, 127, 42, 173, 223,
 ]);
+const BOLT_SESSION_TOKEN_DISCRIMINATOR = Buffer.from([
+  233, 4, 115, 14, 46, 21, 1, 15,
+]);
+const REVOKE_BOLT_SESSION_DISCRIMINATOR = Buffer.from([
+  86, 92, 198, 120, 144, 2, 7, 194,
+]);
 
 export type PlayerSessionState = {
   playerMint: PublicKey;
@@ -43,6 +49,13 @@ export type PlayerSessionState = {
   revoked: boolean;
   createdAt: number;
   bump: number;
+};
+
+export type BoltSessionTokenState = {
+  authority: PublicKey;
+  targetProgram: PublicKey;
+  sessionSigner: PublicKey;
+  validUntil: number;
 };
 
 export const getPlayerSessionPda = (
@@ -73,6 +86,40 @@ export const getBoltSessionTokenPda = (
     ],
     GPL_SESSION_PROGRAM_ID
   )[0];
+
+export const decodeBoltSessionToken = (
+  data: Buffer | Uint8Array
+): BoltSessionTokenState | null => {
+  const buffer = Buffer.from(data);
+
+  if (
+    buffer.length < 112 ||
+    !buffer.subarray(0, 8).equals(BOLT_SESSION_TOKEN_DISCRIMINATOR)
+  ) {
+    return null;
+  }
+
+  return {
+    authority: new PublicKey(buffer.subarray(8, 40)),
+    targetProgram: new PublicKey(buffer.subarray(40, 72)),
+    sessionSigner: new PublicKey(buffer.subarray(72, 104)),
+    validUntil: Number(buffer.readBigInt64LE(104)),
+  };
+};
+
+export const revokeBoltSessionInstruction = (args: {
+  sessionToken: PublicKey;
+  authority: PublicKey;
+}) =>
+  new TransactionInstruction({
+    programId: GPL_SESSION_PROGRAM_ID,
+    keys: [
+      { pubkey: args.sessionToken, isSigner: false, isWritable: true },
+      { pubkey: args.authority, isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: REVOKE_BOLT_SESSION_DISCRIMINATOR,
+  });
 
 export const grantPlayerSessionInstruction = (args: {
   owner: PublicKey;

@@ -19,13 +19,12 @@ export const createBoard = (scene: Phaser.Scene) => {
   const board = scene.add.graphics().setDepth(-30);
   const terrainLayers = createTerrainLayers();
 
-  board.fillStyle(0xffffff, 1);
-  board.fillRoundedRect(
-    GRID_ORIGIN_X - 10,
-    GRID_ORIGIN_Y - 10,
-    GRID_PIXELS + 20,
-    GRID_PIXELS + 20,
-    8
+  board.fillStyle(0x0d151a, 1);
+  board.fillRect(
+    GRID_ORIGIN_X - CELL_SIZE,
+    GRID_ORIGIN_Y - CELL_SIZE,
+    GRID_PIXELS + CELL_SIZE * 2,
+    GRID_PIXELS + CELL_SIZE * 2
   );
 
   for (let y = 0; y < GRID_SIZE; y += 1) {
@@ -57,7 +56,7 @@ export const createBoard = (scene: Phaser.Scene) => {
     );
   });
 
-  board.lineStyle(1, 0xffffff, 0.18);
+  board.lineStyle(4, 0xf1d38b, 0.34);
   board.strokeRect(GRID_ORIGIN_X, GRID_ORIGIN_Y, GRID_PIXELS, GRID_PIXELS);
 };
 

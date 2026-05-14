@@ -658,7 +658,9 @@ describe("open-wilds", () => {
     inventory = await inventoryComponent.account.inventory.fetch(
       inventoryComponentPda
     );
-    const harvestedSlot = inventory.itemIds.findIndex((itemId) => itemId === 101);
+    const harvestedSlot = inventory.itemIds.findIndex(
+      (itemId) => itemId === 101
+    );
 
     expect(tileFarm.farmTypeId).to.equal(0);
     expect(harvestedSlot).to.be.greaterThanOrEqual(0);

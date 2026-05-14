@@ -3,7 +3,10 @@ import { actionTransitionSystem } from "./action-transition";
 import { hoverSystem } from "./hover";
 import { movementSystem } from "./movement";
 import { positionLabelSystem } from "./position-label";
-import { renderPositionSystem } from "./render-position";
+import {
+  playerSpriteAnimationSystem,
+  renderPositionSystem,
+} from "./render-position";
 
 export const gridSystems = [
   actionProgressSystem,
@@ -11,5 +14,6 @@ export const gridSystems = [
   hoverSystem,
   movementSystem,
   renderPositionSystem,
+  playerSpriteAnimationSystem,
   positionLabelSystem,
 ];

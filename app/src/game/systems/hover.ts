@@ -6,7 +6,10 @@ import type { GridInput } from "../resources";
 export const hoverSystem = (world: World) => {
   const input = world.requireResource<GridInput>("input");
 
-  for (const entity of world.view(Components.hoverCursor, Components.rectangle)) {
+  for (const entity of world.view(
+    Components.hoverCursor,
+    Components.rectangle
+  )) {
     const rectangle = world.requireComponent<RectComponent>(
       entity,
       Components.rectangle

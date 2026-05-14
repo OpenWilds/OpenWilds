@@ -1,6 +1,8 @@
 import Phaser from "phaser";
+import { objectSpriteKey } from "../../assets/visual-assets";
 import {
   Components,
+  type PlayerSpriteComponent,
   type RectComponent,
   type RenderState,
 } from "../components/index";
@@ -14,21 +16,42 @@ import type {
   PlayerAppearance,
 } from "../types";
 
+const playerDisplaySize = 174;
+const playerVisualFootOffsetY = 28;
+
 export const createPlayerEntity = (
   world: World,
   scene: Phaser.Scene,
   position: GridPoint,
-  appearance: Pick<PlayerAppearance, "fill" | "stroke"> = {
+  appearance: Pick<PlayerAppearance, "fill" | "spriteAssetId" | "stroke"> = {
     fill: 0xe24a55,
+    spriteAssetId: "player",
     stroke: 0x84242b,
   },
   isLocalPlayer = true
 ) => {
   const entity = world.createEntity();
-  const rectangle = scene.add
-    .rectangle(0, 0, CELL_SIZE - 8, CELL_SIZE - 8, appearance.fill)
-    .setStrokeStyle(3, appearance.stroke)
-    .setOrigin(0);
+  const container = scene.add.container(0, 0);
+  const shadow = scene.add
+    .ellipse(0, 0, 99.4, 31.1, 0x071018, 0.24)
+    .setStrokeStyle(2, appearance.stroke, isLocalPlayer ? 0.5 : 0.25);
+  const sprite = scene.add
+    .sprite(
+      0,
+      playerVisualFootOffsetY,
+      objectSpriteKey(appearance.spriteAssetId),
+      0
+    )
+    .setOrigin(0.5, 1)
+    .setDisplaySize(playerDisplaySize, playerDisplaySize);
+
+  if (!isLocalPlayer) {
+    sprite.setAlpha(0.78);
+  }
+
+  container.add([shadow, sprite]);
+  container.setSize(142.8, 161.5);
+  container.setDepth(100);
 
   world.addComponent(
     entity,
@@ -60,9 +83,18 @@ export const createPlayerEntity = (
     }
   );
   world.addComponent<RectComponent>(entity, Components.rectangle, {
-    object: rectangle,
-    offsetX: 4,
-    offsetY: 4,
+    object: container,
+    offsetX: CELL_SIZE / 2,
+    offsetY: CELL_SIZE / 2,
+  });
+  world.addComponent<PlayerSpriteComponent>(entity, Components.playerSprite, {
+    assetId: appearance.spriteAssetId,
+    sprite,
+    shadow,
+    displaySize: playerDisplaySize,
+    facing: "down",
+    flipX: false,
+    elapsedMs: 0,
   });
   world.addComponent<RenderState>(entity, Components.renderState, {
     dirty: true,

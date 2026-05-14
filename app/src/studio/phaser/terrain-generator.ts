@@ -12,7 +12,12 @@ const ATLAS_COLUMNS = 7;
 const ATLAS_ROWS = 7;
 
 type MaskDefinition = {
-  id: "left-top" | "right-top-a" | "right-top-b" | "left-bottom" | "right-bottom";
+  id:
+    | "left-top"
+    | "right-top-a"
+    | "right-top-b"
+    | "left-bottom"
+    | "right-bottom";
   title: string;
   url: string;
   sourceGridSize: 3 | 4;
@@ -100,7 +105,10 @@ export async function generateTerrainAsset(
   for (const mask of maskDefinitions) {
     const maskImage = await loadImage(mask.url);
     const maskReference = createMaskReference(maskImage, mask);
-    segments.set(mask.id, compositeAutotileMaskSheet(sourceTexture, maskReference));
+    segments.set(
+      mask.id,
+      compositeAutotileMaskSheet(sourceTexture, maskReference)
+    );
   }
 
   const atlas = combineAutotileAtlas(segments);
@@ -184,7 +192,12 @@ function compositeAutotileMaskSheet(
   const maskContext = getContext(maskReference);
   const textureContext = getContext(textureReference);
   const maskImage = maskContext.getImageData(0, 0, canvas.width, canvas.height);
-  const textureImage = textureContext.getImageData(0, 0, canvas.width, canvas.height);
+  const textureImage = textureContext.getImageData(
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
   const output = context.createImageData(canvas.width, canvas.height);
 
   for (let index = 0; index < output.data.length; index += 4) {
@@ -309,7 +322,10 @@ function getContext(canvas: HTMLCanvasElement) {
 async function loadSourceImage(
   source: File | Blob | HTMLImageElement | HTMLCanvasElement
 ) {
-  if (source instanceof HTMLImageElement || source instanceof HTMLCanvasElement) {
+  if (
+    source instanceof HTMLImageElement ||
+    source instanceof HTMLCanvasElement
+  ) {
     return source;
   }
 
