@@ -686,6 +686,30 @@ textarea:disabled {
   font-weight: 900;
 }
 
+.studio-workspace-button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  gap: 1px;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  border: 1px solid #d7dde7;
+  border-radius: 8px;
+  padding: 3px;
+  background: #eef5ff;
+  color: #1d4ed8;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.studio-workspace-button span {
+  max-width: 34px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .studio-main {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
@@ -695,6 +719,7 @@ textarea:disabled {
 }
 
 .studio-brand[data-tooltip]::after,
+.studio-workspace-button[data-tooltip]::after,
 .studio-user-card[data-tooltip]::after,
 .studio-nav button[data-tooltip]::after,
 .studio-link[data-tooltip]::after {
@@ -721,6 +746,8 @@ textarea:disabled {
 
 .studio-brand[data-tooltip]:hover::after,
 .studio-brand[data-tooltip]:focus-within::after,
+.studio-workspace-button[data-tooltip]:hover::after,
+.studio-workspace-button[data-tooltip]:focus-visible::after,
 .studio-user-card[data-tooltip]:hover::after,
 .studio-user-card[data-tooltip]:focus-visible::after,
 .studio-nav button[data-tooltip]:hover::after,
@@ -2623,6 +2650,113 @@ textarea:disabled {
   border-radius: 50%;
   vertical-align: -1px;
   animation: studio-status-spin 0.8s linear infinite;
+}
+
+.studio-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(16, 25, 31, 0.42);
+}
+
+.studio-modal {
+  display: grid;
+  gap: 18px;
+  width: min(920px, 100%);
+  max-height: min(760px, calc(100vh - 36px));
+  overflow: auto;
+  border: 1px solid #dfe5ee;
+  border-radius: 8px;
+  padding: 18px;
+  background: #ffffff;
+  color: #1f2937;
+  box-shadow: 0 24px 70px rgba(16, 25, 31, 0.22);
+}
+
+.studio-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.studio-modal__header h2,
+.studio-workspace-panel-grid h3 {
+  margin: 0;
+  color: #172033;
+  letter-spacing: 0;
+}
+
+.studio-modal__header button {
+  width: auto;
+  background: #10191f;
+  color: #eef7f4;
+}
+
+.studio-workspace-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.studio-workspace-panel-grid section,
+.studio-workspace-list,
+.studio-workspace-invite-form {
+  display: grid;
+  gap: 10px;
+}
+
+.studio-workspace-field {
+  color: #344155;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.studio-workspace-list button,
+.studio-workspace-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #dfe5ee;
+  border-radius: 8px;
+  padding: 9px;
+  background: #f8fafc;
+  color: #172033;
+  text-align: left;
+}
+
+.studio-workspace-list button[data-active] {
+  border-color: #93bafc;
+  background: #eef5ff;
+}
+
+.studio-workspace-list strong,
+.studio-workspace-list small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.studio-workspace-list small {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.studio-workspace-row button,
+.studio-workspace-row select,
+.studio-workspace-invite-form button,
+.studio-workspace-invite-form select {
+  width: auto;
+}
+
+.studio-workspace-invite-form {
+  grid-template-columns: minmax(0, 1fr) 120px auto;
 }
 
 .studio-generation-queue {

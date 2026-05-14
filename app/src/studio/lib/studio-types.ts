@@ -15,6 +15,7 @@ export type TerrainPromptMetadata = {
 
 export type StudioTerrainTextureRecord = TerrainPromptMetadata & {
   _id: string;
+  workspaceId?: string;
   url: string | null;
   contentType: string;
   size: number;
@@ -25,6 +26,7 @@ export type StudioTerrainTextureRecord = TerrainPromptMetadata & {
 
 export type StudioTerrainAssetRecord = TerrainPromptMetadata & {
   _id: string;
+  workspaceId?: string;
   atlasUrl: string | null;
   centerVariantsUrl: string | null;
   status: TerrainStatus;
@@ -36,6 +38,7 @@ export type StudioTerrainAssetRecord = TerrainPromptMetadata & {
 
 export type StudioMapRecord = {
   _id: string;
+  workspaceId?: string;
   name: string;
   width: number;
   height: number;
@@ -58,6 +61,7 @@ export type StudioPlantSpriteCell = {
 
 export type StudioPlantSpriteRecord = {
   _id: string;
+  workspaceId?: string;
   plantId: string;
   label: string;
   kind: PlantSpriteKind;
@@ -86,6 +90,7 @@ export type StudioPlantSpriteRecord = {
 
 export type StudioObjectSpriteRecord = {
   _id: string;
+  workspaceId?: string;
   objectId: string;
   label: string;
   kind: ObjectSpriteKind;
@@ -118,4 +123,51 @@ export type StudioRoute = {
   id: StudioRouteId;
   kicker: string;
   title: string;
+};
+
+export type WorkspaceRole = "owner" | "admin" | "editor" | "viewer";
+
+export type StudioWorkspaceSummary = {
+  _id: string;
+  name: string;
+  slug: string;
+  role: WorkspaceRole;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type StudioWorkspaceMember = {
+  _id: string;
+  workspaceId: string;
+  userId: string;
+  role: WorkspaceRole;
+  createdAt: number;
+  updatedAt: number;
+  user: {
+    _id: string;
+    email: string | null;
+    name: string | null;
+  };
+};
+
+export type StudioWorkspaceInvite = {
+  _id: string;
+  workspaceId: string;
+  email: string;
+  role: WorkspaceRole;
+  token: string;
+  status: "pending" | "accepted" | "declined" | "revoked";
+  invitedBy: string;
+  acceptedBy?: string;
+  acceptedAt?: number;
+  declinedAt?: number;
+  revokedAt?: number;
+  expiresAt: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type StudioPendingWorkspaceInvite = StudioWorkspaceInvite & {
+  workspace: StudioWorkspaceSummary | null;
 };

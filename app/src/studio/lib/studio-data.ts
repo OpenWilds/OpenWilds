@@ -5,8 +5,12 @@ import type {
   StudioMapRecord,
   StudioObjectSpriteRecord,
   StudioPlantSpriteRecord,
+  StudioPendingWorkspaceInvite,
   StudioTerrainAssetRecord,
   StudioTerrainTextureRecord,
+  StudioWorkspaceInvite,
+  StudioWorkspaceMember,
+  StudioWorkspaceSummary,
   ObjectSpriteStatus,
   PlantSpriteStatus,
   StudioRoute,
@@ -14,7 +18,12 @@ import type {
   TerrainPromptMetadata,
   TerrainStatus,
   TextureStatus,
+  WorkspaceRole,
 } from "./studio-types";
+
+type WorkspaceArg = {
+  workspaceId: string;
+};
 
 export const ROUTES: Record<StudioRouteId, StudioRoute> = {
   dashboard: {
@@ -73,27 +82,80 @@ export const LAYERED_STUDIO_HELP =
 export const refs = {
   listTerrainTextures: makeFunctionReference<
     "query",
-    { status?: TextureStatus },
+    WorkspaceArg & { status?: TextureStatus },
     StudioTerrainTextureRecord[]
   >("studio:listTerrainTextures"),
   listTerrainAssets: makeFunctionReference<
     "query",
-    { status?: TerrainStatus },
+    WorkspaceArg & { status?: TerrainStatus },
     StudioTerrainAssetRecord[]
   >("studio:listTerrainAssets"),
-  listMaps: makeFunctionReference<"query", {}, StudioMapRecord[]>(
+  listMaps: makeFunctionReference<"query", WorkspaceArg, StudioMapRecord[]>(
     "studio:listMaps"
   ),
   listPlantSprites: makeFunctionReference<
     "query",
-    { status?: PlantSpriteStatus },
+    WorkspaceArg & { status?: PlantSpriteStatus },
     StudioPlantSpriteRecord[]
   >("studio:listPlantSprites"),
   listObjectSprites: makeFunctionReference<
     "query",
-    { status?: ObjectSpriteStatus },
+    WorkspaceArg & { status?: ObjectSpriteStatus },
     StudioObjectSpriteRecord[]
   >("studio:listObjectSprites"),
+  listMyWorkspaces: makeFunctionReference<
+    "query",
+    {},
+    StudioWorkspaceSummary[]
+  >("workspaces:listMyWorkspaces"),
+  createWorkspace: makeFunctionReference<
+    "mutation",
+    { name: string },
+    StudioWorkspaceSummary
+  >("workspaces:createWorkspace"),
+  listMembers: makeFunctionReference<
+    "query",
+    WorkspaceArg,
+    StudioWorkspaceMember[]
+  >("workspaces:listMembers"),
+  listWorkspaceInvites: makeFunctionReference<
+    "query",
+    WorkspaceArg,
+    StudioWorkspaceInvite[]
+  >("workspaces:listWorkspaceInvites"),
+  listMyInvites: makeFunctionReference<
+    "query",
+    {},
+    StudioPendingWorkspaceInvite[]
+  >("workspaces:listMyInvites"),
+  createInvite: makeFunctionReference<
+    "mutation",
+    WorkspaceArg & { email: string; role: WorkspaceRole },
+    StudioWorkspaceInvite
+  >("workspaces:createInvite"),
+  acceptInvite: makeFunctionReference<
+    "mutation",
+    { token: string },
+    { workspace: StudioWorkspaceSummary | null; role: WorkspaceRole }
+  >("workspaces:acceptInvite"),
+  declineInvite: makeFunctionReference<"mutation", { token: string }, string>(
+    "workspaces:declineInvite"
+  ),
+  revokeInvite: makeFunctionReference<
+    "mutation",
+    WorkspaceArg & { inviteId: string },
+    string
+  >("workspaces:revokeInvite"),
+  updateMemberRole: makeFunctionReference<
+    "mutation",
+    WorkspaceArg & { userId: string; role: WorkspaceRole },
+    string
+  >("workspaces:updateMemberRole"),
+  removeMember: makeFunctionReference<
+    "mutation",
+    WorkspaceArg & { userId: string },
+    string
+  >("workspaces:removeMember"),
 };
 
 export function textureRecordToSourceTexture(
@@ -101,6 +163,7 @@ export function textureRecordToSourceTexture(
 ): StudioSourceTexture {
   return {
     textureId: record._id,
+    workspaceId: record.workspaceId,
     terrainId: record.terrainId,
     label: record.label,
     material: record.material,

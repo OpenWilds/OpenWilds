@@ -1,5 +1,5 @@
-import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
+import type { FunctionReference } from "convex/server";
 
 import type { TerrainVisualAsset } from "../../assets/visual-assets";
 import type {
@@ -15,6 +15,20 @@ import type { StudioMapExport } from "../phaser/studio-scene";
 
 type TerrainStatus = "draft" | "library" | "archived";
 type TextureStatus = "draft" | "approved" | "archived";
+type StudioMutationClient = {
+  mutation<Mutation extends FunctionReference<"mutation">>(
+    mutation: Mutation,
+    args: Mutation["_args"]
+  ): Promise<Mutation["_returnType"]>;
+  action<Action extends FunctionReference<"action">>(
+    action: Action,
+    args: Action["_args"]
+  ): Promise<Action["_returnType"]>;
+  query<Query extends FunctionReference<"query">>(
+    query: Query,
+    args: Query["_args"]
+  ): Promise<Query["_returnType"]>;
+};
 
 type TerrainPromptMetadata = {
   terrainId: string;
@@ -24,8 +38,16 @@ type TerrainPromptMetadata = {
   stylePrompt: string;
 };
 
+type WorkspaceArg = {
+  workspaceId: string;
+};
+type OptionalWorkspaceArg = {
+  workspaceId?: string;
+};
+
 type StudioTerrainAssetRecord = TerrainPromptMetadata & {
   _id: string;
+  workspaceId?: string;
   atlasUrl: string | null;
   centerVariantsUrl: string | null;
   status: TerrainStatus;
@@ -37,6 +59,7 @@ type StudioTerrainAssetRecord = TerrainPromptMetadata & {
 
 type StudioTerrainTextureRecord = TerrainPromptMetadata & {
   _id: string;
+  workspaceId?: string;
   url: string | null;
   contentType: string;
   size: number;
@@ -47,6 +70,7 @@ type StudioTerrainTextureRecord = TerrainPromptMetadata & {
 
 export type StudioSourceTexture = TerrainPromptMetadata & {
   textureId: string;
+  workspaceId?: string;
   url: string | null;
   contentType: string;
   size: number;
@@ -73,6 +97,7 @@ export type PlantSpritePromptMetadata = {
 
 export type GeneratedPlantSprite = {
   spriteId: string;
+  workspaceId?: string;
   plantId: string;
   label: string;
   kind: PlantSpriteKind;
@@ -108,6 +133,7 @@ export type ObjectSpritePromptMetadata = {
 
 export type GeneratedObjectSprite = {
   spriteId: string;
+  workspaceId?: string;
   objectId: string;
   label: string;
   kind: ObjectSpriteKind;
@@ -132,64 +158,61 @@ type UploadResult = {
 declare const __OPEN_WILDS_CONVEX_URL__: string;
 
 const convexUrl = __OPEN_WILDS_CONVEX_URL__;
-
-const client = convexUrl
-  ? new ConvexHttpClient(convexUrl, {
-      logger: false,
-    })
-  : null;
+let studioClient: StudioMutationClient | null = null;
 
 const refs = {
-  generateUploadUrl: makeFunctionReference<"mutation", {}, string>(
+  generateUploadUrl: makeFunctionReference<"mutation", WorkspaceArg, string>(
     "studio:generateUploadUrl"
   ),
   registerSourceTexture: makeFunctionReference<
     "mutation",
-    TerrainPromptMetadata & {
-      storageId: string;
-      fileName: string;
-      contentType: string;
-      size: number;
-      status?: TextureStatus;
-    },
+    TerrainPromptMetadata &
+      WorkspaceArg & {
+        storageId: string;
+        fileName: string;
+        contentType: string;
+        size: number;
+        status?: TextureStatus;
+      },
     string
   >("studio:registerSourceTexture"),
   registerTerrainAsset: makeFunctionReference<
     "mutation",
-    TerrainPromptMetadata & {
-      sourceTextureId?: string;
-      atlasStorageId: string;
-      centerVariantsStorageId: string;
-      status?: TerrainStatus;
-      tags?: string[];
-      walkable?: boolean;
-      plantable?: boolean;
-    },
+    TerrainPromptMetadata &
+      WorkspaceArg & {
+        sourceTextureId?: string;
+        atlasStorageId: string;
+        centerVariantsStorageId: string;
+        status?: TerrainStatus;
+        tags?: string[];
+        walkable?: boolean;
+        plantable?: boolean;
+      },
     string
   >("studio:registerTerrainAsset"),
   listTerrainAssets: makeFunctionReference<
     "query",
-    { status?: TerrainStatus },
+    WorkspaceArg & { status?: TerrainStatus },
     StudioTerrainAssetRecord[]
   >("studio:listTerrainAssets"),
   listTerrainTextures: makeFunctionReference<
     "query",
-    { status?: TextureStatus },
+    WorkspaceArg & { status?: TextureStatus },
     StudioTerrainTextureRecord[]
   >("studio:listTerrainTextures"),
   listPlantSprites: makeFunctionReference<
     "query",
-    { status?: PlantSpriteStatus },
+    WorkspaceArg & { status?: PlantSpriteStatus },
     StudioPlantSpriteRecord[]
   >("studio:listPlantSprites"),
   listObjectSprites: makeFunctionReference<
     "query",
-    { status?: ObjectSpriteStatus },
+    WorkspaceArg & { status?: ObjectSpriteStatus },
     StudioObjectSpriteRecord[]
   >("studio:listObjectSprites"),
   saveMap: makeFunctionReference<
     "mutation",
-    {
+    WorkspaceArg & {
       mapId?: string;
       name: string;
       width: number;
@@ -200,53 +223,66 @@ const refs = {
   >("studio:saveMap"),
   generateSourceTexture: makeFunctionReference<
     "action",
-    TerrainPromptMetadata & {
-      imageModel?: string;
-      reasoningEffort?:
-        | "none"
-        | "minimal"
-        | "low"
-        | "medium"
-        | "high"
-        | "xhigh";
-    },
+    TerrainPromptMetadata &
+      WorkspaceArg & {
+        imageModel?: string;
+        reasoningEffort?:
+          | "none"
+          | "minimal"
+          | "low"
+          | "medium"
+          | "high"
+          | "xhigh";
+      },
     GeneratedSourceTexture
   >("studio:generateSourceTexture"),
   generatePlantSprite: makeFunctionReference<
     "action",
-    PlantSpritePromptMetadata & {
-      imageModel?: string;
-      reasoningEffort?:
-        | "none"
-        | "minimal"
-        | "low"
-        | "medium"
-        | "high"
-        | "xhigh";
-    },
+    PlantSpritePromptMetadata &
+      WorkspaceArg & {
+        imageModel?: string;
+        reasoningEffort?:
+          | "none"
+          | "minimal"
+          | "low"
+          | "medium"
+          | "high"
+          | "xhigh";
+      },
     GeneratedPlantSprite
   >("studio:generatePlantSprite"),
   generateObjectSprite: makeFunctionReference<
     "action",
-    ObjectSpritePromptMetadata & {
-      imageModel?: string;
-      reasoningEffort?:
-        | "none"
-        | "minimal"
-        | "low"
-        | "medium"
-        | "high"
-        | "xhigh";
-    },
+    ObjectSpritePromptMetadata &
+      WorkspaceArg & {
+        imageModel?: string;
+        reasoningEffort?:
+          | "none"
+          | "minimal"
+          | "low"
+          | "medium"
+          | "high"
+          | "xhigh";
+      },
     GeneratedObjectSprite
   >("studio:generateObjectSprite"),
 };
 
-export const isConvexStudioConfigured = () => client !== null;
+export const isConvexStudioConfigured = () => Boolean(convexUrl);
 
-export async function uploadStudioFile(file: Blob): Promise<UploadResult> {
+export function setStudioConvexClient(client: StudioMutationClient | null) {
+  studioClient = client;
+}
+
+export async function uploadStudioFile(
+  workspaceId: string | undefined,
+  file: Blob
+): Promise<UploadResult> {
   const convex = getClient();
-  const uploadUrl = await convex.mutation(refs.generateUploadUrl, {});
+  const resolvedWorkspaceId = requireWorkspaceId(workspaceId);
+  const uploadUrl = await convex.mutation(refs.generateUploadUrl, {
+    workspaceId: resolvedWorkspaceId,
+  });
   const response = await fetch(uploadUrl, {
     method: "POST",
     headers: {
@@ -265,12 +301,14 @@ export async function uploadStudioFile(file: Blob): Promise<UploadResult> {
 export async function registerSourceTexture(
   args: TerrainPromptMetadata & {
     file: File;
-  }
+  } & OptionalWorkspaceArg
 ) {
   const convex = getClient();
-  const upload = await uploadStudioFile(args.file);
+  const workspaceId = requireWorkspaceId(args.workspaceId);
+  const upload = await uploadStudioFile(workspaceId, args.file);
 
   return await convex.mutation(refs.registerSourceTexture, {
+    workspaceId,
     terrainId: args.terrainId,
     label: args.label,
     storageId: upload.storageId,
@@ -285,40 +323,55 @@ export async function registerSourceTexture(
 }
 
 export async function generateSourceTexture(
-  args: TerrainPromptMetadata
+  args: TerrainPromptMetadata & OptionalWorkspaceArg
 ): Promise<GeneratedSourceTexture> {
   const convex = getClient();
-  const result = await convex.action(refs.generateSourceTexture, args);
+  const workspaceId = requireWorkspaceId(args.workspaceId);
+  const result = await convex.action(refs.generateSourceTexture, {
+    ...args,
+    workspaceId,
+  });
 
   return {
     ...result,
     ...args,
+    workspaceId,
     updatedAt: Date.now(),
   };
 }
 
 export async function generatePlantSprite(
-  args: PlantSpritePromptMetadata
+  args: PlantSpritePromptMetadata & OptionalWorkspaceArg
 ): Promise<GeneratedPlantSprite> {
   const convex = getClient();
-  const result = await convex.action(refs.generatePlantSprite, args);
+  const workspaceId = requireWorkspaceId(args.workspaceId);
+  const result = await convex.action(refs.generatePlantSprite, {
+    ...args,
+    workspaceId,
+  });
 
   return {
     ...result,
     ...args,
+    workspaceId,
     updatedAt: Date.now(),
   };
 }
 
 export async function generateObjectSprite(
-  args: ObjectSpritePromptMetadata
+  args: ObjectSpritePromptMetadata & OptionalWorkspaceArg
 ): Promise<GeneratedObjectSprite> {
   const convex = getClient();
-  const result = await convex.action(refs.generateObjectSprite, args);
+  const workspaceId = requireWorkspaceId(args.workspaceId);
+  const result = await convex.action(refs.generateObjectSprite, {
+    ...args,
+    workspaceId,
+  });
 
   return {
     ...result,
     ...args,
+    workspaceId,
     updatedAt: Date.now(),
   };
 }
@@ -328,15 +381,17 @@ export async function registerGeneratedTerrainAsset(
     sourceTextureId?: string;
     atlasBlob: Blob;
     centerVariantsBlob: Blob;
-  }
+  } & OptionalWorkspaceArg
 ) {
   const convex = getClient();
+  const workspaceId = requireWorkspaceId(args.workspaceId);
   const [atlas, centerVariants] = await Promise.all([
-    uploadStudioFile(args.atlasBlob),
-    uploadStudioFile(args.centerVariantsBlob),
+    uploadStudioFile(workspaceId, args.atlasBlob),
+    uploadStudioFile(workspaceId, args.centerVariantsBlob),
   ]);
 
   return await convex.mutation(refs.registerTerrainAsset, {
+    workspaceId,
     terrainId: args.terrainId,
     label: args.label,
     sourceTextureId: args.sourceTextureId,
@@ -352,9 +407,13 @@ export async function registerGeneratedTerrainAsset(
   });
 }
 
-export async function listStudioTerrainAssets(): Promise<TerrainVisualAsset[]> {
+export async function listStudioTerrainAssets(
+  workspaceId?: string
+): Promise<TerrainVisualAsset[]> {
   const convex = getClient();
+  const resolvedWorkspaceId = requireWorkspaceId(workspaceId);
   const records = await convex.query(refs.listTerrainAssets, {
+    workspaceId: resolvedWorkspaceId,
     status: "library",
   });
 
@@ -375,11 +434,14 @@ export async function listStudioTerrainAssets(): Promise<TerrainVisualAsset[]> {
   });
 }
 
-export async function listStudioSourceTextures(): Promise<
-  StudioSourceTexture[]
-> {
+export async function listStudioSourceTextures(
+  workspaceId?: string
+): Promise<StudioSourceTexture[]> {
   const convex = getClient();
-  const records = await convex.query(refs.listTerrainTextures, {});
+  const resolvedWorkspaceId = requireWorkspaceId(workspaceId);
+  const records = await convex.query(refs.listTerrainTextures, {
+    workspaceId: resolvedWorkspaceId,
+  });
 
   return records.flatMap((record) => {
     if (!record.url || record.status === "archived") {
@@ -389,6 +451,7 @@ export async function listStudioSourceTextures(): Promise<
     return [
       {
         textureId: record._id,
+        workspaceId: record.workspaceId,
         terrainId: record.terrainId,
         label: record.label,
         material: record.material,
@@ -404,22 +467,26 @@ export async function listStudioSourceTextures(): Promise<
   });
 }
 
-export async function listStudioPlantSprites(): Promise<
-  StudioPlantSpriteRecord[]
-> {
+export async function listStudioPlantSprites(
+  workspaceId?: string
+): Promise<StudioPlantSpriteRecord[]> {
   const convex = getClient();
+  const resolvedWorkspaceId = requireWorkspaceId(workspaceId);
   const records = await convex.query(refs.listPlantSprites, {
+    workspaceId: resolvedWorkspaceId,
     status: "library",
   });
 
   return records.filter((record) => record.url && record.status !== "archived");
 }
 
-export async function listStudioObjectSprites(): Promise<
-  StudioObjectSpriteRecord[]
-> {
+export async function listStudioObjectSprites(
+  workspaceId?: string
+): Promise<StudioObjectSpriteRecord[]> {
   const convex = getClient();
+  const resolvedWorkspaceId = requireWorkspaceId(workspaceId);
   const records = await convex.query(refs.listObjectSprites, {
+    workspaceId: resolvedWorkspaceId,
     status: "library",
   });
 
@@ -427,13 +494,29 @@ export async function listStudioObjectSprites(): Promise<
 }
 
 export async function saveStudioMapToConvex(
-  name: string,
-  map: StudioMapExport,
-  mapId?: string | null
+  workspaceIdOrName: string,
+  nameOrMap: string | StudioMapExport,
+  mapOrMapId?: StudioMapExport | string | null,
+  maybeMapId?: string | null
 ) {
   const convex = getClient();
+  const workspaceId =
+    typeof nameOrMap === "string"
+      ? requireWorkspaceId(workspaceIdOrName)
+      : requireWorkspaceId(undefined);
+  const name = typeof nameOrMap === "string" ? nameOrMap : workspaceIdOrName;
+  const map = typeof nameOrMap === "string" ? mapOrMapId : nameOrMap;
+  const mapId =
+    typeof nameOrMap === "string"
+      ? maybeMapId
+      : (mapOrMapId as string | null | undefined);
+
+  if (!map || typeof map === "string") {
+    throw new Error("World map is required.");
+  }
 
   return await convex.mutation(refs.saveMap, {
+    workspaceId,
     mapId: mapId ?? undefined,
     name,
     width: map.width,
@@ -453,9 +536,21 @@ export async function dataUrlToPngBlob(dataUrl: string) {
 }
 
 function getClient() {
-  if (!client) {
-    throw new Error("Set VITE_CONVEX_URL in .env.local to use Studio storage.");
+  if (!studioClient) {
+    throw new Error("Sign in to use Studio storage.");
   }
 
-  return client;
+  return studioClient;
+}
+
+function requireWorkspaceId(workspaceId: string | undefined) {
+  const resolved =
+    workspaceId ??
+    window.localStorage.getItem("open-wilds:studio:selected-workspace");
+
+  if (!resolved) {
+    throw new Error("Select a workspace first.");
+  }
+
+  return resolved;
 }

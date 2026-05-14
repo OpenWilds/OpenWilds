@@ -50,6 +50,7 @@ export const upsertWorldArgs = {
   runtimeKind: runtimeKindValidator,
   readBackend: readBackendValidator,
   writeBackend: writeBackendValidator,
+  workspaceId: v.optional(v.id("studioWorkspaces")),
   studioMapId: v.optional(v.id("studioMaps")),
   status: v.optional(statusValidator),
   updatedAt: v.optional(v.number()),
@@ -144,6 +145,7 @@ export const upsertIndexerCheckpointArgs = {
 export const createConvexWorldArgs = {
   worldKey: v.string(),
   name: v.optional(v.string()),
+  workspaceId: v.optional(v.id("studioWorkspaces")),
   studioMapId: v.optional(v.id("studioMaps")),
   playerKey: v.optional(v.string()),
   owner: v.optional(v.string()),

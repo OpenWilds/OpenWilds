@@ -1,8 +1,12 @@
 import { v } from "convex/values";
 
-import { api } from "./_generated/api";
-import { action, mutation, query } from "./_generated/server";
-import { requireAuthUserId } from "./authz";
+import { api, internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
+import { action, mutation, query, type ActionCtx } from "./_generated/server";
+import {
+  requireWorkspaceEditor,
+  requireWorkspaceViewer,
+} from "./workspaceAuth";
 
 const photoroomSegmentEndpoint = "https://sdk.photoroom.com/v1/segment";
 
@@ -41,9 +45,11 @@ const plantSpriteCell = v.object({
 });
 
 export const generateUploadUrl = mutation({
-  args: {},
-  handler: async (ctx) => {
-    await requireAuthUserId(ctx);
+  args: {
+    workspaceId: v.id("studioWorkspaces"),
+  },
+  handler: async (ctx, args) => {
+    await requireWorkspaceEditor(ctx, args.workspaceId);
 
     return await ctx.storage.generateUploadUrl();
   },
@@ -51,6 +57,7 @@ export const generateUploadUrl = mutation({
 
 export const generateSourceTexture = action({
   args: {
+    workspaceId: v.id("studioWorkspaces"),
     terrainId: v.string(),
     label: v.string(),
     material: v.string(),
@@ -69,7 +76,7 @@ export const generateSourceTexture = action({
     ),
   },
   handler: async (ctx, args) => {
-    await requireAuthUserId(ctx);
+    await requireWorkspaceEditorAction(ctx, args.workspaceId);
 
     const startedAt = Date.now();
     const requestId = createGenerationRequestId(args.terrainId);
@@ -119,6 +126,7 @@ export const generateSourceTexture = action({
     const textureId: string = await ctx.runMutation(
       api.studio.registerSourceTexture,
       {
+        workspaceId: args.workspaceId,
         terrainId: args.terrainId,
         label: args.label,
         storageId,
@@ -140,6 +148,7 @@ export const generateSourceTexture = action({
 
     return {
       textureId,
+      workspaceId: args.workspaceId,
       storageId,
       url,
       prompt: content.prompt,
@@ -152,18 +161,27 @@ export const generateSourceTexture = action({
 
 export const listTerrainTextures = query({
   args: {
+    workspaceId: v.id("studioWorkspaces"),
     status: v.optional(textureStatus),
   },
   handler: async (ctx, args) => {
-    await requireAuthUserId(ctx);
+    await requireWorkspaceViewer(ctx, args.workspaceId);
 
     const status = args.status;
     const textures =
       status === undefined
-        ? await ctx.db.query("studioTerrainTextures").order("desc").take(100)
+        ? await ctx.db
+            .query("studioTerrainTextures")
+            .withIndex("by_workspaceId_and_status_and_updatedAt", (q) =>
+              q.eq("workspaceId", args.workspaceId)
+            )
+            .order("desc")
+            .take(100)
         : await ctx.db
             .query("studioTerrainTextures")
-            .withIndex("by_status_and_updatedAt", (q) => q.eq("status", status))
+            .withIndex("by_workspaceId_and_status_and_updatedAt", (q) =>
+              q.eq("workspaceId", args.workspaceId).eq("status", status)
+            )
             .order("desc")
             .take(100);
 
@@ -178,6 +196,7 @@ export const listTerrainTextures = query({
 
 export const registerSourceTexture = mutation({
   args: {
+    workspaceId: v.id("studioWorkspaces"),
     terrainId: v.string(),
     label: v.string(),
     storageId: v.id("_storage"),
@@ -190,14 +209,17 @@ export const registerSourceTexture = mutation({
     status: v.optional(textureStatus),
   },
   handler: async (ctx, args) => {
-    await requireAuthUserId(ctx);
+    await requireWorkspaceEditor(ctx, args.workspaceId);
 
     const now = Date.now();
     const existing = await ctx.db
       .query("studioTerrainTextures")
-      .withIndex("by_terrainId", (q) => q.eq("terrainId", args.terrainId))
+      .withIndex("by_workspaceId_and_terrainId", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("terrainId", args.terrainId)
+      )
       .first();
     const patch = {
+      workspaceId: args.workspaceId,
       terrainId: args.terrainId,
       label: args.label,
       storageId: args.storageId,
@@ -225,6 +247,7 @@ export const registerSourceTexture = mutation({
 
 export const registerTerrainAsset = mutation({
   args: {
+    workspaceId: v.id("studioWorkspaces"),
     terrainId: v.string(),
     label: v.string(),
     sourceTextureId: v.optional(v.id("studioTerrainTextures")),
@@ -239,14 +262,25 @@ export const registerTerrainAsset = mutation({
     plantable: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    await requireAuthUserId(ctx);
+    await requireWorkspaceEditor(ctx, args.workspaceId);
 
     const now = Date.now();
+    if (args.sourceTextureId) {
+      const sourceTexture = await ctx.db.get(args.sourceTextureId);
+
+      if (!sourceTexture || sourceTexture.workspaceId !== args.workspaceId) {
+        throw new Error("Source texture not found");
+      }
+    }
+
     const existing = await ctx.db
       .query("studioTerrainAssets")
-      .withIndex("by_terrainId", (q) => q.eq("terrainId", args.terrainId))
+      .withIndex("by_workspaceId_and_terrainId", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("terrainId", args.terrainId)
+      )
       .first();
     const patch = {
+      workspaceId: args.workspaceId,
       terrainId: args.terrainId,
       label: args.label,
       sourceTextureId: args.sourceTextureId,
@@ -274,6 +308,7 @@ export const registerTerrainAsset = mutation({
 
 export const generatePlantSprite = action({
   args: {
+    workspaceId: v.id("studioWorkspaces"),
     plantId: v.string(),
     label: v.string(),
     kind: plantSpriteKind,
@@ -295,7 +330,7 @@ export const generatePlantSprite = action({
     ),
   },
   handler: async (ctx, args) => {
-    await requireAuthUserId(ctx);
+    await requireWorkspaceEditorAction(ctx, args.workspaceId);
 
     const startedAt = Date.now();
     const requestId = createGenerationRequestId(args.plantId);
@@ -378,6 +413,7 @@ export const generatePlantSprite = action({
     const spriteId: string = await ctx.runMutation(
       api.studio.registerPlantSprite,
       {
+        workspaceId: args.workspaceId,
         plantId: args.plantId,
         label: args.label,
         kind: args.kind,
@@ -411,6 +447,7 @@ export const generatePlantSprite = action({
 
     return {
       spriteId,
+      workspaceId: args.workspaceId,
       plantId: args.plantId,
       label: args.label,
       kind: args.kind,
@@ -438,6 +475,7 @@ export const generatePlantSprite = action({
 
 export const registerPlantSprite = mutation({
   args: {
+    workspaceId: v.id("studioWorkspaces"),
     plantId: v.string(),
     label: v.string(),
     kind: plantSpriteKind,
@@ -461,14 +499,17 @@ export const registerPlantSprite = mutation({
     cells: v.array(plantSpriteCell),
   },
   handler: async (ctx, args) => {
-    await requireAuthUserId(ctx);
+    await requireWorkspaceEditor(ctx, args.workspaceId);
 
     const now = Date.now();
     const existing = await ctx.db
       .query("studioPlantSprites")
-      .withIndex("by_plantId", (q) => q.eq("plantId", args.plantId))
+      .withIndex("by_workspaceId_and_plantId", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("plantId", args.plantId)
+      )
       .first();
     const patch = {
+      workspaceId: args.workspaceId,
       plantId: args.plantId,
       label: args.label,
       kind: args.kind,
@@ -508,18 +549,27 @@ export const registerPlantSprite = mutation({
 
 export const listPlantSprites = query({
   args: {
+    workspaceId: v.id("studioWorkspaces"),
     status: v.optional(plantSpriteStatus),
   },
   handler: async (ctx, args) => {
-    await requireAuthUserId(ctx);
+    await requireWorkspaceViewer(ctx, args.workspaceId);
 
     const status = args.status;
     const sprites =
       status === undefined
-        ? await ctx.db.query("studioPlantSprites").order("desc").take(100)
+        ? await ctx.db
+            .query("studioPlantSprites")
+            .withIndex("by_workspaceId_and_status_and_updatedAt", (q) =>
+              q.eq("workspaceId", args.workspaceId)
+            )
+            .order("desc")
+            .take(100)
         : await ctx.db
             .query("studioPlantSprites")
-            .withIndex("by_status_and_updatedAt", (q) => q.eq("status", status))
+            .withIndex("by_workspaceId_and_status_and_updatedAt", (q) =>
+              q.eq("workspaceId", args.workspaceId).eq("status", status)
+            )
             .order("desc")
             .take(100);
 
@@ -537,6 +587,7 @@ export const listPlantSprites = query({
 
 export const generateObjectSprite = action({
   args: {
+    workspaceId: v.id("studioWorkspaces"),
     objectId: v.string(),
     label: v.string(),
     kind: objectSpriteKind,
@@ -557,7 +608,7 @@ export const generateObjectSprite = action({
     ),
   },
   handler: async (ctx, args) => {
-    await requireAuthUserId(ctx);
+    await requireWorkspaceEditorAction(ctx, args.workspaceId);
 
     const startedAt = Date.now();
     const requestId = createGenerationRequestId(args.objectId);
@@ -610,6 +661,7 @@ export const generateObjectSprite = action({
     const spriteId: string = await ctx.runMutation(
       api.studio.registerObjectSprite,
       {
+        workspaceId: args.workspaceId,
         objectId: args.objectId,
         label: args.label,
         kind: args.kind,
@@ -636,6 +688,7 @@ export const generateObjectSprite = action({
 
     return {
       spriteId,
+      workspaceId: args.workspaceId,
       objectId: args.objectId,
       label: args.label,
       kind: args.kind,
@@ -657,6 +710,7 @@ export const generateObjectSprite = action({
 
 export const registerObjectSprite = mutation({
   args: {
+    workspaceId: v.id("studioWorkspaces"),
     objectId: v.string(),
     label: v.string(),
     kind: objectSpriteKind,
@@ -673,14 +727,17 @@ export const registerObjectSprite = mutation({
     model: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireAuthUserId(ctx);
+    await requireWorkspaceEditor(ctx, args.workspaceId);
 
     const now = Date.now();
     const existing = await ctx.db
       .query("studioObjectSprites")
-      .withIndex("by_objectId", (q) => q.eq("objectId", args.objectId))
+      .withIndex("by_workspaceId_and_objectId", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("objectId", args.objectId)
+      )
       .first();
     const patch = {
+      workspaceId: args.workspaceId,
       objectId: args.objectId,
       label: args.label,
       kind: args.kind,
@@ -713,18 +770,27 @@ export const registerObjectSprite = mutation({
 
 export const listObjectSprites = query({
   args: {
+    workspaceId: v.id("studioWorkspaces"),
     status: v.optional(objectSpriteStatus),
   },
   handler: async (ctx, args) => {
-    await requireAuthUserId(ctx);
+    await requireWorkspaceViewer(ctx, args.workspaceId);
 
     const status = args.status;
     const sprites =
       status === undefined
-        ? await ctx.db.query("studioObjectSprites").order("desc").take(100)
+        ? await ctx.db
+            .query("studioObjectSprites")
+            .withIndex("by_workspaceId_and_status_and_updatedAt", (q) =>
+              q.eq("workspaceId", args.workspaceId)
+            )
+            .order("desc")
+            .take(100)
         : await ctx.db
             .query("studioObjectSprites")
-            .withIndex("by_status_and_updatedAt", (q) => q.eq("status", status))
+            .withIndex("by_workspaceId_and_status_and_updatedAt", (q) =>
+              q.eq("workspaceId", args.workspaceId).eq("status", status)
+            )
             .order("desc")
             .take(100);
 
@@ -739,18 +805,27 @@ export const listObjectSprites = query({
 
 export const listTerrainAssets = query({
   args: {
+    workspaceId: v.id("studioWorkspaces"),
     status: v.optional(terrainStatus),
   },
   handler: async (ctx, args) => {
-    await requireAuthUserId(ctx);
+    await requireWorkspaceViewer(ctx, args.workspaceId);
 
     const status = args.status;
     const assets =
       status === undefined
-        ? await ctx.db.query("studioTerrainAssets").order("desc").take(100)
+        ? await ctx.db
+            .query("studioTerrainAssets")
+            .withIndex("by_workspaceId_and_status_and_updatedAt", (q) =>
+              q.eq("workspaceId", args.workspaceId)
+            )
+            .order("desc")
+            .take(100)
         : await ctx.db
             .query("studioTerrainAssets")
-            .withIndex("by_status_and_updatedAt", (q) => q.eq("status", status))
+            .withIndex("by_workspaceId_and_status_and_updatedAt", (q) =>
+              q.eq("workspaceId", args.workspaceId).eq("status", status)
+            )
             .order("desc")
             .take(100);
 
@@ -768,6 +843,7 @@ export const listTerrainAssets = query({
 
 export const saveMap = mutation({
   args: {
+    workspaceId: v.id("studioWorkspaces"),
     mapId: v.optional(v.id("studioMaps")),
     name: v.string(),
     width: v.number(),
@@ -775,10 +851,11 @@ export const saveMap = mutation({
     mapJson: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireAuthUserId(ctx);
+    await requireWorkspaceEditor(ctx, args.workspaceId);
 
     const now = Date.now();
     const patch = {
+      workspaceId: args.workspaceId,
       name: args.name,
       width: args.width,
       height: args.height,
@@ -787,6 +864,12 @@ export const saveMap = mutation({
     };
 
     if (args.mapId) {
+      const existing = await ctx.db.get(args.mapId);
+
+      if (!existing || existing.workspaceId !== args.workspaceId) {
+        throw new Error("World not found");
+      }
+
       await ctx.db.patch(args.mapId, patch);
       return args.mapId;
     }
@@ -799,13 +882,31 @@ export const saveMap = mutation({
 });
 
 export const listMaps = query({
-  args: {},
-  handler: async (ctx) => {
-    await requireAuthUserId(ctx);
+  args: {
+    workspaceId: v.id("studioWorkspaces"),
+  },
+  handler: async (ctx, args) => {
+    await requireWorkspaceViewer(ctx, args.workspaceId);
 
-    return await ctx.db.query("studioMaps").order("desc").take(50);
+    return await ctx.db
+      .query("studioMaps")
+      .withIndex("by_workspaceId_and_updatedAt", (q) =>
+        q.eq("workspaceId", args.workspaceId)
+      )
+      .order("desc")
+      .take(50);
   },
 });
+
+async function requireWorkspaceEditorAction(
+  ctx: ActionCtx,
+  workspaceId: Id<"studioWorkspaces">
+) {
+  await ctx.runQuery(internal.workspaces.requireWorkspaceAccess, {
+    workspaceId,
+    minimumRole: "editor",
+  });
+}
 
 type OpenRouterImageResponse = {
   choices?: Array<{
