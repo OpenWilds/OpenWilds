@@ -6,10 +6,17 @@ import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
+const testUser = "test-user";
+
+const authedTest = () =>
+  convexTest(schema, modules).withIdentity({
+    subject: `${testUser}|test-session`,
+    tokenIdentifier: `https://convex.test|${testUser}`,
+  });
 
 describe("gameState Convex read model", () => {
   it("seeds a dev world and returns the shared read model", async () => {
-    const t = convexTest(schema, modules);
+    const t = authedTest();
 
     await t.mutation(api.game.dev.seedDevWorld, {
       worldKey: "test-world",
@@ -25,7 +32,7 @@ describe("gameState Convex read model", () => {
     expect(model.goldBalance.amount).toBe(50n);
     expect(model.visiblePlayers[0]).toMatchObject({
       mint: "player-a",
-      owner: "dev-owner",
+      owner: testUser,
       isActive: true,
     });
     expect(model.farmTiles).toHaveLength(1);
@@ -33,7 +40,7 @@ describe("gameState Convex read model", () => {
   });
 
   it("keeps the legacy gameState API as a compatibility facade", async () => {
-    const t = convexTest(schema, modules);
+    const t = authedTest();
 
     await t.mutation(api.gameState.seedDevWorld, {
       worldKey: "compat-world",
@@ -52,7 +59,7 @@ describe("gameState Convex read model", () => {
   });
 
   it("ignores stale revisions", async () => {
-    const t = convexTest(schema, modules);
+    const t = authedTest();
 
     await t.mutation(internal.game.ingest.upsertPlayerState, {
       worldKey: "test-world",
@@ -80,7 +87,7 @@ describe("gameState Convex read model", () => {
   });
 
   it("returns default player state with world-scoped tiles and items", async () => {
-    const t = convexTest(schema, modules);
+    const t = authedTest();
 
     await t.mutation(internal.game.ingest.upsertFarmTile, {
       worldKey: "test-world",
@@ -125,7 +132,7 @@ describe("gameState Convex read model", () => {
   });
 
   it("returns incoming and outgoing trade offers for the selected player", async () => {
-    const t = convexTest(schema, modules);
+    const t = authedTest();
 
     await t.mutation(internal.game.ingest.upsertTradeOffer, {
       ...tradeOffer("outgoing-offer"),

@@ -1,5 +1,6 @@
 import { mutation, type MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
+import { requireAuthUserKey } from "../authz";
 import { gameTileKey } from "../shared/ids";
 import { WORLD_ITEM_DROPS } from "./constants";
 import { ensurePreparedPlayer, freshness } from "./ecs";
@@ -9,12 +10,20 @@ import { createConvexWorldArgs, prepareConvexPlayerArgs } from "./validators";
 
 export const createConvexWorld = mutation({
   args: createConvexWorldArgs,
-  handler: async (ctx, args) => createConvexWorldDoc(ctx, args),
+  handler: async (ctx, args) =>
+    createConvexWorldDoc(ctx, {
+      ...args,
+      owner: await requireAuthUserKey(ctx),
+    }),
 });
 
 export const prepareConvexPlayer = mutation({
   args: prepareConvexPlayerArgs,
-  handler: async (ctx, args) => prepareConvexPlayerDoc(ctx, args),
+  handler: async (ctx, args) =>
+    prepareConvexPlayerDoc(ctx, {
+      ...args,
+      owner: await requireAuthUserKey(ctx),
+    }),
 });
 
 export async function createConvexWorldDoc(

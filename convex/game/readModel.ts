@@ -1,5 +1,6 @@
 import { query, type QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
+import { requireAuthUserKey } from "../authz";
 import {
   defaultPlayerActionState,
   defaultPlayerAppearance,
@@ -33,6 +34,7 @@ export async function getWorldReadModelHandler(
     playerKey: string | null;
   }
 ) {
+  const userKey = await requireAuthUserKey(ctx);
   const world = await getWorldByKey(ctx, args.worldKey);
 
   if (!world) {
@@ -47,21 +49,33 @@ export async function getWorldReadModelHandler(
   const selectedPlayer = args.playerKey
     ? await getPlayer(ctx, world._id, args.playerKey)
     : null;
-  const selectedState = args.playerKey
-    ? await getPlayerState(ctx, world._id, args.playerKey)
+  const canReadSelectedPlayer =
+    selectedPlayer === null || selectedPlayer.owner === userKey;
+  const authorizedSelectedPlayer = canReadSelectedPlayer
+    ? selectedPlayer
     : null;
-  const selectedInventory = args.playerKey
-    ? await getInventory(ctx, world._id, args.playerKey)
-    : null;
-  const selectedGold = args.playerKey
-    ? await getGoldBalance(ctx, world._id, args.playerKey)
-    : null;
+  const selectedState =
+    args.playerKey && canReadSelectedPlayer
+      ? await getPlayerState(ctx, world._id, args.playerKey)
+      : null;
+  const selectedInventory =
+    args.playerKey && canReadSelectedPlayer
+      ? await getInventory(ctx, world._id, args.playerKey)
+      : null;
+  const selectedGold =
+    args.playerKey && canReadSelectedPlayer
+      ? await getGoldBalance(ctx, world._id, args.playerKey)
+      : null;
 
   const [farmTiles, tileItems, tradeOffers, visiblePlayers] = await Promise.all(
     [
       listFarmTiles(ctx, world._id),
       listTileItems(ctx, world._id),
-      listTradeOffers(ctx, world._id, args.playerKey),
+      listTradeOffers(
+        ctx,
+        world._id,
+        canReadSelectedPlayer ? args.playerKey : null
+      ),
       listVisiblePlayers(ctx, world._id, args.playerKey, players),
     ]
   );
@@ -70,8 +84,8 @@ export async function getWorldReadModelHandler(
     playerActionState: selectedState
       ? toPlayerActionState(selectedState)
       : defaultPlayerActionState,
-    playerAppearance: selectedPlayer
-      ? selectedPlayer.appearance
+    playerAppearance: authorizedSelectedPlayer
+      ? authorizedSelectedPlayer.appearance
       : defaultPlayerAppearance,
     visiblePlayers,
     inventory: {

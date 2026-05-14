@@ -1,4 +1,5 @@
 import { mutation, type MutationCtx } from "../_generated/server";
+import { requireAuthUserKey } from "../authz";
 import { defaultPlayerAppearance } from "./defaults";
 import {
   upsertFarmTileDoc,
@@ -23,6 +24,7 @@ export async function seedDevWorldHandler(
     playerKey?: string;
   }
 ) {
+  const owner = await requireAuthUserKey(ctx);
   const worldKey = args.worldKey ?? "dev-world";
   const playerKey = args.playerKey ?? "dev-player";
   const now = Date.now();
@@ -39,7 +41,7 @@ export async function seedDevWorldHandler(
   await upsertPlayerDoc(ctx, {
     worldKey,
     playerKey,
-    owner: "dev-owner",
+    owner,
     appearance: defaultPlayerAppearance,
     entity: "dev-entity",
     playerOwnerComponent: "dev-player-owner",

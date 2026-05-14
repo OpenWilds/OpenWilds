@@ -6,10 +6,17 @@ import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
+const testUser = "test-user";
+
+const authedTest = () =>
+  convexTest(schema, modules).withIdentity({
+    subject: `${testUser}|test-session`,
+    tokenIdentifier: `https://convex.test|${testUser}`,
+  });
 
 describe("Convex ECS systems", () => {
   it("creates a Convex-write world with seeded world items", async () => {
-    const t = convexTest(schema, modules);
+    const t = authedTest();
 
     await t.mutation(api.game.worlds.createConvexWorld, {
       worldKey: "convex-world",
@@ -22,7 +29,7 @@ describe("Convex ECS systems", () => {
 
     expect(model.visiblePlayers[0]).toMatchObject({
       mint: "player-a",
-      owner: "convex-dev-owner",
+      owner: testUser,
     });
     expect(model.playerActionState.position).toEqual({ x: 0, y: 0 });
     expect(model.goldBalance.amount).toBe(50n);
@@ -30,7 +37,7 @@ describe("Convex ECS systems", () => {
   });
 
   it("prepares players idempotently without resetting state", async () => {
-    const t = convexTest(schema, modules);
+    const t = authedTest();
 
     await t.mutation(api.game.worlds.prepareConvexPlayer, {
       worldKey: "convex-world",
@@ -54,7 +61,7 @@ describe("Convex ECS systems", () => {
   });
 
   it("rejects systems for non-Convex-write worlds", async () => {
-    const t = convexTest(schema, modules);
+    const t = authedTest();
 
     await t.mutation(internal.game.ingest.upsertWorld, {
       worldKey: "magic-world",
@@ -74,7 +81,7 @@ describe("Convex ECS systems", () => {
   });
 
   it("moves players through the Convex movement system", async () => {
-    const t = convexTest(schema, modules);
+    const t = authedTest();
 
     await t.mutation(api.game.worlds.prepareConvexPlayer, {
       worldKey: "convex-world",
@@ -97,7 +104,7 @@ describe("Convex ECS systems", () => {
   });
 
   it("updates tile items, farm tiles, and inventory through tile systems", async () => {
-    const t = convexTest(schema, modules);
+    const t = authedTest();
 
     await t.mutation(api.game.worlds.prepareConvexPlayer, {
       worldKey: "convex-world",
@@ -202,7 +209,7 @@ describe("Convex ECS systems", () => {
   });
 
   it("creates, accepts, finalizes, and cancels trades", async () => {
-    const t = convexTest(schema, modules);
+    const t = authedTest();
 
     await t.mutation(api.game.worlds.prepareConvexPlayer, {
       worldKey: "convex-world",
@@ -262,7 +269,7 @@ const freshness = () => ({
 });
 
 const resetPlayerAction = async (
-  t: ReturnType<typeof convexTest>,
+  t: ReturnType<typeof authedTest>,
   worldKey: string,
   playerKey: string
 ) =>

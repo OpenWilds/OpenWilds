@@ -1,5 +1,6 @@
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { requireAuthUserKey } from "../authz";
 import { gameTileKey } from "../shared/ids";
 import {
   ActionId,
@@ -112,6 +113,7 @@ export async function requirePlayerBundle(
     playerKey: string;
   }
 ) {
+  const userKey = await requireAuthUserKey(ctx);
   const world = await requireConvexWorld(ctx, args.worldKey);
   const [player, state, inventory, gold] = await Promise.all([
     getPlayer(ctx, world._id, args.playerKey),
@@ -122,6 +124,10 @@ export async function requirePlayerBundle(
 
   if (!player || !state || !inventory || !gold) {
     throw new Error(`Player ${args.playerKey} is not prepared.`);
+  }
+
+  if (player.owner !== userKey) {
+    throw new Error("Unauthorized");
   }
 
   return { world, player, state, inventory, gold };

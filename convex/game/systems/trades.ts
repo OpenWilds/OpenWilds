@@ -1,5 +1,9 @@
 import { mutation } from "../../_generated/server";
-import { requireConvexWorld, requireTradeOffer } from "../ecs";
+import {
+  requireConvexWorld,
+  requirePlayerBundle,
+  requireTradeOffer,
+} from "../ecs";
 import {
   createTradeOfferSystemArgs,
   tradeOfferSystemArgs,
@@ -8,6 +12,7 @@ import {
 export const createTradeOffer = mutation({
   args: createTradeOfferSystemArgs,
   handler: async (ctx, args) => {
+    await requirePlayerBundle(ctx, args);
     const world = await requireConvexWorld(ctx, args.worldKey);
 
     if (args.sellerMint === args.playerKey) {
@@ -57,6 +62,7 @@ export const createTradeOffer = mutation({
 export const acceptTradeOffer = mutation({
   args: tradeOfferSystemArgs,
   handler: async (ctx, args) => {
+    await requirePlayerBundle(ctx, args);
     const world = await requireConvexWorld(ctx, args.worldKey);
     const trade = await requireTradeOffer(ctx, world, args.offer);
 
@@ -83,6 +89,7 @@ export const acceptTradeOffer = mutation({
 export const finalizeTradeOffer = mutation({
   args: tradeOfferSystemArgs,
   handler: async (ctx, args) => {
+    await requirePlayerBundle(ctx, args);
     const world = await requireConvexWorld(ctx, args.worldKey);
     const trade = await requireTradeOffer(ctx, world, args.offer);
 
@@ -108,6 +115,7 @@ export const finalizeTradeOffer = mutation({
 export const cancelTradeOffer = mutation({
   args: tradeOfferSystemArgs,
   handler: async (ctx, args) => {
+    await requirePlayerBundle(ctx, args);
     const world = await requireConvexWorld(ctx, args.worldKey);
     const trade = await requireTradeOffer(ctx, world, args.offer);
 

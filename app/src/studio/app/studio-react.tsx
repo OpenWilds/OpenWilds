@@ -1,7 +1,14 @@
-import { ConvexProvider, ConvexReactClient, useQuery } from "convex/react";
+import { Authenticated, useQuery } from "convex/react";
 import React, { useMemo } from "react";
 import { createRoot } from "react-dom/client";
 
+import {
+  ConvexAuthenticatedUser,
+  ConvexAuthBoundary,
+  ConvexAuthScreen,
+  createConvexAuthClient,
+  userLabel,
+} from "../../auth/convex-auth";
 import type { TerrainVisualAsset } from "../../assets/visual-assets";
 import { StudioShell } from "./StudioShell";
 import { refs, textureRecordToSourceTexture } from "../lib/studio-data";
@@ -20,16 +27,36 @@ export const bootStudio = (app: HTMLElement) => {
     return root;
   }
 
+  const convex = createConvexAuthClient(convexUrl);
+
   root.render(
-    <ConvexProvider client={new ConvexReactClient(convexUrl)}>
-      <StudioApp />
-    </ConvexProvider>
+    <ConvexAuthBoundary client={convex}>
+      <ConvexAuthScreen label="Open Wilds Studio" />
+      <Authenticated>
+        <ConvexAuthenticatedUser label="Open Wilds Studio">
+          {({ signOut, user }) => (
+            <StudioApp
+              onSignOut={() => void signOut()}
+              userLabel={userLabel(user)}
+            />
+          )}
+        </ConvexAuthenticatedUser>
+      </Authenticated>
+    </ConvexAuthBoundary>
   );
 
   return root;
 };
 
-function StudioApp({ offline = false }: { offline?: boolean }) {
+function StudioApp({
+  offline = false,
+  onSignOut,
+  userLabel,
+}: {
+  offline?: boolean;
+  onSignOut?: () => void;
+  userLabel?: string;
+}) {
   if (offline) {
     return (
       <StudioShell
@@ -39,14 +66,21 @@ function StudioApp({ offline = false }: { offline?: boolean }) {
         objectSprites={[]}
         plantSprites={[]}
         savedWorlds={[]}
+        userLabel="Offline Studio"
       />
     );
   }
 
-  return <ReactiveStudioShell />;
+  return <ReactiveStudioShell onSignOut={onSignOut} userLabel={userLabel} />;
 }
 
-function ReactiveStudioShell() {
+function ReactiveStudioShell({
+  onSignOut,
+  userLabel,
+}: {
+  onSignOut?: () => void;
+  userLabel?: string;
+}) {
   const textureRecords = useQuery(refs.listTerrainTextures, {});
   const terrainRecords = useQuery(refs.listTerrainAssets, {
     status: "library",
@@ -94,6 +128,8 @@ function ReactiveStudioShell() {
         (sprite) => sprite.url && sprite.status !== "archived"
       )}
       savedWorlds={savedWorlds ?? []}
+      onSignOut={onSignOut}
+      userLabel={userLabel}
       isLoading={
         textureRecords === undefined ||
         terrainRecords === undefined ||

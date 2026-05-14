@@ -8,6 +8,8 @@
  * @module
  */
 
+import type * as auth from "../auth.js";
+import type * as authz from "../authz.js";
 import type * as game_constants from "../game/constants.js";
 import type * as game_defaults from "../game/defaults.js";
 import type * as game_dev from "../game/dev.js";
@@ -23,6 +25,7 @@ import type * as game_systems_trades from "../game/systems/trades.js";
 import type * as game_validators from "../game/validators.js";
 import type * as game_worlds from "../game/worlds.js";
 import type * as gameState from "../gameState.js";
+import type * as http from "../http.js";
 import type * as indexers_magicblock_checkpoints from "../indexers/magicblock/checkpoints.js";
 import type * as indexers_magicblock_types from "../indexers/magicblock/types.js";
 import type * as schema_game from "../schema/game.js";
@@ -39,6 +42,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  auth: typeof auth;
+  authz: typeof authz;
   "game/constants": typeof game_constants;
   "game/defaults": typeof game_defaults;
   "game/dev": typeof game_dev;
@@ -54,6 +59,7 @@ declare const fullApi: ApiFromModules<{
   "game/validators": typeof game_validators;
   "game/worlds": typeof game_worlds;
   gameState: typeof gameState;
+  http: typeof http;
   "indexers/magicblock/checkpoints": typeof indexers_magicblock_checkpoints;
   "indexers/magicblock/types": typeof indexers_magicblock_types;
   "schema/game": typeof schema_game;

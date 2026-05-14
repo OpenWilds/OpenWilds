@@ -1,11 +1,16 @@
 import Phaser from "phaser";
 import "./polyfills";
+import type { ConvexReactClient } from "convex/react";
+import { bootConvexGameAuth } from "./auth/convex-auth";
+import type { AuthenticatedConvexUser } from "./auth/convex-auth";
 import { getHudElements, HudController } from "./client/hud";
 import { createConvexGameBackend } from "./client/convex/backend";
 import { createMagicBlockGameBackend } from "./client/magicblock/backend";
 import { createGridScene, GAME_HEIGHT, GAME_WIDTH } from "./game/grid-scene";
 import { bootStudio } from "./studio/app/studio-react";
 import "./styles.css";
+
+declare const __OPEN_WILDS_CONVEX_URL__: string;
 
 const app = document.getElementById("app");
 
@@ -16,10 +21,39 @@ if (!app) {
 if (window.location.pathname.replace(/\/$/, "").startsWith("/studio")) {
   bootStudio(app);
 } else {
+  const isConvexBackend = import.meta.env.VITE_GAME_BACKEND === "convex";
+
+  if (isConvexBackend) {
+    app.classList.add("auth-required");
+    bootConvexGameAuth({
+      app,
+      convexUrl: __OPEN_WILDS_CONVEX_URL__,
+      onAuthenticated: (client, user) => {
+        app.classList.remove("auth-required");
+        bootGame({ client, user });
+      },
+    });
+  } else {
+    bootGame();
+  }
+}
+
+function bootGame(options?: {
+  client?: ConvexReactClient;
+  user?: AuthenticatedConvexUser;
+}) {
   const hud = new HudController(getHudElements());
   const backend =
     import.meta.env.VITE_GAME_BACKEND === "convex"
-      ? createConvexGameBackend(hud)
+      ? createConvexGameBackend(hud, {
+          authUser: options?.user
+            ? {
+                userId: options.user._id,
+                email: options.user.email,
+              }
+            : undefined,
+          client: options?.client,
+        })
       : createMagicBlockGameBackend(hud);
   const gameRoot = document.getElementById("game");
   const playerGate = document.getElementById("player-gate");

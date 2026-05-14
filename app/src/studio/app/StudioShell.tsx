@@ -21,17 +21,21 @@ export function StudioShell({
   isLoading = false,
   offline = false,
   objectSprites,
+  onSignOut,
   plantSprites,
   savedWorlds,
   sourceTextures,
+  userLabel = "Creator Admin",
 }: {
   generatedTerrains: TerrainVisualAsset[];
   isLoading?: boolean;
   offline?: boolean;
   objectSprites: StudioObjectSpriteRecord[];
+  onSignOut?: () => void;
   plantSprites: StudioPlantSpriteRecord[];
   savedWorlds: StudioMapRecord[];
   sourceTextures: StudioSourceTexture[];
+  userLabel?: string;
 }) {
   const [route, setRoute] = useStudioRoute();
   const [selectedSourceTexture, setSelectedSourceTexture] =
@@ -80,13 +84,22 @@ export function StudioShell({
         </nav>
         <div className="studio-user-card">
           <div className="studio-user-card__avatar" aria-hidden="true">
-            A
+            {userLabel.trim().charAt(0).toUpperCase() || "A"}
           </div>
           <div>
-            <strong>Creator Admin</strong>
+            <strong>{userLabel}</strong>
             <span>{offline ? "Offline Studio" : "Convex Studio"}</span>
           </div>
         </div>
+        {onSignOut ? (
+          <button
+            className="studio-link studio-link--button"
+            onClick={onSignOut}
+            type="button"
+          >
+            Sign out
+          </button>
+        ) : null}
         <a className="studio-link" href="/">
           Back to game
         </a>
@@ -153,10 +166,7 @@ export function StudioShell({
           <PlantStudioView offline={offline} plantSprites={plantSprites} />
         ) : null}
         {route === "objects" ? (
-          <ObjectStudioView
-            objectSprites={objectSprites}
-            offline={offline}
-          />
+          <ObjectStudioView objectSprites={objectSprites} offline={offline} />
         ) : null}
         {route === "assets" ? <AssetsView setRoute={setRoute} /> : null}
       </main>

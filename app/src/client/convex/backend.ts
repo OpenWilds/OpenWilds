@@ -1,4 +1,6 @@
 import { ConvexClient } from "convex/browser";
+import type { ConvexReactClient } from "convex/react";
+import type { FunctionReference } from "convex/server";
 import type { HudController } from "../hud";
 import { createGameBackend, type GameBackend } from "../../game/ports";
 import { GameStateStore } from "../../game/state-store";
@@ -6,8 +8,33 @@ import type { PlayerAppearance } from "../../game/types";
 import { createConvexReadAdapter } from "./read-adapter";
 import { ConvexSessionAdapter } from "./session-adapter";
 import { ConvexWriteAdapter } from "./write-adapter";
+import type { ConvexGameReadQueryClient } from "./read-adapter";
+import type { ConvexGameMutationClient } from "./write-adapter";
 
 declare const __OPEN_WILDS_CONVEX_URL__: string | undefined;
+
+type ConvexReactWatchClient = ConvexGameMutationClient & {
+  watchQuery<Query extends FunctionReference<"query">>(
+    query: Query,
+    args: Query["_args"]
+  ): {
+    localQueryResult(): Query["_returnType"] | undefined;
+    onUpdate(callback: () => void): () => void;
+  };
+  close?: () => Promise<void> | void;
+};
+
+type SharedConvexClient = ConvexClient | ConvexReactWatchClient;
+
+export type ConvexGameAuthUser = {
+  userId: string;
+  email?: string | null;
+};
+
+export type CreateConvexGameBackendOptions = {
+  authUser?: ConvexGameAuthUser;
+  client?: ConvexReactClient;
+};
 
 const DEFAULT_PLAYER_APPEARANCE: PlayerAppearance = {
   color: "#f4a7b9",
@@ -16,13 +43,23 @@ const DEFAULT_PLAYER_APPEARANCE: PlayerAppearance = {
   stroke: 0x1f2933,
 };
 
-export const createConvexGameBackend = (hud?: HudController): GameBackend => {
+export const createConvexGameBackend = (
+  hud?: HudController,
+  options: CreateConvexGameBackendOptions = {}
+): GameBackend => {
   const convexUrl = getConfiguredConvexUrl();
   const worldKey = import.meta.env.VITE_CONVEX_WORLD_KEY ?? "dev-world";
-  const playerKey = import.meta.env.VITE_CONVEX_PLAYER_KEY ?? "dev-player";
-  const owner = import.meta.env.VITE_CONVEX_PLAYER_OWNER ?? "convex-dev-owner";
+  const playerKey =
+    import.meta.env.VITE_CONVEX_PLAYER_KEY ??
+    (options.authUser ? `auth:${options.authUser.userId}` : "dev-player");
+  const owner =
+    options.authUser?.userId ??
+    import.meta.env.VITE_CONVEX_PLAYER_OWNER ??
+    "convex-dev-owner";
   const state = new GameStateStore();
-  const client = new ConvexClient(convexUrl);
+  const client: SharedConvexClient =
+    options.client ?? new ConvexClient(convexUrl);
+  const ownsClient = !options.client;
   const onError = (error: Error) => {
     hud?.setProgramStatus(error.message);
   };
@@ -33,7 +70,7 @@ export const createConvexGameBackend = (hud?: HudController): GameBackend => {
   const read = createConvexReadAdapter({
     worldKey,
     state,
-    client,
+    client: toReadQueryClient(client),
     onError,
   });
   const write = new ConvexWriteAdapter({
@@ -61,9 +98,42 @@ export const createConvexGameBackend = (hud?: HudController): GameBackend => {
       read.dispose();
       write.dispose();
       state.dispose();
-      void client.close();
+      if (ownsClient) {
+        void client.close?.();
+      }
     },
   });
+};
+
+const toReadQueryClient = (
+  client: SharedConvexClient
+): ConvexGameReadQueryClient => {
+  if ("onUpdate" in client) {
+    return client;
+  }
+
+  return {
+    onUpdate(query, args, callback, onError) {
+      const watch = client.watchQuery(query, args);
+      const emit = () => {
+        try {
+          const result = watch.localQueryResult();
+
+          if (result !== undefined) {
+            callback(result);
+          }
+        } catch (error) {
+          onError?.(toError(error));
+        }
+      };
+      const unsubscribe = watch.onUpdate(emit);
+
+      emit();
+
+      return unsubscribe;
+    },
+    close: () => client.close?.(),
+  };
 };
 
 const getConfiguredConvexUrl = () => {
@@ -80,3 +150,6 @@ const getConfiguredConvexUrl = () => {
 
   return convexUrl;
 };
+
+const toError = (error: unknown) =>
+  error instanceof Error ? error : new Error(String(error));
