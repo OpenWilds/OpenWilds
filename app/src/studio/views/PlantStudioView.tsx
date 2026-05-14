@@ -53,9 +53,13 @@ const DEFAULT_PLANT_FORM: PlantSpritePromptMetadata = {
 export function PlantStudioView({
   offline,
   plantSprites,
+  readOnly,
+  workspaceId,
 }: {
   offline: boolean;
   plantSprites: StudioPlantSpriteRecord[];
+  readOnly: boolean;
+  workspaceId: string;
 }) {
   const [form, setForm] =
     useState<PlantSpritePromptMetadata>(DEFAULT_PLANT_FORM);
@@ -108,10 +112,12 @@ export function PlantStudioView({
   };
 
   const submitGeneration = async () => {
-    if (offline) {
+    if (offline || readOnly || !workspaceId) {
       setStatus({
         state: "error",
-        text: "Convex is not configured. Set VITE_CONVEX_URL first.",
+        text: readOnly
+          ? "You need editor access to generate plant sprites."
+          : "Convex is not configured. Set VITE_CONVEX_URL first.",
       });
       return;
     }
@@ -124,7 +130,7 @@ export function PlantStudioView({
         text: `Generating ${nextForm.label} sprite sheet with Convex...`,
       });
 
-      const sprite = await generatePlantSprite(nextForm);
+      const sprite = await generatePlantSprite({ ...nextForm, workspaceId });
       const preview = generatedPlantToPreview(sprite);
 
       setSelectedSprite(preview);
@@ -300,7 +306,9 @@ export function PlantStudioView({
 
           <button
             className="studio-primary-action"
-            disabled={status.state === "loading" || offline}
+            disabled={
+              status.state === "loading" || offline || readOnly || !workspaceId
+            }
             onClick={submitGeneration}
             type="button"
           >

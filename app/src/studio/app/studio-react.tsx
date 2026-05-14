@@ -1,5 +1,5 @@
-import { Authenticated, useQuery } from "convex/react";
-import React, { useMemo } from "react";
+import { Authenticated, useConvex, useMutation, useQuery } from "convex/react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import {
@@ -10,12 +10,15 @@ import {
   userLabel,
 } from "../../auth/convex-auth";
 import type { TerrainVisualAsset } from "../../assets/visual-assets";
+import { setStudioConvexClient } from "../convex/convex-studio";
 import { StudioShell } from "./StudioShell";
 import { refs, textureRecordToSourceTexture } from "../lib/studio-data";
+import type { WorkspaceRole } from "../lib/studio-types";
 
 declare const __OPEN_WILDS_CONVEX_URL__: string;
 
 const convexUrl = __OPEN_WILDS_CONVEX_URL__;
+const SELECTED_WORKSPACE_KEY = "open-wilds:studio:selected-workspace";
 
 export const bootStudio = (app: HTMLElement) => {
   app.classList.add("studio-app");
@@ -81,17 +84,127 @@ function ReactiveStudioShell({
   onSignOut?: () => void;
   userLabel?: string;
 }) {
-  const textureRecords = useQuery(refs.listTerrainTextures, {});
-  const terrainRecords = useQuery(refs.listTerrainAssets, {
-    status: "library",
-  });
-  const savedWorlds = useQuery(refs.listMaps, {});
-  const plantSprites = useQuery(refs.listPlantSprites, {
-    status: "library",
-  });
-  const objectSprites = useQuery(refs.listObjectSprites, {
-    status: "library",
-  });
+  const convex = useConvex();
+  const createWorkspace = useMutation(refs.createWorkspace);
+  const createInvite = useMutation(refs.createInvite);
+  const acceptInvite = useMutation(refs.acceptInvite);
+  const declineInvite = useMutation(refs.declineInvite);
+  const revokeInvite = useMutation(refs.revokeInvite);
+  const updateMemberRole = useMutation(refs.updateMemberRole);
+  const removeMember = useMutation(refs.removeMember);
+  const workspaces = useQuery(refs.listMyWorkspaces, {});
+  const pendingInvites = useQuery(refs.listMyInvites, {});
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(
+    () => window.localStorage.getItem(SELECTED_WORKSPACE_KEY)
+  );
+  const selectedWorkspace =
+    workspaces?.find((workspace) => workspace._id === selectedWorkspaceId) ??
+    workspaces?.[0] ??
+    null;
+  const workspaceId = selectedWorkspace?._id ?? null;
+  const scopedArgs = workspaceId ? { workspaceId } : "skip";
+  const textureRecords = useQuery(refs.listTerrainTextures, scopedArgs);
+  const terrainRecords = useQuery(
+    refs.listTerrainAssets,
+    workspaceId ? { workspaceId, status: "library" } : "skip"
+  );
+  const savedWorlds = useQuery(refs.listMaps, scopedArgs);
+  const plantSprites = useQuery(
+    refs.listPlantSprites,
+    workspaceId ? { workspaceId, status: "library" } : "skip"
+  );
+  const objectSprites = useQuery(
+    refs.listObjectSprites,
+    workspaceId ? { workspaceId, status: "library" } : "skip"
+  );
+  const members = useQuery(refs.listMembers, scopedArgs);
+  const workspaceInvites = useQuery(refs.listWorkspaceInvites, scopedArgs);
+
+  useEffect(() => {
+    setStudioConvexClient(convex);
+
+    return () => setStudioConvexClient(null);
+  }, [convex]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const inviteToken = url.searchParams.get("invite");
+
+    if (!inviteToken) {
+      return;
+    }
+
+    void acceptInvite({ token: inviteToken })
+      .then(() => {
+        url.searchParams.delete("invite");
+        window.history.replaceState(null, "", url.toString());
+      })
+      .catch(() => {
+        // The pending-invite panel still lets the signed-in user accept or decline.
+      });
+  }, [acceptInvite]);
+
+  useEffect(() => {
+    if (!workspaces || workspaces.length === 0) {
+      return;
+    }
+
+    const hasSelectedWorkspace =
+      selectedWorkspaceId &&
+      workspaces.some((workspace) => workspace._id === selectedWorkspaceId);
+    const nextWorkspaceId = hasSelectedWorkspace
+      ? selectedWorkspaceId
+      : workspaces[0]._id;
+
+    setSelectedWorkspaceId(nextWorkspaceId);
+    window.localStorage.setItem(SELECTED_WORKSPACE_KEY, nextWorkspaceId);
+  }, [selectedWorkspaceId, workspaces]);
+
+  const selectWorkspace = (nextWorkspaceId: string) => {
+    setSelectedWorkspaceId(nextWorkspaceId);
+    window.localStorage.setItem(SELECTED_WORKSPACE_KEY, nextWorkspaceId);
+  };
+
+  const createWorkspaceFromName = async (name: string) => {
+    const workspace = await createWorkspace({ name });
+    selectWorkspace(workspace._id);
+  };
+
+  const inviteMember = async (email: string, role: WorkspaceRole) => {
+    if (!workspaceId) {
+      throw new Error("Select a workspace first.");
+    }
+
+    await createInvite({ workspaceId, email, role });
+  };
+
+  const revokeWorkspaceInvite = async (inviteId: string) => {
+    if (!workspaceId) {
+      throw new Error("Select a workspace first.");
+    }
+
+    await revokeInvite({ workspaceId, inviteId });
+  };
+
+  const changeMemberRole = async (
+    targetUserId: string,
+    role: WorkspaceRole
+  ) => {
+    if (!workspaceId) {
+      throw new Error("Select a workspace first.");
+    }
+
+    await updateMemberRole({ workspaceId, userId: targetUserId, role });
+  };
+
+  const removeWorkspaceMember = async (targetUserId: string) => {
+    if (!workspaceId) {
+      throw new Error("Select a workspace first.");
+    }
+
+    await removeMember({ workspaceId, userId: targetUserId });
+  };
+
   const sourceTextures = useMemo(
     () =>
       (textureRecords ?? [])
@@ -130,12 +243,31 @@ function ReactiveStudioShell({
       savedWorlds={savedWorlds ?? []}
       onSignOut={onSignOut}
       userLabel={userLabel}
+      workspaces={workspaces ?? []}
+      selectedWorkspace={selectedWorkspace}
+      selectedWorkspaceId={workspaceId}
+      onSelectWorkspace={selectWorkspace}
+      onCreateWorkspace={createWorkspaceFromName}
+      members={members ?? []}
+      workspaceInvites={workspaceInvites ?? []}
+      pendingInvites={pendingInvites ?? []}
+      onInviteMember={inviteMember}
+      onAcceptInvite={(token) => acceptInvite({ token })}
+      onDeclineInvite={(token) => declineInvite({ token })}
+      onRevokeInvite={revokeWorkspaceInvite}
+      onUpdateMemberRole={changeMemberRole}
+      onRemoveMember={removeWorkspaceMember}
       isLoading={
-        textureRecords === undefined ||
-        terrainRecords === undefined ||
-        savedWorlds === undefined ||
-        plantSprites === undefined ||
-        objectSprites === undefined
+        workspaces === undefined ||
+        pendingInvites === undefined ||
+        (workspaceId !== null &&
+          (textureRecords === undefined ||
+            terrainRecords === undefined ||
+            savedWorlds === undefined ||
+            plantSprites === undefined ||
+            objectSprites === undefined ||
+            members === undefined ||
+            workspaceInvites === undefined))
       }
     />
   );

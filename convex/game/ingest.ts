@@ -79,6 +79,7 @@ export async function upsertWorldDoc(
     runtimeKind: "magicblock-indexed" | "convex" | "mud-indexed";
     readBackend: "convex";
     writeBackend: "magicblock" | "convex" | "mud";
+    workspaceId?: Id<"studioWorkspaces">;
     studioMapId?: Id<"studioMaps">;
     status?: "draft" | "active" | "archived";
     updatedAt?: number;
@@ -92,6 +93,7 @@ export async function upsertWorldDoc(
     runtimeKind: args.runtimeKind,
     readBackend: args.readBackend,
     writeBackend: args.writeBackend,
+    workspaceId: args.workspaceId,
     studioMapId: args.studioMapId,
     status: args.status ?? "active",
     updatedAt: now,

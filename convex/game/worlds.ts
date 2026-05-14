@@ -31,6 +31,7 @@ export async function createConvexWorldDoc(
   args: {
     worldKey: string;
     name?: string;
+    workspaceId?: Id<"studioWorkspaces">;
     studioMapId?: Id<"studioMaps">;
     playerKey?: string;
     owner?: string;
@@ -43,6 +44,9 @@ export async function createConvexWorldDoc(
   }
 ) {
   const existing = await getWorldByKey(ctx, args.worldKey);
+  const linkedMap = args.studioMapId
+    ? await ctx.db.get(args.studioMapId)
+    : null;
   const now = Date.now();
   const worldId = await upsertWorldDoc(ctx, {
     worldKey: args.worldKey,
@@ -50,6 +54,8 @@ export async function createConvexWorldDoc(
     runtimeKind: "convex",
     readBackend: "convex",
     writeBackend: "convex",
+    workspaceId:
+      args.workspaceId ?? linkedMap?.workspaceId ?? existing?.workspaceId,
     studioMapId: args.studioMapId ?? existing?.studioMapId,
     status: "active",
     updatedAt: now,

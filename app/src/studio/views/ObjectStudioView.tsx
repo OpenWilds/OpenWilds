@@ -45,9 +45,13 @@ const DEFAULT_OBJECT_FORM: ObjectSpritePromptMetadata = {
 export function ObjectStudioView({
   objectSprites,
   offline,
+  readOnly,
+  workspaceId,
 }: {
   objectSprites: StudioObjectSpriteRecord[];
   offline: boolean;
+  readOnly: boolean;
+  workspaceId: string;
 }) {
   const [form, setForm] =
     useState<ObjectSpritePromptMetadata>(DEFAULT_OBJECT_FORM);
@@ -83,10 +87,12 @@ export function ObjectStudioView({
   };
 
   const submitGeneration = async () => {
-    if (offline) {
+    if (offline || readOnly || !workspaceId) {
       setStatus({
         state: "error",
-        text: "Convex is not configured. Set VITE_CONVEX_URL first.",
+        text: readOnly
+          ? "You need editor access to generate object sprites."
+          : "Convex is not configured. Set VITE_CONVEX_URL first.",
       });
       return;
     }
@@ -99,7 +105,7 @@ export function ObjectStudioView({
         text: `Generating ${nextForm.label} with Convex...`,
       });
 
-      const sprite = await generateObjectSprite(nextForm);
+      const sprite = await generateObjectSprite({ ...nextForm, workspaceId });
       const preview = generatedObjectToPreview(sprite);
 
       setSelectedSprite(preview);
@@ -256,7 +262,9 @@ export function ObjectStudioView({
 
           <button
             className="studio-primary-action"
-            disabled={status.state === "loading" || offline}
+            disabled={
+              status.state === "loading" || offline || readOnly || !workspaceId
+            }
             onClick={submitGeneration}
             type="button"
           >

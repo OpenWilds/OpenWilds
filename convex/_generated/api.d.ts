@@ -32,8 +32,12 @@ import type * as schema_game from "../schema/game.js";
 import type * as schema_indexers from "../schema/indexers.js";
 import type * as schema_shared from "../schema/shared.js";
 import type * as schema_studio from "../schema/studio.js";
+import type * as schema_workspaces from "../schema/workspaces.js";
 import type * as shared_ids from "../shared/ids.js";
 import type * as studio from "../studio.js";
+import type * as workspaceAuth from "../workspaceAuth.js";
+import type * as workspaceBootstrap from "../workspaceBootstrap.js";
+import type * as workspaces from "../workspaces.js";
 
 import type {
   ApiFromModules,
@@ -66,8 +70,12 @@ declare const fullApi: ApiFromModules<{
   "schema/indexers": typeof schema_indexers;
   "schema/shared": typeof schema_shared;
   "schema/studio": typeof schema_studio;
+  "schema/workspaces": typeof schema_workspaces;
   "shared/ids": typeof shared_ids;
   studio: typeof studio;
+  workspaceAuth: typeof workspaceAuth;
+  workspaceBootstrap: typeof workspaceBootstrap;
+  workspaces: typeof workspaces;
 }>;
 
 /**

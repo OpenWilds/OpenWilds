@@ -30,15 +30,19 @@ const MAX_PARALLEL_TEXTURE_JOBS = 3;
 export function TextureStudioView({
   generatedTerrains,
   offline,
+  readOnly,
   selectedSourceTexture,
   setSelectedSourceTexture,
   sourceTextures,
+  workspaceId,
 }: {
   generatedTerrains: TerrainVisualAsset[];
   offline: boolean;
+  readOnly: boolean;
   selectedSourceTexture: StudioSourceTexture | null;
   setSelectedSourceTexture: (texture: StudioSourceTexture | null) => void;
   sourceTextures: StudioSourceTexture[];
+  workspaceId: string;
 }) {
   const [form, setForm] = useState<TerrainPromptMetadata>(DEFAULT_FORM);
   const [status, setStatus] = useState({
@@ -149,7 +153,7 @@ export function TextureStudioView({
   };
 
   useEffect(() => {
-    if (offline) {
+    if (offline || readOnly || !workspaceId) {
       return;
     }
 
@@ -195,7 +199,10 @@ export function TextureStudioView({
     });
 
     for (const nextJob of nextJobs) {
-      void generateSourceTexture(queueItemToPrompt(nextJob))
+      void generateSourceTexture({
+        ...queueItemToPrompt(nextJob),
+        workspaceId,
+      })
         .then((texture) => {
           setSelectedTerrain(null);
           setSelectedSourceTexture(texture);
@@ -241,9 +248,17 @@ export function TextureStudioView({
           setTextureQueue((current) => [...current]);
         });
     }
-  }, [offline, setSelectedSourceTexture, textureQueue]);
+  }, [offline, readOnly, setSelectedSourceTexture, textureQueue, workspaceId]);
 
   const queueTexture = () => {
+    if (readOnly || !workspaceId) {
+      setStatus({
+        state: "error",
+        text: "You need editor access to generate textures in this workspace.",
+      });
+      return;
+    }
+
     try {
       const nextForm = readForm();
       const queueId = createQueueId();
@@ -278,6 +293,14 @@ export function TextureStudioView({
   };
 
   const buildTerrain = async () => {
+    if (readOnly || !workspaceId) {
+      setStatus({
+        state: "error",
+        text: "You need editor access to build terrain in this workspace.",
+      });
+      return;
+    }
+
     const source = sourceInputRef.current?.files?.[0];
 
     if (!source && !selectedSourceTexture?.url) {
@@ -302,6 +325,7 @@ export function TextureStudioView({
         sourceTextureId = await registerSourceTexture({
           ...nextForm,
           file: source,
+          workspaceId,
         });
         setSelectedSourceTexture(null);
       } else if (selectedSourceTexture?.url) {
@@ -332,6 +356,7 @@ export function TextureStudioView({
         sourceTextureId,
         atlasBlob: await dataUrlToPngBlob(asset.atlasUrl),
         centerVariantsBlob: await dataUrlToPngBlob(asset.centerVariantsUrl),
+        workspaceId,
       });
       setStatus({
         state: "success",
@@ -409,11 +434,16 @@ export function TextureStudioView({
                 ref={sourceInputRef}
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
+                disabled={readOnly || !workspaceId}
               />
             </label>
           </div>
           <div className="studio-command-grid">
-            <button disabled={offline} onClick={queueTexture} type="button">
+            <button
+              disabled={offline || readOnly || !workspaceId}
+              onClick={queueTexture}
+              type="button"
+            >
               Queue Texture
             </button>
             <button disabled={isBusy} onClick={copyPrompt} type="button">
@@ -422,7 +452,7 @@ export function TextureStudioView({
           </div>
           <button
             className="studio-command"
-            disabled={isBusy || offline}
+            disabled={isBusy || offline || readOnly || !workspaceId}
             onClick={buildTerrain}
             type="button"
           >

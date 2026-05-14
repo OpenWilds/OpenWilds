@@ -21,6 +21,7 @@ const plantSpriteCellFields = v.object({
 
 export const studioTables = {
   studioTerrainTextures: defineTable({
+    workspaceId: v.optional(v.id("studioWorkspaces")),
     terrainId: v.string(),
     label: v.string(),
     storageId: v.id("_storage"),
@@ -36,10 +37,17 @@ export const studioTables = {
     createdAt: v.number(),
     updatedAt: v.number(),
   })
+    .index("by_workspaceId_and_terrainId", ["workspaceId", "terrainId"])
+    .index("by_workspaceId_and_status_and_updatedAt", [
+      "workspaceId",
+      "status",
+      "updatedAt",
+    ])
     .index("by_terrainId", ["terrainId"])
     .index("by_status_and_updatedAt", ["status", "updatedAt"]),
 
   studioTerrainAssets: defineTable({
+    workspaceId: v.optional(v.id("studioWorkspaces")),
     terrainId: v.string(),
     label: v.string(),
     sourceTextureId: v.optional(v.id("studioTerrainTextures")),
@@ -57,19 +65,29 @@ export const studioTables = {
     walkable: v.boolean(),
     plantable: v.boolean(),
   })
+    .index("by_workspaceId_and_terrainId", ["workspaceId", "terrainId"])
+    .index("by_workspaceId_and_status_and_updatedAt", [
+      "workspaceId",
+      "status",
+      "updatedAt",
+    ])
     .index("by_terrainId", ["terrainId"])
     .index("by_status_and_updatedAt", ["status", "updatedAt"]),
 
   studioMaps: defineTable({
+    workspaceId: v.optional(v.id("studioWorkspaces")),
     name: v.string(),
     width: v.number(),
     height: v.number(),
     mapJson: v.string(),
     updatedAt: v.number(),
     createdAt: v.number(),
-  }).index("by_updatedAt", ["updatedAt"]),
+  })
+    .index("by_workspaceId_and_updatedAt", ["workspaceId", "updatedAt"])
+    .index("by_updatedAt", ["updatedAt"]),
 
   studioPlantSprites: defineTable({
+    workspaceId: v.optional(v.id("studioWorkspaces")),
     plantId: v.string(),
     label: v.string(),
     kind: v.union(v.literal("plant"), v.literal("tree")),
@@ -99,10 +117,17 @@ export const studioTables = {
     createdAt: v.number(),
     updatedAt: v.number(),
   })
+    .index("by_workspaceId_and_plantId", ["workspaceId", "plantId"])
+    .index("by_workspaceId_and_status_and_updatedAt", [
+      "workspaceId",
+      "status",
+      "updatedAt",
+    ])
     .index("by_plantId", ["plantId"])
     .index("by_status_and_updatedAt", ["status", "updatedAt"]),
 
   studioObjectSprites: defineTable({
+    workspaceId: v.optional(v.id("studioWorkspaces")),
     objectId: v.string(),
     label: v.string(),
     kind: v.union(v.literal("building"), v.literal("object")),
@@ -125,6 +150,12 @@ export const studioTables = {
     createdAt: v.number(),
     updatedAt: v.number(),
   })
+    .index("by_workspaceId_and_objectId", ["workspaceId", "objectId"])
+    .index("by_workspaceId_and_status_and_updatedAt", [
+      "workspaceId",
+      "status",
+      "updatedAt",
+    ])
     .index("by_objectId", ["objectId"])
     .index("by_status_and_updatedAt", ["status", "updatedAt"]),
 };

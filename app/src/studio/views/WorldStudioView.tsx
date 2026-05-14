@@ -88,12 +88,16 @@ export function WorldStudioView({
   generatedTerrains,
   objectSprites,
   plantSprites,
+  readOnly,
   savedWorlds,
+  workspaceId,
 }: {
   generatedTerrains: TerrainVisualAsset[];
   objectSprites: StudioObjectSpriteRecord[];
   plantSprites: StudioPlantSpriteRecord[];
+  readOnly: boolean;
   savedWorlds: StudioMapRecord[];
+  workspaceId: string;
 }) {
   const sceneRef = useRef<StudioScene | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
@@ -483,6 +487,7 @@ export function WorldStudioView({
   useEffect(() => {
     const scene = sceneRef.current;
     if (
+      readOnly ||
       !autoSaveEnabled ||
       !openWorld ||
       !scene ||
@@ -523,9 +528,16 @@ export function WorldStudioView({
     state?.width,
     state?.height,
     worldName,
+    readOnly,
+    workspaceId,
   ]);
 
   const handleImport = async (file: File | undefined) => {
+    if (readOnly) {
+      setMapStatus("You need editor access to import worlds.");
+      return;
+    }
+
     if (!file || !sceneRef.current) {
       return;
     }
@@ -567,7 +579,13 @@ export function WorldStudioView({
       return openWorld?.id ?? loadedWorldIdRef.current;
     }
 
+    if (readOnly || !workspaceId) {
+      setMapStatus("You need editor access to save worlds in this workspace.");
+      return openWorld?.id ?? loadedWorldIdRef.current;
+    }
+
     const savedWorldId = await saveStudioMapToConvex(
+      workspaceId,
       nextName,
       map,
       openWorld?.id ?? loadedWorldIdRef.current
@@ -588,6 +606,11 @@ export function WorldStudioView({
   };
 
   const createWorld = () => {
+    if (readOnly || !workspaceId) {
+      setMapStatus("You need editor access to create worlds.");
+      return;
+    }
+
     if (!editorTerrainAssets.length) {
       setMapStatus("Generate a terrain before creating a new world.");
       return;
@@ -752,7 +775,7 @@ export function WorldStudioView({
               </label>
               <button
                 className="studio-primary-action"
-                disabled={!generatedTerrains.length}
+                disabled={!generatedTerrains.length || readOnly || !workspaceId}
                 onClick={createWorld}
                 type="button"
               >
@@ -829,6 +852,7 @@ export function WorldStudioView({
           <label className="studio-world-field studio-world-field--name">
             <span>Name</span>
             <input
+              disabled={readOnly}
               value={worldName}
               onChange={(event) => setWorldName(event.target.value)}
             />
@@ -836,6 +860,7 @@ export function WorldStudioView({
           <label className="studio-world-field">
             <span>Layer 0</span>
             <select
+              disabled={readOnly}
               value={baseTerrainId}
               onChange={(event) =>
                 setBaseTerrainId(event.target.value as TerrainVisualAssetId)
@@ -854,6 +879,7 @@ export function WorldStudioView({
               <span>W</span>
               <input
                 aria-label="World width"
+                disabled={readOnly}
                 min="5"
                 max="200"
                 type="number"
@@ -870,6 +896,7 @@ export function WorldStudioView({
               <span>H</span>
               <input
                 aria-label="World height"
+                disabled={readOnly}
                 min="5"
                 max="200"
                 type="number"
@@ -885,6 +912,7 @@ export function WorldStudioView({
             <button
               aria-label="Resize world"
               className="studio-icon-command"
+              disabled={readOnly}
               onClick={() => {
                 const resized =
                   sceneRef.current?.resizeMap(mapSize.width, mapSize.height) ??
@@ -904,6 +932,7 @@ export function WorldStudioView({
           <label className="studio-world-autosave">
             <input
               checked={autoSaveEnabled}
+              disabled={readOnly}
               onChange={(event) => setAutoSaveEnabled(event.target.checked)}
               type="checkbox"
             />
@@ -915,7 +944,11 @@ export function WorldStudioView({
             </summary>
             <div className="studio-world-menu">
               <button
-                disabled={!paintableTerrains.length || toolMode !== "terrain"}
+                disabled={
+                  readOnly ||
+                  !paintableTerrains.length ||
+                  toolMode !== "terrain"
+                }
                 onClick={() => sceneRef.current?.fillActiveLayer()}
                 type="button"
               >
@@ -923,7 +956,11 @@ export function WorldStudioView({
                 Fill layer
               </button>
               <button
-                disabled={!paintableTerrains.length || toolMode !== "terrain"}
+                disabled={
+                  readOnly ||
+                  !paintableTerrains.length ||
+                  toolMode !== "terrain"
+                }
                 onClick={() => sceneRef.current?.clearActiveLayer()}
                 type="button"
               >
@@ -931,7 +968,7 @@ export function WorldStudioView({
                 Clear layer
               </button>
               <button
-                disabled={!editorObjectAssets.length}
+                disabled={readOnly || !editorObjectAssets.length}
                 onClick={() => sceneRef.current?.clearObjects()}
                 type="button"
               >
@@ -939,6 +976,7 @@ export function WorldStudioView({
                 Clear objects
               </button>
               <button
+                disabled={readOnly}
                 onClick={() => importInputRef.current?.click()}
                 type="button"
               >
@@ -962,7 +1000,11 @@ export function WorldStudioView({
                 />
                 Export JSON
               </button>
-              <button onClick={() => void saveWorld()} type="button">
+              <button
+                disabled={readOnly || !workspaceId}
+                onClick={() => void saveWorld()}
+                type="button"
+              >
                 <FloppyDiskIcon aria-hidden="true" size={17} weight="bold" />
                 Save cloud
               </button>

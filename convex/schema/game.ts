@@ -22,12 +22,18 @@ export const gameTables = {
     runtimeKind: gameRuntimeKind,
     readBackend: gameReadBackend,
     writeBackend: gameWriteBackend,
+    workspaceId: v.optional(v.id("studioWorkspaces")),
     studioMapId: v.optional(v.id("studioMaps")),
     status: gameWorldStatus,
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_worldKey", ["worldKey"])
+    .index("by_workspaceId_and_status_and_updatedAt", [
+      "workspaceId",
+      "status",
+      "updatedAt",
+    ])
     .index("by_status_and_updatedAt", ["status", "updatedAt"]),
 
   gamePlayers: defineTable({
