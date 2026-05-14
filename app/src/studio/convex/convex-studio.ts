@@ -84,6 +84,21 @@ export type GeneratedSourceTexture = StudioSourceTexture & {
   model: string;
 };
 
+export type GeneratedTerrainAsset = TerrainPromptMetadata & {
+  terrainAssetId: string;
+  workspaceId?: string;
+  sourceTextureId: string;
+  atlasStorageId: string;
+  centerVariantsStorageId: string;
+  atlasUrl: string | null;
+  centerVariantsUrl: string | null;
+  status: TerrainStatus;
+  tags: string[];
+  walkable: boolean;
+  plantable: boolean;
+  generatedAt: number;
+};
+
 export type PlantSpritePromptMetadata = {
   plantId: string;
   label: string;
@@ -236,6 +251,18 @@ const refs = {
       },
     GeneratedSourceTexture
   >("studio:generateSourceTexture"),
+  buildTerrainAsset: makeFunctionReference<
+    "action",
+    TerrainPromptMetadata &
+      WorkspaceArg & {
+        sourceTextureId: string;
+        status?: TerrainStatus;
+        tags?: string[];
+        walkable?: boolean;
+        plantable?: boolean;
+      },
+    GeneratedTerrainAsset
+  >("studioTerrainBuild:buildTerrainAsset"),
   generatePlantSprite: makeFunctionReference<
     "action",
     PlantSpritePromptMetadata &
@@ -337,6 +364,29 @@ export async function generateSourceTexture(
     ...args,
     workspaceId,
     updatedAt: Date.now(),
+  };
+}
+
+export async function buildTerrainAssetFromSourceTexture(
+  args: TerrainPromptMetadata & {
+    sourceTextureId: string;
+  } & OptionalWorkspaceArg
+): Promise<GeneratedTerrainAsset> {
+  const convex = getClient();
+  const workspaceId = requireWorkspaceId(args.workspaceId);
+  const result = await convex.action(refs.buildTerrainAsset, {
+    ...args,
+    workspaceId,
+    status: "library",
+    tags: [],
+    walkable: true,
+    plantable: true,
+  });
+
+  return {
+    ...result,
+    ...args,
+    workspaceId,
   };
 }
 

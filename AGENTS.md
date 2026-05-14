@@ -11,3 +11,10 @@ Convex agent skills for common tasks can be installed by running
 `npx convex ai-files install`.
 
 <!-- convex-ai-end -->
+
+## Studio MCP
+
+When working on Studio features, use the `studio-mcp` skill. Any new Studio
+API, generation flow, world action, plant action, object action, asset library,
+or workspace action must be exposed through `scripts/studio-mcp-server.mjs` in
+the same change so LLM clients can operate the Studio surface.

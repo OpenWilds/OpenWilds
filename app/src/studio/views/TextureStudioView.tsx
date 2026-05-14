@@ -2,9 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 
 import type { TerrainVisualAsset } from "../../assets/visual-assets";
 import {
-  dataUrlToPngBlob,
+  buildTerrainAssetFromSourceTexture,
   generateSourceTexture,
-  registerGeneratedTerrainAsset,
   registerSourceTexture,
   type StudioSourceTexture,
 } from "../convex/convex-studio";
@@ -13,7 +12,6 @@ import type { TerrainPromptMetadata } from "../lib/studio-types";
 import { terrainLabel } from "../phaser/studio-scene";
 import {
   buildTerrainTexturePrompt,
-  generateTerrainAsset,
   normalizeTerrainId,
 } from "../phaser/terrain-generator";
 
@@ -315,7 +313,6 @@ export function TextureStudioView({
       setIsBusy(true);
       const nextForm = readForm();
       let sourceTextureId = selectedSourceTexture?.textureId;
-      let sourceTexture: File | Blob = source as File;
 
       if (source) {
         setStatus({
@@ -328,34 +325,21 @@ export function TextureStudioView({
           workspaceId,
         });
         setSelectedSourceTexture(null);
-      } else if (selectedSourceTexture?.url) {
-        setStatus({
-          state: "loading",
-          text: "Loading generated source texture...",
-        });
-        const response = await fetch(selectedSourceTexture.url);
-
-        if (!response.ok) {
-          throw new Error("Could not load generated source texture.");
-        }
-
-        sourceTexture = await response.blob();
       }
 
-      setStatus({ state: "loading", text: "Building autotile terrain..." });
-      const asset = await generateTerrainAsset({
-        ...nextForm,
-        sourceTexture,
-      });
+      if (!sourceTextureId) {
+        throw new Error(
+          "Choose a saved source texture before building terrain."
+        );
+      }
+
       setStatus({
         state: "loading",
-        text: "Uploading generated terrain to Convex...",
+        text: "Building autotile terrain in Convex...",
       });
-      await registerGeneratedTerrainAsset({
+      await buildTerrainAssetFromSourceTexture({
         ...nextForm,
         sourceTextureId,
-        atlasBlob: await dataUrlToPngBlob(asset.atlasUrl),
-        centerVariantsBlob: await dataUrlToPngBlob(asset.centerVariantsUrl),
         workspaceId,
       });
       setStatus({
