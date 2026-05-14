@@ -140,3 +140,65 @@ export const upsertIndexerCheckpointArgs = {
   cursor: v.optional(v.string()),
   ...freshnessValidators,
 };
+
+export const createConvexWorldArgs = {
+  worldKey: v.string(),
+  name: v.optional(v.string()),
+  studioMapId: v.optional(v.id("studioMaps")),
+  playerKey: v.optional(v.string()),
+  owner: v.optional(v.string()),
+  appearance: v.optional(appearanceValidator),
+};
+
+export const prepareConvexPlayerArgs = {
+  worldKey: v.string(),
+  playerKey: v.string(),
+  owner: v.optional(v.string()),
+  appearance: v.optional(appearanceValidator),
+};
+
+export const movePlayerArgs = {
+  worldKey: v.string(),
+  playerKey: v.string(),
+  point: gridPointValidator,
+};
+
+export const sleepPlayerArgs = {
+  worldKey: v.string(),
+  playerKey: v.string(),
+};
+
+export const tileActionModeValidator = v.union(
+  v.literal("move"),
+  v.literal("till"),
+  v.literal("water"),
+  v.literal("plant"),
+  v.literal("harvest"),
+  v.literal("chop"),
+  v.literal("grab"),
+  v.literal("drop")
+);
+
+export const performTileActionArgs = {
+  worldKey: v.string(),
+  playerKey: v.string(),
+  mode: tileActionModeValidator,
+  point: gridPointValidator,
+  selectedItemId: v.optional(v.union(v.number(), v.null())),
+  selectedQuantity: v.optional(v.union(v.number(), v.null())),
+};
+
+export const createTradeOfferSystemArgs = {
+  worldKey: v.string(),
+  playerKey: v.string(),
+  sellerMint: v.string(),
+  itemId: v.number(),
+  itemQuantity: v.number(),
+  goldAmount: v.number(),
+};
+
+export const tradeOfferSystemArgs = {
+  worldKey: v.string(),
+  playerKey: v.string(),
+  offer: v.string(),
+};

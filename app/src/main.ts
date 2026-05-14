@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import "./polyfills";
 import { getHudElements, HudController } from "./client/hud";
+import { createConvexGameBackend } from "./client/convex/backend";
 import { createMagicBlockGameBackend } from "./client/magicblock/backend";
 import { createGridScene, GAME_HEIGHT, GAME_WIDTH } from "./game/grid-scene";
 import { bootStudio } from "./studio/app/studio-react";
@@ -16,7 +17,10 @@ if (window.location.pathname.replace(/\/$/, "").startsWith("/studio")) {
   bootStudio(app);
 } else {
   const hud = new HudController(getHudElements());
-  const backend = createMagicBlockGameBackend(hud);
+  const backend =
+    import.meta.env.VITE_GAME_BACKEND === "convex"
+      ? createConvexGameBackend(hud)
+      : createMagicBlockGameBackend(hud);
   const gameRoot = document.getElementById("game");
   const playerGate = document.getElementById("player-gate");
   const startGameButton = document.getElementById(

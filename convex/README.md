@@ -9,6 +9,8 @@ can grow independently.
   `schema/studio.ts`, `schema/game.ts`, and `schema/indexers.ts`.
 - `game/` owns runtime read models for worlds, players, inventory, gold, farm
   tiles, tile items, and trade offers.
+- `game/ECS.md` describes the proposed typed ECS architecture for future
+  Convex-native gameplay systems.
 - `studio.ts` and future `studio/` modules own design-time creator workflows,
   including maps, terrain assets, object sprites, plant sprites, and generation.
 - `indexers/` normalizes external systems into `game/ingest.ts`. Indexers do
