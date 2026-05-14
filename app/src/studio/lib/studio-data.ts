@@ -66,7 +66,7 @@ export const DEFAULT_FORM: TerrainPromptMetadata = {
 };
 
 export const DEFAULT_STUDIO_HELP =
-  "Drag to paint. Right/middle drag pans. Wheel zooms.";
+  "Drag to paint. Right/middle drag or two-finger swipe pans. Pinch zooms.";
 export const LAYERED_STUDIO_HELP =
   "Paint replaces terrain inside the active numeric layer. Erase clears that layer at the tile. Different layers stack.";
 

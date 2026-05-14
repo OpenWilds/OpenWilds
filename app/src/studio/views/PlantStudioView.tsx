@@ -5,6 +5,7 @@ import {
   type GeneratedPlantSprite,
   type PlantSpritePromptMetadata,
 } from "../convex/convex-studio";
+import { SegmentedControl } from "../components/SegmentedControl";
 import type {
   PlantSpriteKind,
   StudioPlantSpriteCell,
@@ -216,22 +217,17 @@ export function PlantStudioView({
             <h2>Sprite Sheet Generator</h2>
           </div>
 
-          <div className="studio-segmented" aria-label="Plant sprite kind">
-            <button
-              data-active={form.kind === "plant" ? "" : undefined}
-              onClick={() => setKind("plant")}
-              type="button"
-            >
-              Plant
-            </button>
-            <button
-              data-active={form.kind === "tree" ? "" : undefined}
-              onClick={() => setKind("tree")}
-              type="button"
-            >
-              Tree
-            </button>
-          </div>
+          <SegmentedControl
+            ariaLabel="Plant sprite kind"
+            value={form.kind}
+            onChange={setKind}
+            options={
+              [
+                { label: "Plant", value: "plant" },
+                { label: "Tree", value: "tree" },
+              ] as const
+            }
+          />
 
           <div className="studio-generator-fields">
             <label>
