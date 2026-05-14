@@ -76,7 +76,7 @@ const refs = {
     "query",
     GetWorldReadModelArgs,
     ConvexGameReadModel
-  >("gameState:getWorldReadModel"),
+  >("game/readModel:getWorldReadModel"),
 };
 
 /** Exposes Convex shared game state through the backend-neutral read port. */

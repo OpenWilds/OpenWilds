@@ -11,11 +11,11 @@ describe("gameState Convex read model", () => {
   it("seeds a dev world and returns the shared read model", async () => {
     const t = convexTest(schema, modules);
 
-    await t.mutation(api.gameState.seedDevWorld, {
+    await t.mutation(api.game.dev.seedDevWorld, {
       worldKey: "test-world",
       playerKey: "player-a",
     });
-    const model = await t.query(api.gameState.getWorldReadModel, {
+    const model = await t.query(api.game.readModel.getWorldReadModel, {
       worldKey: "test-world",
       playerKey: "player-a",
     });
@@ -32,10 +32,29 @@ describe("gameState Convex read model", () => {
     expect(model.tileItems).toHaveLength(1);
   });
 
+  it("keeps the legacy gameState API as a compatibility facade", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(api.gameState.seedDevWorld, {
+      worldKey: "compat-world",
+      playerKey: "player-a",
+    });
+    const model = await t.query(api.gameState.getWorldReadModel, {
+      worldKey: "compat-world",
+      playerKey: "player-a",
+    });
+
+    expect(model.playerActionState.position).toEqual({ x: 2, y: 3 });
+    expect(model.visiblePlayers[0]).toMatchObject({
+      mint: "player-a",
+      isActive: true,
+    });
+  });
+
   it("ignores stale revisions", async () => {
     const t = convexTest(schema, modules);
 
-    await t.mutation(internal.gameState.upsertPlayerState, {
+    await t.mutation(internal.game.ingest.upsertPlayerState, {
       worldKey: "test-world",
       playerKey: "player-a",
       position: { x: 5, y: 6 },
@@ -43,7 +62,7 @@ describe("gameState Convex read model", () => {
       activeAction: idleAction(),
       ...freshness(10),
     });
-    await t.mutation(internal.gameState.upsertPlayerState, {
+    await t.mutation(internal.game.ingest.upsertPlayerState, {
       worldKey: "test-world",
       playerKey: "player-a",
       position: { x: 99, y: 99 },
@@ -51,7 +70,7 @@ describe("gameState Convex read model", () => {
       activeAction: idleAction(),
       ...freshness(9),
     });
-    const model = await t.query(api.gameState.getWorldReadModel, {
+    const model = await t.query(api.game.readModel.getWorldReadModel, {
       worldKey: "test-world",
       playerKey: "player-a",
     });
@@ -63,7 +82,7 @@ describe("gameState Convex read model", () => {
   it("returns default player state with world-scoped tiles and items", async () => {
     const t = convexTest(schema, modules);
 
-    await t.mutation(internal.gameState.upsertFarmTile, {
+    await t.mutation(internal.game.ingest.upsertFarmTile, {
       worldKey: "test-world",
       x: 1,
       y: 2,
@@ -77,7 +96,7 @@ describe("gameState Convex read model", () => {
       harvestCount: 0,
       ...freshness(1),
     });
-    await t.mutation(internal.gameState.upsertTileItem, {
+    await t.mutation(internal.game.ingest.upsertTileItem, {
       worldKey: "test-world",
       x: 2,
       y: 3,
@@ -85,7 +104,7 @@ describe("gameState Convex read model", () => {
       quantity: 2,
       ...freshness(1),
     });
-    const model = await t.query(api.gameState.getWorldReadModel, {
+    const model = await t.query(api.game.readModel.getWorldReadModel, {
       worldKey: "test-world",
       playerKey: null,
     });
@@ -108,21 +127,21 @@ describe("gameState Convex read model", () => {
   it("returns incoming and outgoing trade offers for the selected player", async () => {
     const t = convexTest(schema, modules);
 
-    await t.mutation(internal.gameState.upsertTradeOffer, {
+    await t.mutation(internal.game.ingest.upsertTradeOffer, {
       ...tradeOffer("outgoing-offer"),
       worldKey: "test-world",
       buyerPlayerMint: "player-a",
       sellerPlayerMint: "player-b",
       ...freshness(1),
     });
-    await t.mutation(internal.gameState.upsertTradeOffer, {
+    await t.mutation(internal.game.ingest.upsertTradeOffer, {
       ...tradeOffer("incoming-offer"),
       worldKey: "test-world",
       buyerPlayerMint: "player-c",
       sellerPlayerMint: "player-a",
       ...freshness(2),
     });
-    const model = await t.query(api.gameState.getWorldReadModel, {
+    const model = await t.query(api.game.readModel.getWorldReadModel, {
       worldKey: "test-world",
       playerKey: "player-a",
     });
