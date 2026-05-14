@@ -60,17 +60,15 @@ export type TradeOfferState = {
   status: TradeOfferStatus;
 };
 
-export type FarmActionMode =
-  | "move"
-  | "till"
-  | "water"
-  | "plant"
-  | "harvest"
-  | "chop"
-  | "grab"
-  | "drop";
-
-export type ContextAction = Exclude<FarmActionMode, "move">;
+export type FarmActionMode = "till" | "water" | "plant" | "harvest";
+export type ResourceActionMode = "chop";
+export type ItemActionMode = "grab" | "drop";
+export type TileActionMode =
+  | FarmActionMode
+  | ResourceActionMode
+  | ItemActionMode;
+export type ActionMode = "move" | TileActionMode;
+export type WorldTileActionMode = FarmActionMode | ResourceActionMode;
 
 export type FarmTileState = GridPoint & {
   soilState: "untilled" | "tilled";
@@ -83,7 +81,7 @@ export type FarmTileState = GridPoint & {
   harvestCount: number;
 };
 
-export type FarmActionResult = {
+export type ActionResult = {
   player: PlayerActionState;
   tile?: FarmTileState;
   item?: TileItemState | null;
@@ -114,6 +112,12 @@ export type VisiblePlayerState = {
   inventory: InventoryState;
 };
 
+export type SelectedPlayerSummary = {
+  mint: string;
+  owner: string;
+  color: string;
+};
+
 export type ActionTransitionState = {
   active: boolean;
   fromPosition: GridPoint;
@@ -122,48 +126,4 @@ export type ActionTransitionState = {
   toEnergy: EnergyState;
   startedAt: number;
   endsAt: number;
-};
-
-export type GameClient = {
-  movePlayer: (point: GridPoint) => Promise<PlayerActionState | null>;
-  sleepPlayer?: () => Promise<PlayerActionState | null>;
-  performFarmAction?: (
-    mode: FarmActionMode,
-    point: GridPoint,
-    selectedItemId?: number | null,
-    selectedQuantity?: number | null
-  ) => Promise<FarmActionResult | null>;
-  subscribePlayerActionState?: (
-    listener: (state: PlayerActionState) => void
-  ) => () => void;
-  subscribePlayerAppearance?: (
-    listener: (appearance: PlayerAppearance) => void
-  ) => () => void;
-  subscribeVisiblePlayers?: (
-    listener: (players: VisiblePlayerState[]) => void
-  ) => () => void;
-  subscribeInventory?: (
-    listener: (inventory: InventoryState) => void
-  ) => () => void;
-  subscribeGoldBalance?: (
-    listener: (balance: GoldBalanceState) => void
-  ) => () => void;
-  subscribeTradeOffers?: (
-    listener: (offers: TradeOfferState[]) => void
-  ) => () => void;
-  subscribeFarmTiles?: (
-    listener: (tiles: FarmTileState[]) => void
-  ) => () => void;
-  subscribeTileItems?: (
-    listener: (items: TileItemState[]) => void
-  ) => () => void;
-  createTradeOffer?: (args: {
-    sellerMint: string;
-    itemId: number;
-    itemQuantity: number;
-    goldAmount: number;
-  }) => Promise<void>;
-  acceptTradeOffer?: (offer: string) => Promise<void>;
-  cancelTradeOffer?: (offer: string) => Promise<void>;
-  finalizeTradeOffer?: (offer: string) => Promise<void>;
 };

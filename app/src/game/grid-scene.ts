@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import type { Subscription } from "rxjs";
 import {
   OBJECT_SPRITE_ASSETS,
   TERRAIN_VISUAL_ASSETS,
@@ -55,17 +56,17 @@ import {
   TerrainFeature,
 } from "./terrain";
 import type {
-  ContextAction,
-  GameClient,
-  FarmActionMode,
-  FarmActionResult,
+  ActionResult,
   FarmTileState,
+  GridPoint,
   InventoryState,
   PlayerActionState,
   PlayerAppearance,
+  TileActionMode,
   TileItemState,
   VisiblePlayerState,
 } from "./types";
+import type { GameClient } from "./ports";
 
 export { GAME_HEIGHT, GAME_WIDTH };
 
@@ -99,21 +100,21 @@ const ACTION_CONTEXT_RETARGET_DELAY_MS = 280;
 export const createGridScene = (client: GameClient, hud: HudController) =>
   class GridScene extends Phaser.Scene {
     private world!: World;
-    private unsubscribePlayerActionState: (() => void) | null = null;
-    private unsubscribePlayerAppearance: (() => void) | null = null;
-    private unsubscribeVisiblePlayers: (() => void) | null = null;
-    private unsubscribeInventory: (() => void) | null = null;
-    private unsubscribeGoldBalance: (() => void) | null = null;
-    private unsubscribeTradeOffers: (() => void) | null = null;
-    private unsubscribeFarmTiles: (() => void) | null = null;
-    private unsubscribeTileItems: (() => void) | null = null;
+    private unsubscribePlayerActionState: Subscription | null = null;
+    private unsubscribePlayerAppearance: Subscription | null = null;
+    private unsubscribeVisiblePlayers: Subscription | null = null;
+    private unsubscribeInventory: Subscription | null = null;
+    private unsubscribeGoldBalance: Subscription | null = null;
+    private unsubscribeTradeOffers: Subscription | null = null;
+    private unsubscribeFarmTiles: Subscription | null = null;
+    private unsubscribeTileItems: Subscription | null = null;
     private unsubscribeHudSnapshot: (() => void) | null = null;
     private pantheonHud: ReturnType<typeof createPantheonHud> | null = null;
     private activePlayerEntity: number | null = null;
     private hasAppliedInitialPlayerState = false;
     private agentModeActive = false;
     private agentControlledLocalStateKey: string | null = null;
-    private farmActionPending = false;
+    private actionPending = false;
     private farmTileRenderElapsedMs = 0;
     private actionContextPoint: GridPoint | null = null;
     private pendingActionContextPoint: GridPoint | null = null;
@@ -174,8 +175,8 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
           this.gridInput.equippedTool = tool;
           this.refreshAvailableActions();
         },
-        onContextActionChange: (action) => {
-          this.gridInput.selectedContextAction = action;
+        onTileActionModeChange: (action) => {
+          this.gridInput.selectedTileActionMode = action;
         },
         onItemSelect: (itemId) => {
           this.gridInput.selectedItemId = itemId;
@@ -222,21 +223,21 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
       this.world.update(0);
       this.bindPointerInput();
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-        this.unsubscribePlayerActionState?.();
+        this.unsubscribePlayerActionState?.unsubscribe();
         this.unsubscribePlayerActionState = null;
-        this.unsubscribePlayerAppearance?.();
+        this.unsubscribePlayerAppearance?.unsubscribe();
         this.unsubscribePlayerAppearance = null;
-        this.unsubscribeVisiblePlayers?.();
+        this.unsubscribeVisiblePlayers?.unsubscribe();
         this.unsubscribeVisiblePlayers = null;
-        this.unsubscribeInventory?.();
+        this.unsubscribeInventory?.unsubscribe();
         this.unsubscribeInventory = null;
-        this.unsubscribeGoldBalance?.();
+        this.unsubscribeGoldBalance?.unsubscribe();
         this.unsubscribeGoldBalance = null;
-        this.unsubscribeTradeOffers?.();
+        this.unsubscribeTradeOffers?.unsubscribe();
         this.unsubscribeTradeOffers = null;
-        this.unsubscribeFarmTiles?.();
+        this.unsubscribeFarmTiles?.unsubscribe();
         this.unsubscribeFarmTiles = null;
-        this.unsubscribeTileItems?.();
+        this.unsubscribeTileItems?.unsubscribe();
         this.unsubscribeTileItems = null;
         this.unsubscribeHudSnapshot?.();
         this.unsubscribeHudSnapshot = null;
@@ -288,15 +289,15 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
           return;
         }
 
-        const action = this.resolveContextAction(point);
+        const action = this.resolveTileActionMode(point);
 
         if (!action) {
           this.gridInput.requestedMove = point;
           return;
         }
 
-        this.gridInput.farmActionMode = action;
-        void this.performFarmAction(action, point);
+        this.gridInput.actionMode = action;
+        void this.performAction(action, point);
       });
     }
 
@@ -390,9 +391,9 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
       return a.x === b.x && a.y === b.y;
     }
 
-    private resolveContextAction(point: GridPoint): ContextAction | null {
+    private resolveTileActionMode(point: GridPoint): TileActionMode | null {
       const availableActions = this.getAvailableActions(point);
-      const selectedAction = this.gridInput.selectedContextAction;
+      const selectedAction = this.gridInput.selectedTileActionMode;
 
       if (selectedAction && availableActions.includes(selectedAction)) {
         return selectedAction;
@@ -401,7 +402,7 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
       return availableActions[0] ?? null;
     }
 
-    private getAvailableActions(point: GridPoint | null): ContextAction[] {
+    private getAvailableActions(point: GridPoint | null): TileActionMode[] {
       switch (this.gridInput.equippedTool) {
         case "hand":
           return this.getHandActions(point);
@@ -412,8 +413,8 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
       }
     }
 
-    private getHandActions(point: GridPoint | null): ContextAction[] {
-      const actions: ContextAction[] = [];
+    private getHandActions(point: GridPoint | null): TileActionMode[] {
+      const actions: TileActionMode[] = [];
       const selectedItemId = this.gridInput.selectedItemId;
 
       if (point && this.tileItems.has(getWorldItemKey(point))) {
@@ -435,8 +436,8 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
       return actions;
     }
 
-    private getHoeActions(point: GridPoint | null): ContextAction[] {
-      const actions: ContextAction[] = [];
+    private getHoeActions(point: GridPoint | null): TileActionMode[] {
+      const actions: TileActionMode[] = [];
 
       if (!point) {
         return actions;
@@ -453,7 +454,7 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
       return actions;
     }
 
-    private getWateringActions(point: GridPoint | null): ContextAction[] {
+    private getWateringActions(point: GridPoint | null): TileActionMode[] {
       if (!point) {
         return [];
       }
@@ -482,7 +483,9 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
     }
 
     private isTillable(point: GridPoint) {
-      const terrain = getTerrainType(getTileTerrainDefinition(point).terrainTypeId);
+      const terrain = getTerrainType(
+        getTileTerrainDefinition(point).terrainTypeId
+      );
       const tile = this.farmTiles.get(this.getTileKey(point));
 
       return (
@@ -504,42 +507,34 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
     private isChoppable(point: GridPoint) {
       const { farm } = this.getFarmAt(point);
 
-      return Boolean(
-        farm && farm.kind === FarmKind.tree && farm.chopYield > 0
-      );
+      return Boolean(farm && farm.kind === FarmKind.tree && farm.chopYield > 0);
     }
 
     private bindPlayerActionState(player: number) {
-      this.unsubscribePlayerActionState =
-        client.subscribePlayerActionState?.((state) =>
-          this.applyPlayerActionState(player, state)
-        ) ?? null;
-      this.unsubscribePlayerAppearance =
-        client.subscribePlayerAppearance?.((appearance) =>
-          this.applyPlayerAppearance(player, appearance)
-        ) ?? null;
-      this.unsubscribeVisiblePlayers =
-        client.subscribeVisiblePlayers?.((players) =>
-          this.applyVisiblePlayers(players)
-        ) ?? null;
-      this.unsubscribeInventory =
-        client.subscribeInventory?.((inventory) =>
-          this.applyInventory(inventory)
-        ) ?? null;
-      this.unsubscribeGoldBalance =
-        client.subscribeGoldBalance?.((balance) =>
-          this.pantheonHud?.updateGoldBalance(balance)
-        ) ?? null;
-      this.unsubscribeTradeOffers =
-        client.subscribeTradeOffers?.((offers) =>
-          this.pantheonHud?.updateTradeOffers(offers)
-        ) ?? null;
-      this.unsubscribeFarmTiles =
-        client.subscribeFarmTiles?.((tiles) => this.applyFarmTiles(tiles)) ??
-        null;
-      this.unsubscribeTileItems =
-        client.subscribeTileItems?.((items) => this.applyTileItems(items)) ??
-        null;
+      this.unsubscribePlayerActionState = client.playerActionState$.subscribe(
+        (state) => this.applyPlayerActionState(player, state)
+      );
+      this.unsubscribePlayerAppearance = client.playerAppearance$.subscribe(
+        (appearance) => this.applyPlayerAppearance(player, appearance)
+      );
+      this.unsubscribeVisiblePlayers = client.visiblePlayers$.subscribe(
+        (players) => this.applyVisiblePlayers(players)
+      );
+      this.unsubscribeInventory = client.inventory$.subscribe((inventory) =>
+        this.applyInventory(inventory)
+      );
+      this.unsubscribeGoldBalance = client.goldBalance$.subscribe((balance) =>
+        this.pantheonHud?.updateGoldBalance(balance)
+      );
+      this.unsubscribeTradeOffers = client.tradeOffers$.subscribe((offers) =>
+        this.pantheonHud?.updateTradeOffers(offers)
+      );
+      this.unsubscribeFarmTiles = client.farmTiles$.subscribe((tiles) =>
+        this.applyFarmTiles(tiles)
+      );
+      this.unsubscribeTileItems = client.tileItems$.subscribe((items) =>
+        this.applyTileItems(items)
+      );
     }
 
     private applyPlayerActionState(player: number, state: PlayerActionState) {
@@ -770,17 +765,17 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
       this.refreshPlantInfo(nowGameSeconds);
     }
 
-    private async performFarmAction(
-      mode: FarmActionMode,
+    private async performAction(
+      mode: TileActionMode,
       point: { x: number; y: number }
     ) {
-      if (this.farmActionPending || !client.performFarmAction) {
+      if (this.actionPending || !client.performAction) {
         return;
       }
 
-      this.farmActionPending = true;
+      this.actionPending = true;
       try {
-        const result = await client.performFarmAction(
+        const result = await client.performAction(
           mode,
           point,
           this.gridInput.selectedItemId,
@@ -797,7 +792,12 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
             this.activePlayerEntity,
             result.player
           );
-          this.setPlayerActionPose(this.activePlayerEntity, mode, point, result);
+          this.setPlayerActionPose(
+            this.activePlayerEntity,
+            mode,
+            point,
+            result
+          );
         }
 
         if (result.tile) {
@@ -820,21 +820,17 @@ export const createGridScene = (client: GameClient, hud: HudController) =>
           }
         }
       } finally {
-        this.farmActionPending = false;
+        this.actionPending = false;
         this.refreshAvailableActions();
       }
     }
 
     private setPlayerActionPose(
       player: number,
-      mode: FarmActionMode,
+      mode: TileActionMode,
       point: GridPoint,
-      result: FarmActionResult
+      result: ActionResult
     ) {
-      if (mode === "move") {
-        return;
-      }
-
       const sprite = this.world.getComponent<PlayerSpriteComponent>(
         player,
         Components.playerSprite

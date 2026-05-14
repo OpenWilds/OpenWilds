@@ -6,8 +6,7 @@ import {
   FarmKind,
   getFarmItemLabel,
 } from "./farm";
-import type { InventorySlotState, InventoryState } from "./types";
-import type { FarmActionMode } from "./types";
+import type { ActionMode, InventorySlotState, InventoryState } from "./types";
 
 const PANEL_X = 700;
 const PANEL_Y = 84;
@@ -20,7 +19,7 @@ const ROW_HEIGHT = 68;
 const INVENTORY_ROW_HEIGHT = 12;
 const VISIBLE_INVENTORY_ROWS = 16;
 const TOOLBAR_Y = 12;
-const TOOL_BUTTONS: Array<{ mode: FarmActionMode; label: string }> = [
+const TOOL_BUTTONS: Array<{ mode: ActionMode; label: string }> = [
   { mode: "move", label: "Move" },
   { mode: "till", label: "Hoe" },
   { mode: "water", label: "Water" },
@@ -39,7 +38,7 @@ type InventoryRow = {
 
 export const createFarmCatalog = (
   scene: Phaser.Scene,
-  onModeChange?: (mode: FarmActionMode) => void,
+  onModeChange?: (mode: ActionMode) => void,
   onItemSelect?: (itemId: number | null) => void,
   onQuantityChange?: (quantity: number) => void
 ) => {
@@ -128,11 +127,11 @@ export const createFarmCatalog = (
   const inventoryTexts = new Map<number, Phaser.GameObjects.Text>();
   const inventoryRows: InventoryRow[] = [];
   const toolButtons: Array<{
-    mode: FarmActionMode;
+    mode: ActionMode;
     background: Phaser.GameObjects.Graphics;
     label: Phaser.GameObjects.Text;
   }> = [];
-  let selectedMode: FarmActionMode = "move";
+  let selectedMode: ActionMode = "move";
   let selectedItemId: number | null = null;
   let selectedItemQuantity = 0;
   let selectedDropQuantity = 1;

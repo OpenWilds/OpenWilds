@@ -1,6 +1,7 @@
 import {
   CubeIcon,
   DatabaseIcon,
+  HouseIcon,
   ImageSquareIcon,
   MapTrifoldIcon,
   PlantIcon,
@@ -41,17 +42,21 @@ export function StudioShell({
   generatedTerrains,
   offline = false,
   objectSprites,
+  onSignOut,
   plantSprites,
   savedWorlds,
   sourceTextures,
+  userLabel = "Creator Admin",
 }: {
   generatedTerrains: TerrainVisualAsset[];
   isLoading?: boolean;
   offline?: boolean;
   objectSprites: StudioObjectSpriteRecord[];
+  onSignOut?: () => void;
   plantSprites: StudioPlantSpriteRecord[];
   savedWorlds: StudioMapRecord[];
   sourceTextures: StudioSourceTexture[];
+  userLabel?: string;
 }) {
   const [route, setRoute] = useStudioRoute();
   const [selectedSourceTexture, setSelectedSourceTexture] =
@@ -103,14 +108,40 @@ export function StudioShell({
             </button>
           ))}
         </nav>
-        <a
-          aria-label="Back to game"
-          className="studio-link"
-          data-tooltip="Back to game"
-          href="/"
-        >
-          <SignOutIcon aria-hidden="true" size={22} weight="bold" />
-        </a>
+        <div className="studio-sidebar-actions">
+          <div
+            aria-label={`${userLabel} - ${
+              offline ? "Offline Studio" : "Convex Studio"
+            }`}
+            className="studio-user-card"
+            data-tooltip={`${userLabel} - ${
+              offline ? "Offline Studio" : "Convex Studio"
+            }`}
+          >
+            <div className="studio-user-card__avatar" aria-hidden="true">
+              {userLabel.trim().charAt(0).toUpperCase() || "A"}
+            </div>
+          </div>
+          {onSignOut ? (
+            <button
+              aria-label="Sign out"
+              className="studio-link studio-link--button"
+              data-tooltip="Sign out"
+              onClick={onSignOut}
+              type="button"
+            >
+              <SignOutIcon aria-hidden="true" size={22} weight="bold" />
+            </button>
+          ) : null}
+          <a
+            aria-label="Back to game"
+            className="studio-link"
+            data-tooltip="Back to game"
+            href="/"
+          >
+            <HouseIcon aria-hidden="true" size={22} weight="bold" />
+          </a>
+        </div>
       </aside>
 
       <main className="studio-main">

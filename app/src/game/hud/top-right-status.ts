@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { UI_ASSETS } from "../../assets/ui-assets";
 import { getGameTime, getGameTimeLighting } from "../game-time";
-import { makeHudText, makeSystemButton } from "./text";
+import { makeSystemButton } from "./text";
 
 const clockScale = 0.44;
 const clockWidth = 560;
@@ -20,15 +20,13 @@ const buttonWidth = 52;
 const buttonGap = 8;
 const buttonRowWidth = buttonWidth * 3 + buttonGap * 2;
 const buttonRowTop = clockHeight * clockScale + 6;
-const playerPanelTop = buttonRowTop + 62;
-const playerPanelHeight = 40;
 
 export const createTopRightStatus = (
   scene: Phaser.Scene,
   onSettingsClick: () => void
 ) => {
   const width = Math.max(clockWidth * clockScale, buttonRowWidth);
-  const height = playerPanelTop + playerPanelHeight;
+  const height = buttonRowTop + buttonWidth;
   const shade = scene.add
     .rectangle(0, 0, 1, 1, 0x07142a, 0)
     .setOrigin(0)
@@ -78,23 +76,6 @@ export const createTopRightStatus = (
     .setOrigin(0, 0.5)
     .setScrollFactor(0);
   const buttons = scene.add.container(buttonsX, buttonRowTop);
-  const playerBg = scene.add
-    .image(
-      width / 2,
-      playerPanelTop + playerPanelHeight / 2,
-      UI_ASSETS.toastCardPanel.key
-    )
-    .setDisplaySize(width, playerPanelHeight)
-    .setAlpha(0.94);
-  const playerText = makeHudText(
-    scene,
-    0,
-    playerPanelTop + 10,
-    "Player: 10, 10",
-    12,
-    "#f1d38b",
-    width
-  );
 
   clock.setPosition(clockX, 0);
   clock.add([artwork, frame, panel, label]);
@@ -118,8 +99,7 @@ export const createTopRightStatus = (
   );
 
   buttons.add([settingsButton, mapButton, journalButton]);
-  playerText.setAlign("center");
-  container.add([clock, buttons, playerBg, playerText]);
+  container.add([clock, buttons]);
 
   const syncTime = () => {
     const time = getGameTime();
@@ -201,7 +181,7 @@ export const createTopRightStatus = (
       syncTime();
     },
     setPlayerStatus(text: string) {
-      playerText.setText(text);
+      void text;
     },
     resize(args: { screenWidth: number; screenHeight: number }) {
       shade

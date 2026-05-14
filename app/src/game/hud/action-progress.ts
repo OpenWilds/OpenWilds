@@ -1,8 +1,8 @@
 import Phaser from "phaser";
 import { UI_ASSETS, UI_ICONS } from "../../assets/ui-assets";
-import type { FarmActionMode } from "../types";
+import type { ActionMode } from "../types";
 
-export type ActionProgressIcon = FarmActionMode | "sleep";
+export type ActionProgressIcon = ActionMode | "sleep";
 
 const trackWidth = 341;
 const trackHeight = 63;

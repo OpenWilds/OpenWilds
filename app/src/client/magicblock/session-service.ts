@@ -1,0 +1,58 @@
+/**
+ * MagicBlock session orchestration.
+ *
+ * Combines selected-player state, boot flow, and provisioning. It translates
+ * MagicBlock-specific player NFT objects into domain-only summaries before
+ * publishing them through the shared state store.
+ */
+import type { GameSessionAdapter } from "../../game/ports";
+import type { GameStateStore } from "../../game/state-store";
+import type { SelectedPlayerSummary } from "../../game/types";
+import type { PlayerNft } from "../player-nft";
+import type { MagicBlockNativeClientCore } from "./native-client-core";
+import { MagicBlockProvisioningService } from "./provisioning-service";
+
+/** Implements the backend-neutral session port for MagicBlock. */
+export class MagicBlockSessionService implements GameSessionAdapter {
+  readonly selectedPlayer$: GameSessionAdapter["selectedPlayer$"];
+
+  private readonly unsubscribeSelection: () => void;
+  private readonly provisioning: MagicBlockProvisioningService;
+
+  /** Bridges runtime selection callbacks and composes provisioning behavior. */
+  constructor(
+    private readonly runtime: MagicBlockNativeClientCore,
+    private readonly state: GameStateStore
+  ) {
+    this.provisioning = new MagicBlockProvisioningService(this.runtime);
+    this.selectedPlayer$ = this.state.selectedPlayer$;
+    this.unsubscribeSelection = this.runtime.subscribePlayerSelection(
+      (player) =>
+        this.state.setSelectedPlayer(
+          player ? this.toSelectedPlayerSummary(player) : null
+        )
+    );
+  }
+
+  boot: GameSessionAdapter["boot"] = () => this.runtime.boot();
+
+  hasSelectedPlayer: GameSessionAdapter["hasSelectedPlayer"] = () =>
+    this.runtime.hasSelectedPlayer();
+
+  prepareSelectedPlayer: GameSessionAdapter["prepareSelectedPlayer"] = () =>
+    this.provisioning.prepareSelectedPlayer();
+
+  /** Detaches the selected-player bridge from the native runtime. */
+  dispose() {
+    this.unsubscribeSelection();
+  }
+
+  /** Removes Solana-specific fields before exposing player selection to UI. */
+  private toSelectedPlayerSummary(player: PlayerNft): SelectedPlayerSummary {
+    return {
+      mint: player.mint.toBase58(),
+      owner: player.owner.toBase58(),
+      color: player.color,
+    };
+  }
+}

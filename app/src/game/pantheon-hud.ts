@@ -4,13 +4,12 @@ import { createActionProgressHud } from "./hud/action-progress";
 import { createAgentModeButton } from "./hud/agent-mode-button";
 import { createEnergyPanel } from "./hud/energy-panel";
 import { createMinimap } from "./hud/minimap";
-import { createStatusPanel } from "./hud/status-panel";
 import { createToolInventory } from "./hud/tool-inventory";
 import { createTopRightStatus } from "./hud/top-right-status";
 import { createTradePanel } from "./hud/trade-panel";
 import type { PantheonHudOptions } from "./hud/types";
 import type {
-  ContextAction,
+  TileActionMode,
   EnergyState,
   GridPoint,
   InventoryState,
@@ -24,14 +23,13 @@ export const createPantheonHud = (
 ) => {
   const hudEdgeInset = 16;
   const root = scene.add.container(0, 0).setDepth(10000).setScrollFactor(0);
-  const statusPanel = createStatusPanel(scene);
   const energyPanel = createEnergyPanel(scene);
   const minimap = createMinimap(scene);
   const topRight = createTopRightStatus(scene, toggleSettingsPanel);
   const agentModeButton = createAgentModeButton(scene, toggleAgentMode);
   const toolInventory = createToolInventory(scene, {
     onToolChange: options.onToolChange,
-    onContextActionChange: options.onContextActionChange,
+    onTileActionModeChange: options.onTileActionModeChange,
     onItemSelect: options.onItemSelect,
     onQuantityChange: options.onQuantityChange,
     onSleep: options.onSleep,
@@ -46,7 +44,6 @@ export const createPantheonHud = (
   root.add([
     topRight.shade,
     energyPanel.container,
-    statusPanel.container,
     minimap.container,
     topRight.container,
     toolInventory.container,
@@ -56,7 +53,6 @@ export const createPantheonHud = (
   ]);
 
   const unsubscribe = hud.subscribe((snapshot) => {
-    statusPanel.update(snapshot);
     topRight.setTime(snapshot.gameTimeStatus);
     agentModeButton.setActive(snapshot.agentActive);
   });
@@ -100,11 +96,11 @@ export const createPantheonHud = (
     syncSelectedQuantity(quantity: number) {
       toolInventory.setSelectedQuantity(quantity);
     },
-    setAvailableActions(actions: ContextAction[]) {
+    setAvailableActions(actions: TileActionMode[]) {
       toolInventory.setAvailableActions(actions);
     },
-    getSelectedContextAction() {
-      return toolInventory.getSelectedContextAction();
+    getSelectedTileActionMode() {
+      return toolInventory.getSelectedTileActionMode();
     },
     handlePointerMove(pointer: Phaser.Input.Pointer) {
       const agentPoint = getAgentModeButtonLocalPoint(pointer);
@@ -238,10 +234,6 @@ export const createPantheonHud = (
     );
 
     energyPanel.container.setPosition(14, 12).setScale(energyScale);
-    statusPanel.container.setPosition(
-      16,
-      12 + energyPanel.height * energyScale + 10
-    );
 
     topRight.container.setPosition(
       Math.max(12, width - topRight.width - 18),

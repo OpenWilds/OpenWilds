@@ -2,6 +2,7 @@ import { v } from "convex/values";
 
 import { api } from "./_generated/api";
 import { action, mutation, query } from "./_generated/server";
+import { requireAuthUserId } from "./authz";
 
 const photoroomSegmentEndpoint = "https://sdk.photoroom.com/v1/segment";
 
@@ -42,6 +43,8 @@ const plantSpriteCell = v.object({
 export const generateUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireAuthUserId(ctx);
+
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -66,6 +69,8 @@ export const generateSourceTexture = action({
     ),
   },
   handler: async (ctx, args) => {
+    await requireAuthUserId(ctx);
+
     const startedAt = Date.now();
     const requestId = createGenerationRequestId(args.terrainId);
     const imageModel =
@@ -150,6 +155,8 @@ export const listTerrainTextures = query({
     status: v.optional(textureStatus),
   },
   handler: async (ctx, args) => {
+    await requireAuthUserId(ctx);
+
     const status = args.status;
     const textures =
       status === undefined
@@ -183,6 +190,8 @@ export const registerSourceTexture = mutation({
     status: v.optional(textureStatus),
   },
   handler: async (ctx, args) => {
+    await requireAuthUserId(ctx);
+
     const now = Date.now();
     const existing = await ctx.db
       .query("studioTerrainTextures")
@@ -230,6 +239,8 @@ export const registerTerrainAsset = mutation({
     plantable: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    await requireAuthUserId(ctx);
+
     const now = Date.now();
     const existing = await ctx.db
       .query("studioTerrainAssets")
@@ -284,6 +295,8 @@ export const generatePlantSprite = action({
     ),
   },
   handler: async (ctx, args) => {
+    await requireAuthUserId(ctx);
+
     const startedAt = Date.now();
     const requestId = createGenerationRequestId(args.plantId);
     const imageModel =
@@ -448,6 +461,8 @@ export const registerPlantSprite = mutation({
     cells: v.array(plantSpriteCell),
   },
   handler: async (ctx, args) => {
+    await requireAuthUserId(ctx);
+
     const now = Date.now();
     const existing = await ctx.db
       .query("studioPlantSprites")
@@ -496,6 +511,8 @@ export const listPlantSprites = query({
     status: v.optional(plantSpriteStatus),
   },
   handler: async (ctx, args) => {
+    await requireAuthUserId(ctx);
+
     const status = args.status;
     const sprites =
       status === undefined
@@ -540,6 +557,8 @@ export const generateObjectSprite = action({
     ),
   },
   handler: async (ctx, args) => {
+    await requireAuthUserId(ctx);
+
     const startedAt = Date.now();
     const requestId = createGenerationRequestId(args.objectId);
     const imageModel =
@@ -654,6 +673,8 @@ export const registerObjectSprite = mutation({
     model: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireAuthUserId(ctx);
+
     const now = Date.now();
     const existing = await ctx.db
       .query("studioObjectSprites")
@@ -695,6 +716,8 @@ export const listObjectSprites = query({
     status: v.optional(objectSpriteStatus),
   },
   handler: async (ctx, args) => {
+    await requireAuthUserId(ctx);
+
     const status = args.status;
     const sprites =
       status === undefined
@@ -719,6 +742,8 @@ export const listTerrainAssets = query({
     status: v.optional(terrainStatus),
   },
   handler: async (ctx, args) => {
+    await requireAuthUserId(ctx);
+
     const status = args.status;
     const assets =
       status === undefined
@@ -750,6 +775,8 @@ export const saveMap = mutation({
     mapJson: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireAuthUserId(ctx);
+
     const now = Date.now();
     const patch = {
       name: args.name,
@@ -774,6 +801,8 @@ export const saveMap = mutation({
 export const listMaps = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuthUserId(ctx);
+
     return await ctx.db.query("studioMaps").order("desc").take(50);
   },
 });
