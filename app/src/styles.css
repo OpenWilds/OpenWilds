@@ -2759,6 +2759,24 @@ textarea:disabled {
   grid-template-columns: minmax(0, 1fr) 120px auto;
 }
 
+.studio-workspace-mcp-access {
+  border: 1px solid #dfe5ee;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfe;
+}
+
+.studio-workspace-mcp-access p {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.studio-workspace-mcp-access button {
+  width: max-content;
+}
+
 .studio-generation-queue {
   display: grid;
   gap: 8px;

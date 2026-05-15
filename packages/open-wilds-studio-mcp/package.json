@@ -1,0 +1,40 @@
+{
+  "name": "@open-wilds/studio-mcp",
+  "version": "0.1.1",
+  "description": "MCP server for Open Wilds Studio workspaces, assets, terrain, sprites, and maps.",
+  "type": "module",
+  "bin": {
+    "open-wilds-studio-mcp": "bin/open-wilds-studio-mcp.mjs"
+  },
+  "files": [
+    "bin",
+    "README.md",
+    "server.json"
+  ],
+  "mcpName": "io.github.openwilds/studio-mcp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OpenWilds/OpenWilds.git",
+    "directory": "packages/open-wilds-studio-mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/OpenWilds/OpenWilds/issues"
+  },
+  "homepage": "https://github.com/OpenWilds/OpenWilds/tree/main/packages/open-wilds-studio-mcp#readme",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "check": "node --check bin/open-wilds-studio-mcp.mjs",
+    "smoke:list": "node scripts/smoke.mjs list",
+    "smoke:auth": "node scripts/smoke.mjs auth",
+    "verify": "npm run check && npm run smoke:list && npm run smoke:auth"
+  },
+  "dependencies": {
+    "convex": "^1.38.0"
+  }
+}

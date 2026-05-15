@@ -2,7 +2,7 @@
   "scripts": {
     "dev": "vite app --config vite.config.ts",
     "studio": "vite app --config vite.config.ts --host 127.0.0.1",
-    "studio:mcp": "node scripts/studio-mcp-server.mjs",
+    "studio:mcp": "node packages/open-wilds-studio-mcp/bin/open-wilds-studio-mcp.mjs",
     "build": "vite build app --config vite.config.ts",
     "preview": "vite preview app --config vite.config.ts",
     "test:app": "vitest run --config vitest.config.ts",

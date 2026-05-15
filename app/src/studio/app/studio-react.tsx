@@ -1,3 +1,4 @@
+import { useConvexAuth } from "@convex-dev/auth/react";
 import { Authenticated, useConvex, useMutation, useQuery } from "convex/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -19,6 +20,9 @@ declare const __OPEN_WILDS_CONVEX_URL__: string;
 
 const convexUrl = __OPEN_WILDS_CONVEX_URL__;
 const SELECTED_WORKSPACE_KEY = "open-wilds:studio:selected-workspace";
+const MCP_AUTH_PATH = "/studio/mcp-auth";
+const ENABLE_MCP_DEV_ACCESS =
+  import.meta.env.DEV || import.meta.env.VITE_STUDIO_MCP_DEV_ACCESS === "1";
 
 export const bootStudio = (app: HTMLElement) => {
   app.classList.add("studio-app");
@@ -31,25 +35,97 @@ export const bootStudio = (app: HTMLElement) => {
   }
 
   const convex = createConvexAuthClient(convexUrl);
+  const isMcpAuthRoute =
+    window.location.pathname.replace(/\/$/, "") === MCP_AUTH_PATH;
 
   root.render(
     <ConvexAuthBoundary client={convex}>
       <ConvexAuthScreen label="Open Wilds Studio" />
       <Authenticated>
-        <ConvexAuthenticatedUser label="Open Wilds Studio">
-          {({ signOut, user }) => (
-            <StudioApp
-              onSignOut={() => void signOut()}
-              userLabel={userLabel(user)}
-            />
-          )}
-        </ConvexAuthenticatedUser>
+        {isMcpAuthRoute ? (
+          <StudioMcpAuthBridge />
+        ) : (
+          <ConvexAuthenticatedUser label="Open Wilds Studio">
+            {({ signOut, user }) => (
+              <StudioApp
+                onSignOut={() => void signOut()}
+                userLabel={userLabel(user)}
+              />
+            )}
+          </ConvexAuthenticatedUser>
+        )}
       </Authenticated>
     </ConvexAuthBoundary>
   );
 
   return root;
 };
+
+function StudioMcpAuthBridge() {
+  const { fetchAccessToken, isLoading } = useConvexAuth();
+  const [status, setStatus] = useState("Connecting Studio to MCP...");
+
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const url = new URL(window.location.href);
+        const callback = url.searchParams.get("callback");
+        const state = url.searchParams.get("state");
+
+        if (!callback || !state) {
+          throw new Error("Missing MCP callback details.");
+        }
+
+        const callbackUrl = new URL(callback);
+        if (!isAllowedMcpCallback(callbackUrl)) {
+          throw new Error("MCP callback must point to localhost.");
+        }
+
+        const token = await fetchAccessToken({ forceRefreshToken: true });
+        const refreshToken = readConvexAuthStorage("__convexAuthRefreshToken");
+
+        if (!token) {
+          throw new Error("Studio session is not authenticated.");
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        setStatus("Authentication complete. Returning to MCP...");
+        postMcpAuth(callbackUrl, {
+          refreshToken: refreshToken ?? "",
+          state,
+          token,
+        });
+      } catch (error) {
+        if (!cancelled) {
+          setStatus(toErrorMessage(error));
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchAccessToken, isLoading]);
+
+  return (
+    <section className="auth-gate">
+      <div className="auth-panel">
+        <p className="eyebrow">Open Wilds Studio</p>
+        <h1>MCP Login</h1>
+        <p>{status}</p>
+      </div>
+    </section>
+  );
+}
 
 function StudioApp({
   offline = false,
@@ -85,6 +161,7 @@ function ReactiveStudioShell({
   userLabel?: string;
 }) {
   const convex = useConvex();
+  const { fetchAccessToken } = useConvexAuth();
   const createWorkspace = useMutation(refs.createWorkspace);
   const createInvite = useMutation(refs.createInvite);
   const acceptInvite = useMutation(refs.acceptInvite);
@@ -101,6 +178,8 @@ function ReactiveStudioShell({
     workspaces?.find((workspace) => workspace._id === selectedWorkspaceId) ??
     workspaces?.[0] ??
     null;
+  const canManageSelectedWorkspace =
+    selectedWorkspace?.role === "owner" || selectedWorkspace?.role === "admin";
   const workspaceId = selectedWorkspace?._id ?? null;
   const scopedArgs = workspaceId ? { workspaceId } : "skip";
   const textureRecords = useQuery(refs.listTerrainTextures, scopedArgs);
@@ -205,6 +284,24 @@ function ReactiveStudioShell({
     await removeMember({ workspaceId, userId: targetUserId });
   };
 
+  const copyMcpAuthToken = async () => {
+    if (!ENABLE_MCP_DEV_ACCESS || !canManageSelectedWorkspace) {
+      throw new Error(
+        "MCP token access is only available to workspace admins in development."
+      );
+    }
+
+    const token = await fetchAccessToken({ forceRefreshToken: true });
+
+    if (!token) {
+      throw new Error("Studio session is not authenticated.");
+    }
+
+    await navigator.clipboard.writeText(
+      `OPEN_WILDS_STUDIO_AUTH_TOKEN=${shellQuote(token)}`
+    );
+  };
+
   const sourceTextures = useMemo(
     () =>
       (textureRecords ?? [])
@@ -257,6 +354,11 @@ function ReactiveStudioShell({
       onRevokeInvite={revokeWorkspaceInvite}
       onUpdateMemberRole={changeMemberRole}
       onRemoveMember={removeWorkspaceMember}
+      onCopyMcpAuthToken={
+        ENABLE_MCP_DEV_ACCESS && canManageSelectedWorkspace
+          ? copyMcpAuthToken
+          : undefined
+      }
       isLoading={
         workspaces === undefined ||
         pendingInvites === undefined ||
@@ -271,4 +373,50 @@ function ReactiveStudioShell({
       }
     />
   );
+}
+
+function isAllowedMcpCallback(url: URL) {
+  const isLoopbackHost =
+    url.hostname === "127.0.0.1" ||
+    url.hostname === "localhost" ||
+    url.hostname === "[::1]";
+  return url.protocol === "http:" && isLoopbackHost;
+}
+
+function postMcpAuth(
+  callbackUrl: URL,
+  fields: { refreshToken: string; state: string; token: string }
+) {
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = callbackUrl.toString();
+  form.style.display = "none";
+
+  for (const [name, value] of Object.entries(fields)) {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = name;
+    input.value = value;
+    form.append(input);
+  }
+
+  document.body.append(form);
+  form.submit();
+}
+
+function readConvexAuthStorage(key: string) {
+  const storageKey = `${key}_${convexUrl.replace(/[^a-zA-Z0-9]/g, "")}`;
+  return window.localStorage.getItem(storageKey);
+}
+
+function shellQuote(value: string) {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function toErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message.replace(/^Error: /, "");
+  }
+
+  return "MCP authentication failed.";
 }

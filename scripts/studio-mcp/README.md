@@ -6,26 +6,72 @@ Run the local MCP server with:
 npm run studio:mcp
 ```
 
+For public installs, use:
+
+```sh
+npx -y @open-wilds/studio-mcp
+```
+
 The server reads `VITE_CONVEX_URL` from `.env.local`, or you can set
 `OPEN_WILDS_STUDIO_CONVEX_URL`.
 
 Authentication is Convex Auth:
 
+- For local Codex development, copy a short-lived token env line from Studio's
+  workspace panel, then pass it as `OPEN_WILDS_STUDIO_AUTH_TOKEN`.
 - Use the `studio_sign_in` MCP tool with the local email/password provider.
-- Or launch the server with `OPEN_WILDS_STUDIO_AUTH_TOKEN=<convex-jwt>`.
+- Or call `studio_login_browser` to open Studio and capture a browser session
+  through a localhost callback. This is experimental for local stdio clients.
 
 The server never bypasses Studio workspace permissions. Convex still enforces
 viewer, editor, admin, and owner role checks.
 
 ## Client Example
 
+For Codex local testing without publishing a package:
+
+1. Start Studio and sign in:
+
+   ```sh
+   cd /Users/ajand/Projects/solana/open-wilds
+   npm run studio
+   ```
+
+2. Open `http://localhost:5173/studio`, open the workspace panel, and use
+   `MCP Access` to copy the `OPEN_WILDS_STUDIO_AUTH_TOKEN=...` env line.
+
+3. Register the local server with Codex:
+
+   ```sh
+   codex mcp remove open-wilds-studio-local
+
+   codex mcp add open-wilds-studio-local \
+     --env OPEN_WILDS_STUDIO_CONVEX_URL=https://first-warthog-31.convex.cloud \
+     --env OPEN_WILDS_STUDIO_URL=http://localhost:5173/studio \
+     --env OPEN_WILDS_STUDIO_MCP_ROOT=/Users/ajand/Projects/solana/open-wilds \
+     --env OPEN_WILDS_STUDIO_AUTH_TOKEN='<paste-token-here>' \
+     -- node /Users/ajand/Projects/solana/open-wilds/packages/open-wilds-studio-mcp/bin/open-wilds-studio-mcp.mjs
+   ```
+
+4. Restart Codex, then ask it to call `studio_auth_status` through
+   `open-wilds-studio-local`. If the token expires, copy a fresh token and
+   rerun the `codex mcp add` command.
+
+Treat copied tokens like passwords. Do not commit them or paste them into
+issues, logs, or public docs.
+
+For general MCP clients:
+
 ```json
 {
   "mcpServers": {
     "open-wilds-studio": {
-      "command": "npm",
-      "args": ["run", "studio:mcp"],
-      "cwd": "/Users/ajand/Projects/solana/open-wilds"
+      "command": "npx",
+      "args": ["-y", "@open-wilds/studio-mcp"],
+      "env": {
+        "OPEN_WILDS_STUDIO_CONVEX_URL": "https://first-warthog-31.convex.cloud",
+        "OPEN_WILDS_STUDIO_URL": "http://localhost:5173/studio"
+      }
     }
   }
 }

@@ -67,6 +67,7 @@ export function StudioShell({
   onRevokeInvite,
   onUpdateMemberRole,
   onRemoveMember,
+  onCopyMcpAuthToken,
 }: {
   generatedTerrains: TerrainVisualAsset[];
   isLoading?: boolean;
@@ -91,6 +92,7 @@ export function StudioShell({
   onRevokeInvite?: (inviteId: string) => Promise<void>;
   onUpdateMemberRole?: (userId: string, role: WorkspaceRole) => Promise<void>;
   onRemoveMember?: (userId: string) => Promise<void>;
+  onCopyMcpAuthToken?: () => Promise<void>;
 }) {
   const [route, setRoute] = useStudioRoute();
   const [selectedSourceTexture, setSelectedSourceTexture] =
@@ -279,6 +281,7 @@ export function StudioShell({
           onRevokeInvite={onRevokeInvite}
           onSelectWorkspace={onSelectWorkspace}
           onUpdateMemberRole={onUpdateMemberRole}
+          onCopyMcpAuthToken={onCopyMcpAuthToken}
           pendingInvites={pendingInvites}
           selectedWorkspace={selectedWorkspace}
           workspaceInvites={workspaceInvites}
@@ -387,6 +390,7 @@ function WorkspacePanel({
   onRevokeInvite,
   onSelectWorkspace,
   onUpdateMemberRole,
+  onCopyMcpAuthToken,
   pendingInvites,
   selectedWorkspace,
   workspaceInvites,
@@ -404,6 +408,7 @@ function WorkspacePanel({
   onRevokeInvite?: (inviteId: string) => Promise<void>;
   onSelectWorkspace?: (workspaceId: string) => void;
   onUpdateMemberRole?: (userId: string, role: WorkspaceRole) => Promise<void>;
+  onCopyMcpAuthToken?: () => Promise<void>;
   pendingInvites: StudioPendingWorkspaceInvite[];
   selectedWorkspace: StudioWorkspaceSummary | null;
   workspaceInvites: StudioWorkspaceInvite[];
@@ -440,6 +445,15 @@ function WorkspacePanel({
       await onInviteMember?.(inviteEmail, inviteRole);
       setInviteEmail("");
     }, "Invite created.");
+
+  const copyMcpAuthToken = () =>
+    runPanelAction(async () => {
+      if (!onCopyMcpAuthToken) {
+        throw new Error("MCP access is not available for this workspace.");
+      }
+
+      await onCopyMcpAuthToken();
+    }, "MCP auth token env copied.");
 
   return (
     <div className="studio-modal-backdrop" role="presentation">
@@ -607,6 +621,18 @@ function WorkspacePanel({
                   </div>
                 ))}
               </div>
+            </section>
+          ) : null}
+
+          {canManageWorkspace && onCopyMcpAuthToken ? (
+            <section className="studio-workspace-mcp-access">
+              <h3>MCP Access</h3>
+              <p>
+                Copy a short-lived auth env line for local Codex MCP testing.
+              </p>
+              <button onClick={copyMcpAuthToken} type="button">
+                Copy Token Env
+              </button>
             </section>
           ) : null}
         </div>
